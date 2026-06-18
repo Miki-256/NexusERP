@@ -332,6 +332,58 @@ export interface Database {
           created_at: string;
         };
       };
+      employees: {
+        Row: {
+          id: string;
+          organization_id: string;
+          store_id: string | null;
+          user_id: string | null;
+          name: string;
+          position: string | null;
+          email: string | null;
+          phone: string | null;
+          employment_type: "full_time" | "part_time" | "contract";
+          base_salary: number;
+          payment_method: "cash" | "mobile_money" | "bank_transfer";
+          hire_date: string;
+          status: "active" | "on_leave" | "terminated";
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      payroll_runs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          period_start: string;
+          period_end: string;
+          payment_method: "cash" | "mobile_money" | "bank_transfer";
+          status: "draft" | "posted";
+          total_gross: number;
+          total_deductions: number;
+          total_tax: number;
+          total_net: number;
+          journal_entry_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+      };
+      payslips: {
+        Row: {
+          id: string;
+          organization_id: string;
+          run_id: string;
+          employee_id: string;
+          gross: number;
+          allowances: number;
+          deductions: number;
+          tax: number;
+          net: number;
+          created_at: string;
+        };
+      };
     };
     Functions: {
       create_organization_with_owner: {
@@ -512,6 +564,50 @@ export interface Database {
           p_stage: "lead" | "qualified" | "proposal" | "won" | "lost";
         };
         Returns: undefined;
+      };
+      run_payroll: {
+        Args: {
+          p_org_id: string;
+          p_period_start: string;
+          p_period_end: string;
+          p_payment_method: "cash" | "mobile_money" | "bank_transfer";
+          p_lines: {
+            employeeId: string;
+            gross: number;
+            allowances: number;
+            deductions: number;
+            tax: number;
+          }[];
+        };
+        Returns: string;
+      };
+      balance_sheet: {
+        Args: { p_org_id: string; p_to?: string };
+        Returns: {
+          as_of: string;
+          assets: { code: string; name: string; amount: number }[];
+          total_assets: number;
+          liabilities: { code: string; name: string; amount: number }[];
+          total_liabilities: number;
+          equity: { code: string; name: string; amount: number }[];
+          current_earnings: number;
+          total_equity: number;
+          total_liabilities_and_equity: number;
+          balanced: boolean;
+        };
+      };
+      cash_flow: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: {
+          from: string;
+          to: string;
+          opening_cash: number;
+          inflows: number;
+          outflows: number;
+          net_change: number;
+          closing_cash: number;
+          by_source: { source: string; net: number }[];
+        };
       };
     };
     Views: Record<string, never>;

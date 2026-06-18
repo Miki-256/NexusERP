@@ -17,6 +17,7 @@ import {
   Wallet,
   Landmark,
   Truck,
+  BadgeDollarSign,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const links = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/expenses", label: "Expenses", icon: Wallet },
   { href: "/financials", label: "Financials", icon: Landmark },
+  { href: "/hr", label: "HR & Payroll", icon: BadgeDollarSign },
   { href: "/stores", label: "Stores", icon: Store },
   { href: "/team", label: "Team", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },

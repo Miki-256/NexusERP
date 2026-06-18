@@ -26,6 +26,32 @@ type TrialRow = {
   balance: number;
 };
 
+type StatementLine = { code: string; name: string; amount: number };
+
+type BalanceSheet = {
+  as_of: string;
+  assets: StatementLine[];
+  total_assets: number;
+  liabilities: StatementLine[];
+  total_liabilities: number;
+  equity: StatementLine[];
+  current_earnings: number;
+  total_equity: number;
+  total_liabilities_and_equity: number;
+  balanced: boolean;
+};
+
+type CashFlow = {
+  from: string;
+  to: string;
+  opening_cash: number;
+  inflows: number;
+  outflows: number;
+  net_change: number;
+  closing_cash: number;
+  by_source: { source: string; net: number }[];
+};
+
 function monthRange() {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -60,6 +86,19 @@ export default async function FinancialsPage({
     p_to: to,
   });
   const trial = (trialData ?? []) as TrialRow[];
+
+  const { data: bsData } = await supabase.rpc("balance_sheet", {
+    p_org_id: ctx.organization.id,
+    p_to: to,
+  });
+  const bs = bsData as BalanceSheet | null;
+
+  const { data: cfData } = await supabase.rpc("cash_flow", {
+    p_org_id: ctx.organization.id,
+    p_from: from,
+    p_to: to,
+  });
+  const cf = cfData as CashFlow | null;
 
   const money = (n: number | undefined) => formatCurrency(n ?? 0, currency);
 
@@ -105,6 +144,85 @@ export default async function FinancialsPage({
           </table>
         </CardContent>
       </Card>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Balance Sheet (as of {to})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <tbody>
+                <SectionHeader label="Assets" />
+                {(bs?.assets ?? []).map((l) => (
+                  <Line key={l.code} label={l.name} value={money(l.amount)} indent />
+                ))}
+                <Line label="Total Assets" value={money(bs?.total_assets)} bold border />
+
+                <SectionHeader label="Liabilities" />
+                {(bs?.liabilities ?? []).map((l) => (
+                  <Line key={l.code} label={l.name} value={money(l.amount)} indent />
+                ))}
+                <Line label="Total Liabilities" value={money(bs?.total_liabilities)} bold border />
+
+                <SectionHeader label="Equity" />
+                {(bs?.equity ?? []).map((l) => (
+                  <Line key={l.code} label={l.name} value={money(l.amount)} indent />
+                ))}
+                <Line label="Current Earnings" value={money(bs?.current_earnings)} indent />
+                <Line label="Total Equity" value={money(bs?.total_equity)} bold border />
+                <Line
+                  label="Liabilities + Equity"
+                  value={money(bs?.total_liabilities_and_equity)}
+                  bold
+                  border
+                />
+              </tbody>
+            </table>
+            {bs && !bs.balanced && (
+              <p className="mt-3 text-xs text-amber-600">
+                Note: ledger not yet balanced — post historical sales/expenses to reconcile.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Cash Flow ({from} → {to})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <tbody>
+                <Line label="Opening Cash" value={money(cf?.opening_cash)} />
+                <Line label="Cash In" value={money(cf?.inflows)} indent />
+                <Line label="Cash Out" value={`(${money(cf?.outflows)})`} indent />
+                <Line label="Net Change" value={money(cf?.net_change)} bold border />
+                <Line label="Closing Cash" value={money(cf?.closing_cash)} bold border />
+              </tbody>
+            </table>
+            {(cf?.by_source?.length ?? 0) > 0 && (
+              <div className="mt-4">
+                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                  Net cash by source
+                </p>
+                <table className="w-full text-sm">
+                  <tbody>
+                    {cf!.by_source.map((s) => (
+                      <Line
+                        key={s.source}
+                        label={s.source}
+                        value={money(s.net)}
+                        indent
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -175,6 +293,16 @@ function StatCard({
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <tr>
+      <td colSpan={2} className="pt-4 text-xs font-semibold uppercase text-muted-foreground">
+        {label}
+      </td>
+    </tr>
   );
 }
 
