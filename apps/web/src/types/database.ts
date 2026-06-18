@@ -286,6 +286,52 @@ export interface Database {
           created_at: string;
         };
       };
+      customers: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string | null;
+          phone: string | null;
+          email: string | null;
+          address: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      opportunities: {
+        Row: {
+          id: string;
+          organization_id: string;
+          customer_id: string | null;
+          title: string;
+          contact_name: string | null;
+          contact_phone: string | null;
+          stage: "lead" | "qualified" | "proposal" | "won" | "lost";
+          expected_value: number;
+          probability: number;
+          owner_id: string | null;
+          notes: string | null;
+          closed_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      crm_activities: {
+        Row: {
+          id: string;
+          organization_id: string;
+          opportunity_id: string | null;
+          customer_id: string | null;
+          type: "call" | "email" | "meeting" | "note";
+          summary: string;
+          due_date: string | null;
+          done: boolean;
+          created_by: string | null;
+          created_at: string;
+        };
+      };
     };
     Functions: {
       create_organization_with_owner: {
@@ -447,6 +493,25 @@ export interface Database {
           p_payment_method: "cash" | "mobile_money" | "bank_transfer";
         };
         Returns: string;
+      };
+      customer_summary: {
+        Args: { p_org_id: string };
+        Returns: {
+          customer_id: string;
+          name: string | null;
+          phone: string | null;
+          email: string | null;
+          total_spent: number;
+          order_count: number;
+          last_order: string | null;
+        }[];
+      };
+      set_opportunity_stage: {
+        Args: {
+          p_opp_id: string;
+          p_stage: "lead" | "qualified" | "proposal" | "won" | "lost";
+        };
+        Returns: undefined;
       };
     };
     Views: Record<string, never>;
