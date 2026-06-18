@@ -18,6 +18,7 @@ import {
   Landmark,
   Truck,
   BadgeDollarSign,
+  ShieldCheck,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -44,9 +45,11 @@ const links = [
 export function Sidebar({
   orgName,
   canManageTeam,
+  isPlatformAdmin,
 }: {
   orgName: string;
   canManageTeam: boolean;
+  isPlatformAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -98,6 +101,20 @@ export function Sidebar({
           <ShoppingCart className="h-4 w-4" />
           Open POS
         </Link>
+        {isPlatformAdmin && (
+          <Link
+            href="/admin"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
+              pathname.startsWith("/admin")
+                ? "bg-slate-800 text-white"
+                : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+            )}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Super Admin
+          </Link>
+        )}
       </nav>
       <div className="border-t p-2">
         <button

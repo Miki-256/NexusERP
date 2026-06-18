@@ -384,6 +384,12 @@ export interface Database {
           created_at: string;
         };
       };
+      platform_admins: {
+        Row: {
+          user_id: string;
+          created_at: string;
+        };
+      };
     };
     Functions: {
       create_organization_with_owner: {
@@ -523,6 +529,43 @@ export interface Database {
           p_status: "pending" | "active" | "suspended";
         };
         Returns: undefined;
+      };
+      admin_platform_stats: {
+        Args: Record<string, never>;
+        Returns: {
+          org_count: number;
+          orgs_active: number;
+          orgs_pending: number;
+          orgs_suspended: number;
+          member_count: number;
+          sales_count: number;
+          sales_total: number;
+          admin_count: number;
+        };
+      };
+      admin_list_platform_admins: {
+        Args: Record<string, never>;
+        Returns: { user_id: string; email: string; created_at: string }[];
+      };
+      admin_grant_platform_admin: {
+        Args: { p_email: string };
+        Returns: undefined;
+      };
+      admin_revoke_platform_admin: {
+        Args: { p_user_id: string };
+        Returns: undefined;
+      };
+      admin_import_customers: {
+        Args: { p_org_id: string; p_rows: Json };
+        Returns: { imported: number; skipped: number };
+      };
+      admin_import_products: {
+        Args: { p_org_id: string; p_rows: Json; p_store_id?: string | null };
+        Returns: { imported: number; skipped: number };
+      };
+      admin_list_stores: {
+        Args: { p_org_id: string };
+        Returns: { id: string; name: string }[];
       };
       create_purchase_order: {
         Args: {
