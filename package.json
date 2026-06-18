@@ -1,0 +1,13 @@
+{
+  "name": "nex",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @nex/web",
+    "build": "npm run build -w @nex/web",
+    "lint": "npm run lint -w @nex/web"
+  }
+}

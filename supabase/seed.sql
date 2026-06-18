@@ -1,0 +1,2 @@
+-- Seed is applied manually after first user signup via onboarding.
+-- Demo categories can be added in onboarding wizard.
