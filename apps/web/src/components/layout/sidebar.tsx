@@ -14,6 +14,7 @@ import {
   Users,
   Wallet,
   Landmark,
+  Truck,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/products", label: "Products", icon: Package },
   { href: "/inventory", label: "Inventory", icon: Warehouse },
+  { href: "/purchasing", label: "Purchasing", icon: Truck },
   { href: "/sales", label: "Sales", icon: Receipt },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/expenses", label: "Expenses", icon: Wallet },

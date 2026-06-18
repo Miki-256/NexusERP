@@ -230,6 +230,62 @@ export interface Database {
           created_at: string;
         };
       };
+      vendors: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          phone: string | null;
+          email: string | null;
+          address: string | null;
+          is_active: boolean;
+          created_at: string;
+        };
+      };
+      purchase_orders: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_id: string;
+          store_id: string;
+          status: "draft" | "ordered" | "received" | "cancelled";
+          order_date: string;
+          expected_date: string | null;
+          total: number;
+          notes: string | null;
+          received_at: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+      };
+      purchase_order_lines: {
+        Row: {
+          id: string;
+          po_id: string;
+          organization_id: string;
+          variant_id: string;
+          product_name: string;
+          quantity: number;
+          unit_cost: number;
+          line_total: number;
+        };
+      };
+      vendor_bills: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_id: string;
+          po_id: string | null;
+          bill_no: string | null;
+          bill_date: string;
+          due_date: string | null;
+          amount: number;
+          status: "open" | "paid";
+          journal_entry_id: string | null;
+          paid_entry_id: string | null;
+          created_at: string;
+        };
+      };
     };
     Functions: {
       create_organization_with_owner: {
@@ -369,6 +425,28 @@ export interface Database {
           p_status: "pending" | "active" | "suspended";
         };
         Returns: undefined;
+      };
+      create_purchase_order: {
+        Args: {
+          p_org_id: string;
+          p_vendor_id: string;
+          p_store_id: string;
+          p_expected_date: string | null;
+          p_notes: string | null;
+          p_lines: Json;
+        };
+        Returns: string;
+      };
+      receive_purchase_order: {
+        Args: { p_po_id: string };
+        Returns: string;
+      };
+      pay_vendor_bill: {
+        Args: {
+          p_bill_id: string;
+          p_payment_method: "cash" | "mobile_money" | "bank_transfer";
+        };
+        Returns: string;
       };
     };
     Views: Record<string, never>;
