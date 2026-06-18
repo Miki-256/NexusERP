@@ -194,6 +194,42 @@ export interface Database {
           created_at: string;
         };
       };
+      accounts: {
+        Row: {
+          id: string;
+          organization_id: string;
+          code: string;
+          name: string;
+          type: "asset" | "liability" | "equity" | "income" | "expense";
+          is_active: boolean;
+          created_at: string;
+        };
+      };
+      expense_categories: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          account_id: string | null;
+          created_at: string;
+        };
+      };
+      expenses: {
+        Row: {
+          id: string;
+          organization_id: string;
+          store_id: string | null;
+          category_id: string | null;
+          vendor_name: string | null;
+          description: string | null;
+          amount: number;
+          payment_method: "cash" | "mobile_money" | "bank_transfer";
+          expense_date: string;
+          journal_entry_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+      };
     };
     Functions: {
       create_organization_with_owner: {
@@ -262,6 +298,77 @@ export interface Database {
       next_receipt_number: {
         Args: { p_store_id: string };
         Returns: string;
+      };
+      profit_and_loss: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      record_expense: {
+        Args: {
+          p_org_id: string;
+          p_store_id: string | null;
+          p_category_id: string | null;
+          p_vendor_name: string | null;
+          p_description: string | null;
+          p_amount: number;
+          p_payment_method: "cash" | "mobile_money" | "bank_transfer";
+          p_expense_date: string;
+        };
+        Returns: string;
+      };
+      trial_balance: {
+        Args: { p_org_id: string; p_to?: string };
+        Returns: {
+          account_code: string;
+          account_name: string;
+          account_type: "asset" | "liability" | "equity" | "income" | "expense";
+          debit: number;
+          credit: number;
+          balance: number;
+        }[];
+      };
+      ensure_default_accounts: {
+        Args: { p_org_id: string };
+        Returns: undefined;
+      };
+      post_journal_entry: {
+        Args: {
+          p_org_id: string;
+          p_journal_code: string;
+          p_date: string;
+          p_memo: string | null;
+          p_source_type: string | null;
+          p_source_id: string | null;
+          p_lines: Json;
+        };
+        Returns: string;
+      };
+      post_sale_to_ledger: {
+        Args: { p_sale_id: string };
+        Returns: string | null;
+      };
+      is_platform_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      admin_list_organizations: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          status: "pending" | "active" | "suspended";
+          plan: string;
+          currency: string;
+          member_count: number;
+          created_at: string;
+        }[];
+      };
+      admin_set_org_status: {
+        Args: {
+          p_org_id: string;
+          p_status: "pending" | "active" | "suspended";
+        };
+        Returns: undefined;
       };
     };
     Views: Record<string, never>;

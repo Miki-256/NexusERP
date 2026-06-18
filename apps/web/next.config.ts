@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 // Phase 0 hardening (audit S3): security headers incl. Content-Security-Policy.
 // Supabase needs connect/img to its domain; adjust SUPABASE host via env at build.
@@ -40,6 +41,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@nex/shared"],
+  // Pin file-tracing to this monorepo (avoids picking up ~/package-lock.json).
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
