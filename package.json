@@ -6,8 +6,43 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @nex/web",
+    "dev": "PORT=3003 npm run dev -w @nex/web",
     "build": "npm run build -w @nex/web",
-    "lint": "npm run lint -w @nex/web"
+    "lint": "npm run lint -w @nex/web",
+    "typecheck": "npm run typecheck -w @nex/web",
+    "verify:supabase": "node scripts/verify-supabase-migrations.mjs",
+    "db:baseline": "node scripts/db-baseline.mjs",
+    "phase1:db": "node scripts/phase1-stabilize.mjs",
+    "phase2:db": "node scripts/phase2-scale.mjs",
+    "phase3:db": "node scripts/phase3-scale.mjs",
+    "phase3:load": "node scripts/phase3-load-test.mjs",
+    "week1:production": "node scripts/week1-production.mjs",
+    "week2:production": "node scripts/week2-production.mjs",
+    "week3:production": "node scripts/week3-production.mjs",
+    "month2:production": "node scripts/month2-production.mjs",
+    "cron:process-queue": "bash scripts/cron-process-queue.sh",
+    "db:push": "npx supabase@latest db push",
+    "db:types": "npx supabase@latest gen types typescript --project-id vshtfxebkqmwhgrczqbb > apps/web/src/types/database.generated.ts",
+    "load-test": "node scripts/load-test.mjs",
+    "load-test:pos:prepare": "node scripts/k6/prepare-pos-load.mjs",
+    "load-test:pos": "k6 run scripts/k6/pos-concurrent-sales.js",
+    "load-test:pos:node": "node scripts/k6/run-pos-load.mjs",
+    "deploy:preview": "npx vercel@latest deploy --yes",
+    "deploy:live": "node scripts/deploy-live.mjs",
+    "deploy:live:raw": "npx --yes vercel@latest deploy --prod --yes",
+    "deploy:preprod": "npm run deploy:live",
+    "deploy:preprod:prod": "npm run deploy:live",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
+    "test:unit": "vitest run packages/shared/src apps/web/src/lib",
+    "test:integration": "vitest run tests/integration",
+    "test": "npm run test:unit && npm run test:integration",
+    "verify:production-env": "node scripts/verify-production-env.mjs",
+    "setup:launch-ops": "node scripts/setup-launch-ops.mjs",
+    "setup:launch-ops:github": "node scripts/setup-launch-ops.mjs --apply-github-secrets"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "vitest": "^3.2.4"
   }
 }

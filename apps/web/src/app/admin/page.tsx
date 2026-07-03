@@ -1,81 +1,89 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AdminClient } from "./admin-client";
+import { StatCard } from "@/components/layout/stat-card";
+import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
+import { PAGE_SHELL } from "@/lib/ui-classes";
+import { Building2, ClipboardList, DollarSign, Shield, Users } from "lucide-react";
+import type { PendingOrg, PlatformAuditLog, PlatformStats } from "@/lib/admin-types";
+import { formatAuditAction } from "@/lib/admin-types";
+import { getPlatformAdminContext } from "@/lib/platform-admin";
+import { PendingQueue } from "./pending-queue";
 
-export type AdminOrg = {
-  id: string;
-  name: string;
-  status: "pending" | "active" | "suspended";
-  plan: string;
-  currency: string;
-  member_count: number;
-  created_at: string;
-};
-
-export type PlatformAdmin = { user_id: string; email: string; created_at: string };
-
-type Stats = {
-  org_count: number;
-  orgs_active: number;
-  orgs_pending: number;
-  orgs_suspended: number;
-  member_count: number;
-  sales_count: number;
-  sales_total: number;
-  admin_count: number;
-};
-
-export default async function AdminHome() {
+export default async function AdminOverviewPage() {
+  const ctx = await getPlatformAdminContext();
   const supabase = await createClient();
 
-  const [{ data: stats }, { data: orgs }, { data: admins }] = await Promise.all([
+  const [{ data: stats }, { data: pending }, { data: auditPayload }] = await Promise.all([
     supabase.rpc("admin_platform_stats"),
-    supabase.rpc("admin_list_organizations"),
-    supabase.rpc("admin_list_platform_admins"),
+    supabase.rpc("admin_list_pending_organizations"),
+    supabase.rpc("admin_list_platform_audit_logs", { p_limit: 8, p_offset: 0 }),
   ]);
 
-  const s = (stats ?? {}) as Partial<Stats>;
+  const s = (stats ?? {}) as Partial<PlatformStats>;
+  const recentLogs = ((auditPayload as { rows?: PlatformAuditLog[] } | null)?.rows ?? []) as PlatformAuditLog[];
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Platform Overview</h1>
+    <div className={PAGE_SHELL}>
+      <PageHeader
+        title="Platform overview"
+        description="Monitor tenant health, pending approvals, and recent platform actions."
+        action={
+          (s.orgs_pending ?? 0) > 0 ? (
+            <Button size="sm" asChild>
+              <Link href="/admin/organizations?status=pending">Review pending ({s.orgs_pending})</Link>
+            </Button>
+          ) : undefined
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Organizations" value={s.org_count ?? 0} />
-        <Stat label="Active" value={s.orgs_active ?? 0} />
-        <Stat label="Pending Approval" value={s.orgs_pending ?? 0} highlight={(s.orgs_pending ?? 0) > 0} />
-        <Stat label="Suspended" value={s.orgs_suspended ?? 0} />
-        <Stat label="Total Members" value={s.member_count ?? 0} />
-        <Stat label="Completed Sales" value={s.sales_count ?? 0} />
-        <Stat label="Gross Sales Volume" value={Math.round(s.sales_total ?? 0).toLocaleString()} />
-        <Stat label="Platform Admins" value={s.admin_count ?? 0} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Organizations" value={s.org_count ?? 0} icon={Building2} />
+        <StatCard label="Active" value={s.orgs_active ?? 0} highlight="positive" />
+        <StatCard
+          label="Pending approval"
+          value={s.orgs_pending ?? 0}
+          highlight={(s.orgs_pending ?? 0) > 0 ? "negative" : undefined}
+        />
+        <StatCard label="Suspended" value={s.orgs_suspended ?? 0} />
+        <StatCard label="Members" value={s.member_count ?? 0} icon={Users} />
+        <StatCard label="Completed sales" value={s.sales_count ?? 0} icon={DollarSign} />
+        <StatCard label="Sales volume" value={Math.round(s.sales_total ?? 0).toLocaleString()} />
+        <StatCard label="Platform admins" value={s.admin_count ?? 0} icon={Shield} />
       </div>
 
-      <AdminClient
-        orgs={(orgs as AdminOrg[]) ?? []}
-        admins={(admins as PlatformAdmin[]) ?? []}
-      />
-    </div>
-  );
-}
+      <PendingQueue orgs={(pending as PendingOrg[]) ?? []} canWrite={!!ctx?.canWrite} />
 
-function Stat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: number | string;
-  highlight?: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className={"text-2xl font-bold " + (highlight ? "text-amber-600" : "")}>{value}</p>
-      </CardContent>
-    </Card>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Recent platform actions</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/admin/audit">
+              <ClipboardList className="h-4 w-4" />
+              Full audit log
+            </Link>
+          </Button>
+        </div>
+        <div className="rounded-lg border border-border">
+          {recentLogs.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">No platform actions logged yet.</p>
+          ) : (
+            <ul className="divide-y">
+              {recentLogs.map((log) => (
+                <li key={log.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                  <div>
+                    <span className="font-medium capitalize">{formatAuditAction(log.action)}</span>
+                    <span className="text-muted-foreground"> · {log.actor_email ?? "system"}</span>
+                  </div>
+                  <time className="text-xs text-muted-foreground">
+                    {new Date(log.created_at).toLocaleString()}
+                  </time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }

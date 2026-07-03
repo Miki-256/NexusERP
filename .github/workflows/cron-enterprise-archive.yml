@@ -1,0 +1,33 @@
+# Weekly cold sales archive — Sunday 04:00 UTC (in addition to auto-archive in maintenance RPC).
+name: Enterprise sales archive
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+jobs:
+  archive-sales:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run maintenance with sales archive
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Skipping: set APP_URL and CRON_SECRET repository secrets."
+            exit 0
+          fi
+          response=$(curl -fsS -w "\n%{http_code}" -X POST \
+            "${APP_URL}/api/webhooks/process-queue?archive_sales=1" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+          body=$(echo "$response" | head -n -1)
+          code=$(echo "$response" | tail -n 1)
+          echo "$body"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "HTTP $code"
+            exit 1
+          fi

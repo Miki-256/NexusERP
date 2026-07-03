@@ -1,0 +1,33 @@
+# External cron — runs every 5 minutes when repo secrets are configured.
+# Complements Vercel Hobby daily cron (0 6 * * *).
+name: Process webhook queue
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger process-queue webhook
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Skipping: set APP_URL and CRON_SECRET repository secrets to enable."
+            exit 0
+          fi
+          response=$(curl -fsS -w "\n%{http_code}" -X POST "${APP_URL}/api/webhooks/process-queue" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+          body=$(echo "$response" | head -n -1)
+          code=$(echo "$response" | tail -n 1)
+          echo "$body"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "HTTP $code"
+            exit 1
+          fi

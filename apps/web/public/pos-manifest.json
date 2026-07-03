@@ -1,0 +1,10 @@
+{
+  "name": "Nexus POS",
+  "short_name": "POS",
+  "description": "NexusERP point of sale register",
+  "start_url": "/pos",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#1e3a5f"
+}

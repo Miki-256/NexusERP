@@ -1,12 +1,30 @@
-import { getCurrentMembership } from "@/lib/org-context";
-import { redirect } from "next/navigation";
+import type { Metadata, Viewport } from "next";
+import "@/components/pos/pos.css";
+import { posFontVariables } from "@/components/pos/pos-fonts";
 
-export default async function PosLayout({
+export const metadata: Metadata = {
+  title: "Nexus POS",
+  description: "Point of sale register",
+  manifest: "/pos-manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Nexus POS",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1e3a5f",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
+export default function PosRouteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const ctx = await getCurrentMembership();
-  if (!ctx) redirect("/onboarding");
-  return <>{children}</>;
+  return <div className={`pos-route ${posFontVariables}`}>{children}</div>;
 }

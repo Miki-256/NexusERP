@@ -1,6 +1,5 @@
-import { getCurrentMembership } from "@/lib/org-context";
+import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { CrmClient } from "./crm-client";
 
 export type Opportunity = {
@@ -15,8 +14,7 @@ export type Opportunity = {
 };
 
 export default async function CrmPage() {
-  const ctx = await getCurrentMembership();
-  if (!ctx) redirect("/onboarding");
+  const ctx = await requireAppAccess("crm");
 
   const supabase = await createClient();
   const orgId = ctx.organization.id;

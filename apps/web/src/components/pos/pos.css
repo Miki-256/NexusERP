@@ -1,0 +1,378 @@
+/* Full-viewport POS shell — isolated from ERP dark mode */
+.pos-route {
+  --pos-bg: 210 40% 98%;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: hsl(var(--pos-bg));
+  color: hsl(222 84% 5%);
+  color-scheme: light;
+}
+
+.dark .pos-route {
+  background: hsl(var(--pos-bg));
+  --background: 0 0% 100%;
+  --foreground: 222 84% 5%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 84% 5%;
+  --primary: 199 96% 32%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 84% 5%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 84% 5%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 199 96% 32%;
+}
+
+.pos-route {
+  --background: 0 0% 100%;
+  --foreground: 222 84% 5%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 84% 5%;
+  --primary: 199 96% 32%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 84% 5%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 84% 5%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 199 96% 32%;
+}
+
+body:has(.pos-route) {
+  overflow: hidden;
+  background: hsl(210 40% 98%) !important;
+}
+
+/* POS design tokens — NexusERP retail design system */
+.pos-root {
+  --pos-navy: 222 47% 11%;
+  --pos-navy-soft: 222 47% 18%;
+  --pos-primary: 199 96% 32%;
+  --pos-primary-dark: 199 96% 26%;
+  --pos-primary-light: 199 96% 42%;
+  --pos-surface: 0 0% 100%;
+  --pos-bg: 210 40% 98%;
+  --pos-bg-subtle: 214 32% 95%;
+  --pos-border: 214 32% 88%;
+  --pos-text: 222 84% 5%;
+  --pos-text-muted: 215 16% 47%;
+  --pos-success: 142 71% 35%;
+  --pos-warning: 38 92% 50%;
+  --pos-danger: 0 72% 51%;
+  --pos-cart-width: 440px;
+  font-family: var(--font-nunito-sans), var(--font-inter, system-ui, sans-serif);
+}
+
+.pos-root h1,
+.pos-root h2,
+.pos-root h3,
+.pos-root .pos-heading {
+  font-family: var(--font-rubik), var(--font-inter, system-ui, sans-serif);
+}
+
+.pos-root.pos-shell {
+  color-scheme: light;
+  height: 100%;
+  width: 100%;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--pos-primary) / 0.06), transparent),
+    hsl(var(--pos-bg));
+  color: hsl(var(--pos-text));
+
+  --background: 0 0% 100%;
+  --foreground: 222 84% 5%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 84% 5%;
+  --primary: 199 96% 32%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 84% 5%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 84% 5%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 88%;
+  --input: 214 32% 88%;
+  --ring: 199 96% 32%;
+}
+
+.dark .pos-root.pos-shell {
+  --background: 0 0% 100%;
+  --foreground: 222 84% 5%;
+  --primary: 199 96% 32%;
+  --border: 214 32% 88%;
+}
+
+/* Color utilities */
+.text-pos-primary { color: hsl(var(--pos-primary)); }
+.text-pos-navy { color: hsl(var(--pos-navy)); }
+.bg-pos-primary { background-color: hsl(var(--pos-primary)); }
+.bg-pos-primary-dark { background-color: hsl(var(--pos-primary-dark)); }
+.bg-pos-navy { background-color: hsl(var(--pos-navy)); }
+.bg-pos-primary-soft { background-color: hsl(var(--pos-primary) / 0.12); }
+.bg-pos-primary-soft-8 { background-color: hsl(var(--pos-primary) / 0.08); }
+.hover\:bg-pos-primary-dark:hover { background-color: hsl(var(--pos-primary-dark)); }
+.hover\:bg-pos-navy-soft:hover { background-color: hsl(var(--pos-navy-soft)); }
+
+/* Block card surface */
+.pos-card {
+  background: hsl(var(--pos-surface));
+  border: 1px solid hsl(var(--pos-border));
+  border-radius: 16px;
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.04),
+    0 4px 16px rgb(15 23 42 / 0.04);
+}
+
+.pos-card-elevated {
+  background: hsl(var(--pos-surface));
+  border: 1px solid hsl(var(--pos-border));
+  border-radius: 20px;
+  box-shadow:
+    0 4px 6px rgb(15 23 42 / 0.04),
+    0 12px 40px rgb(15 23 42 / 0.08);
+}
+
+/* Header bar */
+.pos-header {
+  background: hsl(var(--pos-navy));
+  color: white;
+  box-shadow: 0 4px 24px rgb(15 23 42 / 0.2);
+}
+
+/* Search block */
+.pos-search-wrap {
+  background: hsl(var(--pos-surface));
+  border: 2px solid hsl(var(--pos-border));
+  border-radius: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pos-search-wrap:focus-within {
+  border-color: hsl(var(--pos-primary));
+  box-shadow: 0 0 0 4px hsl(var(--pos-primary) / 0.12);
+}
+
+/* Product grid cards */
+.pos-product-card {
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.pos-product-card:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow:
+    0 8px 24px rgb(3 105 161 / 0.14),
+    0 2px 8px rgb(15 23 42 / 0.06);
+  border-color: hsl(var(--pos-primary) / 0.4);
+}
+
+.pos-product-card:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.pos-product-card.pos-added {
+  animation: pos-pop 0.35s ease;
+}
+
+.pos-product-card-compact {
+  border-radius: 12px;
+}
+
+.pos-product-card-compact .pos-product-image {
+  border-radius: 8px;
+}
+
+.pos-product-card-compact:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.pos-product-image {
+  background: linear-gradient(135deg, hsl(var(--pos-bg-subtle)) 0%, hsl(var(--pos-bg)) 100%);
+  border-radius: 12px;
+}
+
+.pos-add-btn {
+  background: hsl(var(--pos-primary));
+  color: white;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.group:hover .pos-add-btn:not(.pos-add-btn-disabled) {
+  background: hsl(var(--pos-primary-dark));
+}
+
+.pos-add-btn:active:not(.pos-add-btn-disabled) {
+  transform: scale(0.92);
+}
+
+@keyframes pos-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+/* Category blocks */
+.pos-category-pill {
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.2s ease;
+}
+
+.pos-category-pill:hover:not(.active) {
+  border-color: hsl(var(--pos-primary) / 0.35);
+  background: hsl(var(--pos-primary) / 0.04);
+  color: hsl(var(--pos-navy));
+}
+
+.pos-category-pill.active {
+  background: hsl(var(--pos-navy));
+  color: white;
+  border-color: hsl(var(--pos-navy));
+  box-shadow: 0 4px 12px hsl(var(--pos-navy) / 0.25);
+}
+
+/* Cart */
+.pos-cart-header {
+  background: hsl(var(--pos-navy));
+  color: white;
+}
+
+.pos-cart-item {
+  animation: pos-slide-in 0.25s ease;
+}
+
+@keyframes pos-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.pos-checkout-btn {
+  cursor: pointer;
+  background: linear-gradient(180deg, hsl(var(--pos-primary)) 0%, hsl(var(--pos-primary-dark)) 100%);
+  box-shadow: 0 4px 16px hsl(var(--pos-primary) / 0.4);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.pos-checkout-btn:hover:not(:disabled) {
+  box-shadow: 0 8px 28px hsl(var(--pos-primary) / 0.45);
+  transform: translateY(-1px);
+}
+
+.pos-checkout-btn:active:not(:disabled) {
+  transform: scale(0.99) translateY(0);
+}
+
+/* Payment modal */
+.pos-payment-card {
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+.pos-payment-card.active {
+  border-color: hsl(var(--pos-primary));
+  background: hsl(var(--pos-primary) / 0.06);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px hsl(var(--pos-primary) / 0.12);
+}
+
+.pos-payment-card.active .pos-payment-icon {
+  color: hsl(var(--pos-primary));
+}
+
+.pos-payment-card:hover:not(:disabled) {
+  border-color: hsl(var(--pos-primary) / 0.5);
+}
+
+.pos-modal-scroll {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Full-screen scroll overlay — portaled to body, escapes .pos-route overflow:hidden */
+.pos-tools-overlay {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.pos-modal-backdrop {
+  animation: pos-fade-in 0.2s ease;
+  backdrop-filter: blur(6px);
+  background: rgb(15 23 42 / 0.45);
+}
+
+.pos-modal-panel {
+  animation: pos-scale-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pos-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pos-scale-in {
+  from { opacity: 0; transform: scale(0.95) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* PIN pad */
+.pos-pin-key {
+  cursor: pointer;
+  min-height: 52px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.pos-pin-key:hover {
+  background: hsl(var(--pos-bg-subtle));
+}
+
+.pos-pin-key:active {
+  transform: scale(0.96);
+  background: hsl(var(--pos-primary) / 0.08);
+}
+
+/* Staff picker */
+.pos-staff-card {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pos-staff-card:hover {
+  transform: translateY(-2px);
+  border-color: hsl(var(--pos-primary) / 0.4);
+  box-shadow: 0 8px 24px rgb(3 105 161 / 0.12);
+}
+
+.pos-scroll-hide::-webkit-scrollbar { display: none; }
+.pos-scroll-hide { scrollbar-width: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-product-card,
+  .pos-category-pill,
+  .pos-checkout-btn,
+  .pos-payment-card,
+  .pos-staff-card,
+  .pos-pin-key {
+    transition: none;
+  }
+  .pos-product-card.pos-added,
+  .pos-cart-item,
+  .pos-modal-backdrop,
+  .pos-modal-panel {
+    animation: none;
+  }
+}

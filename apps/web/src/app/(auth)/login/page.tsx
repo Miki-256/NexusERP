@@ -1,87 +1,52 @@
-"use client";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import { createClient } from "@/lib/supabase/server";
+import { POST_AUTH_BOOTSTRAP_PATH } from "@/lib/post-auth-path";
+import { LoginForm } from "./login-form";
+import { AuthPageSkeleton } from "@/components/ui/loading";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setLoading(false);
-    if (authError) {
-      setError(authError.message);
-      return;
-    }
-    router.push("/dashboard");
-    router.refresh();
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    invite?: string;
+    reset?: string;
+    signup?: string;
+    disabled?: string;
+    auth_error?: string;
+    auth_message?: string;
+    error?: string;
+    error_description?: string;
+    message?: string;
+  }>;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    redirect(POST_AUTH_BOOTSTRAP_PATH);
   }
 
+  const params = await searchParams;
+  const inviteId = params.invite ?? null;
+  const resetSuccess = params.reset === "success";
+  const signupPending = params.signup === "pending";
+  const accountDisabled = params.disabled === "1";
+  const authError = params.auth_error ?? params.error ?? null;
+  const authMessage =
+    params.auth_message ?? params.message ?? params.error_description ?? null;
+
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Sign in to Nex POS</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            No account?{" "}
-            <Link href="/signup" className="text-primary hover:underline">
-              Sign up
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </main>
+    <Suspense fallback={<AuthPageSkeleton />}>
+      <LoginForm
+        inviteId={inviteId}
+        resetSuccess={resetSuccess}
+        signupPending={signupPending}
+        accountDisabled={accountDisabled}
+        authError={authError}
+        authMessage={authMessage}
+      />
+    </Suspense>
   );
 }

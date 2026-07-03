@@ -1,7 +1,12 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
+import { printHtmlDocument } from "@/lib/print-document";
+import { createClient } from "@/lib/supabase/client";
+import { isEscPosEnabled, printEscPosReceipt } from "@/lib/pos/escpos-print";
+import { getPosAutoPrint } from "@/lib/pos/pos-preferences";
 
 type ReceiptProps = {
   sale: {
@@ -10,6 +15,7 @@ type ReceiptProps = {
     subtotal: number;
     tax_amount: number;
     discount_amount: number;
+    tip_amount?: number;
     total: number;
     status: string;
   };
@@ -26,11 +32,19 @@ type ReceiptProps = {
     reference: string | null;
     cash_tendered: number | null;
     change_given: number | null;
+    status?: string;
+    webhook_confirmed_at?: string | null;
   }[];
   orgName: string;
   storeName: string;
   currency: string;
   footer: string | null;
+  saleId?: string;
+  sessionToken?: string | null;
+  pollPaymentStatus?: boolean;
+  autoPrint?: boolean;
+  registerId?: string;
+  onPaymentsUpdate?: (payments: ReceiptProps["payments"]) => void;
 };
 
 export function ReceiptPrint({
@@ -41,23 +55,112 @@ export function ReceiptPrint({
   storeName,
   currency,
   footer,
+  saleId,
+  sessionToken,
+  pollPaymentStatus = false,
+  autoPrint = false,
+  registerId,
+  onPaymentsUpdate,
 }: ReceiptProps) {
+  const [escposMsg, setEscposMsg] = useState<string | null>(null);
+  const [livePayments, setLivePayments] = useState(payments);
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const autoPrintedRef = useRef(false);
+
+  useEffect(() => {
+    setLivePayments(payments);
+  }, [payments]);
+
+  useEffect(() => {
+    if (!pollPaymentStatus || !saleId) return;
+
+    const supabase = createClient();
+    const id = window.setInterval(() => {
+      void supabase
+        .rpc("get_pos_sale_receipt", {
+          p_sale_id: saleId,
+          p_session_token: sessionToken ?? null,
+        })
+        .then(({ data }) => {
+          if (!data) return;
+          const payload = data as { payments?: ReceiptProps["payments"] };
+          if (payload.payments) {
+            setLivePayments(payload.payments);
+            onPaymentsUpdate?.(payload.payments);
+          }
+        });
+    }, 5000);
+
+    return () => clearInterval(id);
+  }, [pollPaymentStatus, saleId, sessionToken]);
+
+  useEffect(() => {
+    if (!isEscPosEnabled()) return;
+    void printEscPosReceipt({
+      orgName,
+      storeName,
+      currency,
+      receiptNo: sale.receipt_no,
+      createdAt: sale.created_at,
+      lines,
+      subtotal: sale.subtotal,
+      tax: sale.tax_amount,
+      discount: sale.discount_amount,
+      tip: sale.tip_amount ?? 0,
+      total: sale.total,
+      payments: payments.map((p) => ({
+        method: p.method,
+        amount: p.amount,
+        reference: p.reference,
+      })),
+      footer,
+    }).then((r) => {
+      if (!r.ok) setEscposMsg(r.message ?? "ESC/POS print failed");
+    });
+  }, [sale, lines, payments, orgName, storeName, currency, footer]);
+
   function handlePrint() {
+    const html = receiptRef.current?.innerHTML;
+    if (html) {
+      printHtmlDocument(`Receipt ${sale.receipt_no}`, html);
+      return;
+    }
     window.print();
   }
+
+  useEffect(() => {
+    if (!autoPrint || autoPrintedRef.current) return;
+    const enabled = registerId ? getPosAutoPrint(registerId) : true;
+    if (!enabled) return;
+    autoPrintedRef.current = true;
+    const id = window.setTimeout(() => handlePrint(), 400);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPrint, registerId, sale.receipt_no]);
 
   return (
     <div>
       <Button onClick={handlePrint} className="no-print mb-4">
         Print receipt
       </Button>
-      <div className="receipt-print mx-auto max-w-xs rounded border bg-white p-4 font-mono text-xs text-black">
+      {escposMsg && (
+        <p className="no-print mb-2 text-xs text-amber-700">{escposMsg}</p>
+      )}
+      <div
+        ref={receiptRef}
+        className="receipt-print mx-auto max-w-xs rounded border bg-white p-4 font-mono text-xs text-black"
+      >
         <p className="text-center font-bold">{orgName}</p>
         <p className="text-center">{storeName}</p>
         <p className="text-center text-[10px]">
           {new Date(sale.created_at).toLocaleString()}
         </p>
         <p className="text-center">#{sale.receipt_no}</p>
+        {sale.status === "pending_sync" && (
+          <p className="mt-1 text-center text-[10px] font-semibold text-amber-700">
+            Pending sync — will update when online
+          </p>
+        )}
         <hr className="my-2 border-dashed border-black" />
         {lines.map((line, i) => (
           <div key={i} className="mb-1">
@@ -90,26 +193,42 @@ export function ReceiptPrint({
             <span>-{formatCurrency(sale.discount_amount, currency)}</span>
           </div>
         )}
+        {(sale.tip_amount ?? 0) > 0 && (
+          <div className="flex justify-between">
+            <span>Tip</span>
+            <span>{formatCurrency(sale.tip_amount!, currency)}</span>
+          </div>
+        )}
         <div className="flex justify-between font-bold">
           <span>TOTAL</span>
           <span>{formatCurrency(sale.total, currency)}</span>
         </div>
         <hr className="my-2 border-dashed border-black" />
-        {payments.map((p, i) => (
-          <div key={i} className="flex justify-between capitalize">
-            <span>
-              {p.method.replace("_", " ")}
-              {p.reference ? ` (${p.reference})` : ""}
-            </span>
-            <span>{formatCurrency(p.amount, currency)}</span>
+        {livePayments.map((p, i) => (
+          <div key={i}>
+            <div className="flex justify-between capitalize">
+              <span>
+                {p.method.replace("_", " ")}
+                {p.reference ? ` (${p.reference})` : ""}
+              </span>
+              <span>{formatCurrency(p.amount, currency)}</span>
+            </div>
+            {p.method === "mobile_money" && p.status === "pending" && !p.webhook_confirmed_at && (
+              <p className="text-[10px] text-amber-700">Awaiting provider confirmation</p>
+            )}
+            {p.webhook_confirmed_at && (
+              <p className="text-[10px] text-emerald-700">
+                Confirmed {new Date(p.webhook_confirmed_at).toLocaleTimeString()}
+              </p>
+            )}
           </div>
         ))}
-        {payments.some((p) => p.change_given) && (
+        {livePayments.some((p) => p.change_given) && (
           <div className="flex justify-between">
             <span>Change</span>
             <span>
               {formatCurrency(
-                payments.find((p) => p.change_given)?.change_given ?? 0,
+                livePayments.find((p) => p.change_given)?.change_given ?? 0,
                 currency
               )}
             </span>

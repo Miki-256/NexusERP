@@ -1,13 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
+import { PageHeader } from "@/components/layout/page-header";
+import { TabBar } from "@/components/layout/tab-bar";
+import { FormCard } from "@/components/layout/form-card";
+import { StatCard } from "@/components/layout/stat-card";
+import { ExportCsvButton } from "@/components/finance/export-csv-button";
+import { ReportSection } from "@/components/finance/report-section";
+import { StatusBadge } from "@/components/layout/status-badge";
+import {
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableEmpty,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/layout/data-table";
 import { formatCurrency, relationName } from "@/lib/utils";
+import { groupByField } from "@/lib/finance-aggregates";
+import { ChartCard, FinanceBarChart, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts";
+import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
+import { Building2, FileText, Package, Truck } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
+import { deleteBlockedMessage } from "@/lib/delete-errors";
 import type { VendorRow, PORow, BillRow, VariantOption } from "./page";
 
 type Tab = "orders" | "vendors" | "bills";
@@ -33,36 +56,138 @@ export function PurchasingClient({
   variants: VariantOption[];
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("orders");
   const [busy, setBusy] = useState<string>("");
-  const [error, setError] = useState("");
 
   const money = (n: number) => formatCurrency(Number(n), currency);
   const variantLabel = (v: VariantOption) =>
     `${relationName(v.products)}${v.name && v.name !== "Default" ? ` (${v.name})` : ""}`;
 
+  const summary = useMemo(() => {
+    const openBills = bills.filter((b) => b.status === "open");
+    const pendingPo = purchaseOrders.filter((p) => p.status === "ordered");
+    return {
+      apOpen: openBills.reduce((s, b) => s + Number(b.amount), 0),
+      openBills: openBills.length,
+      pendingPo: pendingPo.length,
+      poValue: pendingPo.reduce((s, p) => s + Number(p.total), 0),
+    };
+  }, [bills, purchaseOrders]);
+
+  const apByVendor = useMemo(
+    () =>
+      groupByField(
+        bills.filter((b) => b.status === "open"),
+        (b) => relationName(b.vendors) || "Unknown",
+        (b) => Number(b.amount)
+      ).slice(0, 8),
+    [bills]
+  );
+
+  const poByStatus = useMemo(
+    () =>
+      groupByField(
+        purchaseOrders,
+        (p) => p.status.replace(/_/g, " "),
+        (p) => Number(p.total)
+      ),
+    [purchaseOrders]
+  );
+
+  const billsByStatus = useMemo(
+    () =>
+      groupByField(
+        bills,
+        (b) => b.status,
+        (b) => Number(b.amount)
+      ),
+    [bills]
+  );
+
+  const spendTrend = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const po of purchaseOrders) {
+      const key = po.order_date.slice(0, 7);
+      map.set(key, (map.get(key) ?? 0) + Number(po.total));
+    }
+    for (const b of bills) {
+      const key = b.bill_date.slice(0, 7);
+      map.set(key, (map.get(key) ?? 0) + Number(b.amount));
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([month, value]) => ({
+        label: new Date(`${month}-01`).toLocaleDateString(undefined, { month: "short", year: "2-digit" }),
+        value,
+      }));
+  }, [purchaseOrders, bills]);
+
   // --- Vendor form ---
   const [vName, setVName] = useState("");
   const [vPhone, setVPhone] = useState("");
   const [vEmail, setVEmail] = useState("");
+  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
 
-  async function addVendor(e: React.FormEvent) {
-    e.preventDefault();
-    if (!vName.trim()) return;
-    setBusy("vendor");
-    setError("");
-    const supabase = createClient();
-    const { error: err } = await supabase.from("vendors").insert({
-      organization_id: organizationId,
-      name: vName.trim(),
-      phone: vPhone || null,
-      email: vEmail || null,
-    });
-    setBusy("");
-    if (err) return setError(err.message);
+  function resetVendorForm() {
     setVName("");
     setVPhone("");
     setVEmail("");
+    setEditingVendorId(null);
+  }
+
+  function startEditVendor(v: { id: string; name: string; phone: string | null; email: string | null }) {
+    setEditingVendorId(v.id);
+    setVName(v.name);
+    setVPhone(v.phone ?? "");
+    setVEmail(v.email ?? "");
+  }
+
+  async function saveVendor(e: React.FormEvent) {
+    e.preventDefault();
+    if (!vName.trim()) return;
+    setBusy("vendor");
+    const supabase = createClient();
+    const payload = {
+      name: vName.trim(),
+      phone: vPhone || null,
+      email: vEmail || null,
+    };
+    const { error: err } = editingVendorId
+      ? await supabase.from("vendors").update(payload).eq("id", editingVendorId).eq("organization_id", organizationId)
+      : await supabase.from("vendors").insert({ organization_id: organizationId, ...payload });
+    setBusy("");
+    if (err) return toast({ title: editingVendorId ? "Could not update vendor" : "Could not add vendor", description: err.message, variant: "destructive" });
+    toast({ title: editingVendorId ? "Vendor updated" : "Vendor added", description: vName });
+    resetVendorForm();
+    router.refresh();
+  }
+
+  async function setVendorActive(vendorId: string, active: boolean) {
+    setBusy("vendor");
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("vendors")
+      .update({ is_active: active })
+      .eq("id", vendorId)
+      .eq("organization_id", organizationId);
+    setBusy("");
+    if (err) return toast({ title: "Could not update vendor", description: err.message, variant: "destructive" });
+    toast({ title: active ? "Vendor activated" : "Vendor deactivated" });
+    router.refresh();
+  }
+
+  async function deleteVendor(vendorId: string, vendorName: string) {
+    setBusy("vendor");
+    const supabase = createClient();
+    const { error: err } = await supabase.from("vendors").delete().eq("id", vendorId).eq("organization_id", organizationId);
+    setBusy("");
+    if (err) {
+      return toast({ title: "Could not delete vendor", description: deleteBlockedMessage(err), variant: "destructive" });
+    }
+    toast({ title: "Vendor deleted", description: vendorName });
+    if (editingVendorId === vendorId) resetVendorForm();
     router.refresh();
   }
 
@@ -102,10 +227,9 @@ export function PurchasingClient({
         unitCost: parseFloat(l.unitCost) || 0,
       }));
     if (!poVendor || !poStore || validLines.length === 0) {
-      return setError("Pick a vendor, store, and at least one line");
+      return toast({ title: "Incomplete PO", description: "Pick vendor, store, and at least one line.", variant: "destructive" });
     }
     setBusy("po");
-    setError("");
     const supabase = createClient();
     const { error: err } = await supabase.rpc("create_purchase_order", {
       p_org_id: organizationId,
@@ -116,7 +240,8 @@ export function PurchasingClient({
       p_lines: validLines,
     });
     setBusy("");
-    if (err) return setError(err.message);
+    if (err) return toast({ title: "PO failed", description: err.message, variant: "destructive" });
+    toast({ title: "Purchase order created" });
     setPoVendor("");
     setPoExpected("");
     setLines([{ variantId: "", productName: "", quantity: "", unitCost: "" }]);
@@ -125,62 +250,94 @@ export function PurchasingClient({
 
   async function receivePO(id: string) {
     setBusy(id);
-    setError("");
     const supabase = createClient();
     const { error: err } = await supabase.rpc("receive_purchase_order", { p_po_id: id });
     setBusy("");
-    if (err) return setError(err.message);
+    if (err) return toast({ title: "Receive failed", description: err.message, variant: "destructive" });
+    toast({ title: "PO received", description: "Stock and vendor bill updated." });
     router.refresh();
   }
 
   async function payBill(id: string, method: "cash" | "mobile_money" | "bank_transfer") {
     setBusy(id);
-    setError("");
     const supabase = createClient();
     const { error: err } = await supabase.rpc("pay_vendor_bill", {
       p_bill_id: id,
       p_payment_method: method,
     });
     setBusy("");
-    if (err) return setError(err.message);
+    if (err) return toast({ title: "Payment failed", description: err.message, variant: "destructive" });
+    toast({ title: "Bill paid" });
     router.refresh();
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Purchasing</h1>
+    <div className={PAGE_SHELL}>
+      <PageHeader
+        breadcrumb="Accounts payable"
+        title="Purchasing & Vendor Bills"
+        description="Manage vendors, purchase orders, goods receipt, and vendor bill payments tied to inventory and AP."
+        action={
+          <TabBar
+            tabs={[
+              { key: "orders" as const, label: "Purchase Orders" },
+              { key: "vendors" as const, label: "Vendors" },
+              { key: "bills" as const, label: "Vendor Bills" },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
+        }
+      />
 
-      <div className="flex gap-2">
-        {(["orders", "vendors", "bills"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={
-              "rounded-md px-3 py-1.5 text-sm capitalize " +
-              (tab === t ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent")
-            }
-          >
-            {t === "orders" ? "Purchase Orders" : t === "bills" ? "Vendor Bills" : "Vendors"}
-          </button>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Open AP" value={money(summary.apOpen)} sub={`${summary.openBills} bills`} icon={FileText} />
+        <StatCard label="Pending POs" value={summary.pendingPo} sub={money(summary.poValue)} icon={Package} />
+        <StatCard label="Active vendors" value={vendors.length} icon={Building2} />
+        <StatCard label="Total POs" value={purchaseOrders.length} icon={Truck} />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+        <ChartCard title="Open AP by vendor" subtitle="Unpaid bills">
+          {apByVendor.length > 0 ? (
+            <FinanceDonutChart data={apByVendor} formatValue={money} innerRadius={44} height={240} />
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">No open bills</p>
+          )}
+        </ChartCard>
+        <ChartCard title="PO value by status" subtitle="All purchase orders">
+          {poByStatus.length > 0 ? (
+            <FinanceBarChart data={poByStatus} formatValue={money} height={240} />
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">No POs yet</p>
+          )}
+        </ChartCard>
+        <ChartCard title="Bills by status" subtitle="Vendor payables">
+          {billsByStatus.length > 0 ? (
+            <FinanceDonutChart data={billsByStatus} formatValue={money} innerRadius={44} height={240} />
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">No bills yet</p>
+          )}
+        </ChartCard>
+        <ChartCard title="Spend trend" subtitle="POs + bills · last 6 months">
+          {spendTrend.length > 0 ? (
+            <TrendAreaChart data={spendTrend} formatValue={money} height={240} />
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">No spend history</p>
+          )}
+        </ChartCard>
+      </div>
 
       {tab === "orders" && (
         <>
           {canManage && (
-            <Card>
-              <CardHeader>
-                <CardTitle>New Purchase Order</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <FormCard title="New Purchase Order">
                 <form onSubmit={createPO} className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Vendor</Label>
                       <select
-                        className="flex h-10 w-full rounded-md border px-3 text-sm"
+                        className={SELECT_CLS}
                         value={poVendor}
                         onChange={(e) => setPoVendor(e.target.value)}
                         required
@@ -196,7 +353,7 @@ export function PurchasingClient({
                     <div className="space-y-2">
                       <Label>Receiving store</Label>
                       <select
-                        className="flex h-10 w-full rounded-md border px-3 text-sm"
+                        className={SELECT_CLS}
                         value={poStore}
                         onChange={(e) => setPoStore(e.target.value)}
                         required
@@ -210,11 +367,7 @@ export function PurchasingClient({
                     </div>
                     <div className="space-y-2">
                       <Label>Expected date</Label>
-                      <Input
-                        type="date"
-                        value={poExpected}
-                        onChange={(e) => setPoExpected(e.target.value)}
-                      />
+                      <DatePicker value={poExpected} onChange={setPoExpected} />
                     </div>
                   </div>
 
@@ -280,66 +433,75 @@ export function PurchasingClient({
                     </Button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+            </FormCard>
           )}
 
-          <Card>
-            <CardContent className="p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left">Date</th>
-                    <th className="p-3 text-left">Vendor</th>
-                    <th className="p-3 text-left">Store</th>
-                    <th className="p-3 text-left">Status</th>
-                    <th className="p-3 text-right">Total</th>
-                    <th className="p-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchaseOrders.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-4 text-center text-muted-foreground">
-                        No purchase orders yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    purchaseOrders.map((po) => (
-                      <tr key={po.id} className="border-b">
-                        <td className="p-3">{po.order_date}</td>
-                        <td className="p-3">{relationName(po.vendors)}</td>
-                        <td className="p-3">{relationName(po.stores)}</td>
-                        <td className="p-3 capitalize">{po.status}</td>
-                        <td className="p-3 text-right font-mono">{money(po.total)}</td>
-                        <td className="p-3 text-right">
-                          {canManage && po.status === "ordered" ? (
-                            <Button size="sm" disabled={busy === po.id} onClick={() => receivePO(po.id)}>
-                              {busy === po.id ? "…" : "Receive"}
-                            </Button>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
+          <ReportSection
+            title="Purchase orders"
+            subtitle={`${purchaseOrders.length} orders`}
+            actions={
+              <ExportCsvButton
+                filename="purchase-orders"
+                rows={purchaseOrders.map((po) => ({
+                  date: po.order_date,
+                  vendor: relationName(po.vendors) || "",
+                  store: relationName(po.stores) || "",
+                  status: po.status,
+                  total: po.total,
+                }))}
+                columns={[
+                  { key: "date", label: "Date" },
+                  { key: "vendor", label: "Vendor" },
+                  { key: "store", label: "Store" },
+                  { key: "status", label: "Status" },
+                  { key: "total", label: "Total" },
+                ]}
+              />
+            }
+          >
+          <DataTable>
+            <table className="w-full">
+              <DataTableHeader>
+                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Vendor</DataTableHead>
+                <DataTableHead>Store</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                <DataTableHead align="right">Total</DataTableHead>
+                <DataTableHead align="right">Action</DataTableHead>
+              </DataTableHeader>
+              <DataTableBody>
+                {purchaseOrders.length === 0 ? (
+                  <DataTableEmpty colSpan={6} message="No purchase orders yet." />
+                ) : (
+                  purchaseOrders.map((po) => (
+                    <DataTableRow key={po.id}>
+                      <DataTableCell>{po.order_date}</DataTableCell>
+                      <DataTableCell>{relationName(po.vendors)}</DataTableCell>
+                      <DataTableCell>{relationName(po.stores)}</DataTableCell>
+                      <DataTableCell><StatusBadge status={po.status} /></DataTableCell>
+                      <DataTableCell align="right" className="font-mono">{money(po.total)}</DataTableCell>
+                      <DataTableCell align="right">
+                        {canManage && po.status === "ordered" ? (
+                          <Button size="sm" disabled={busy === po.id} onClick={() => receivePO(po.id)}>
+                            {busy === po.id ? "…" : "Receive"}
+                          </Button>
+                        ) : "—"}
+                      </DataTableCell>
+                    </DataTableRow>
+                  ))
+                )}
+              </DataTableBody>
+            </table>
+          </DataTable>
+          </ReportSection>
         </>
       )}
 
       {tab === "vendors" && (
         <>
           {canManage && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Add Vendor</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={addVendor} className="grid gap-4 sm:grid-cols-4">
+            <FormCard title={editingVendorId ? "Edit Vendor" : "Add Vendor"}>
+                <form onSubmit={saveVendor} className="grid gap-4 sm:grid-cols-4">
                   <div className="space-y-2 sm:col-span-2">
                     <Label>Name</Label>
                     <Input value={vName} onChange={(e) => setVName(e.target.value)} required />
@@ -352,89 +514,135 @@ export function PurchasingClient({
                     <Label>Email</Label>
                     <Input type="email" value={vEmail} onChange={(e) => setVEmail(e.target.value)} />
                   </div>
-                  <Button type="submit" disabled={busy === "vendor"}>
-                    Add
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={busy === "vendor"}>{editingVendorId ? "Update" : "Add"}</Button>
+                    {editingVendorId && (
+                      <Button type="button" variant="outline" onClick={resetVendorForm}>Cancel</Button>
+                    )}
+                  </div>
                 </form>
-              </CardContent>
-            </Card>
+            </FormCard>
           )}
-          <Card>
-            <CardContent className="p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left">Name</th>
-                    <th className="p-3 text-left">Phone</th>
-                    <th className="p-3 text-left">Email</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <ReportSection
+            title="Vendor directory"
+            subtitle={`${vendors.length} suppliers`}
+            actions={
+              <ExportCsvButton
+                filename="vendors"
+                rows={vendors.map((v) => ({
+                  name: v.name,
+                  phone: v.phone || "",
+                  email: v.email || "",
+                }))}
+                columns={[
+                  { key: "name", label: "Name" },
+                  { key: "phone", label: "Phone" },
+                  { key: "email", label: "Email" },
+                ]}
+              />
+            }
+          >
+            <DataTable>
+              <table className="w-full">
+                <DataTableHeader>
+                  <DataTableHead>Name</DataTableHead>
+                  <DataTableHead>Phone</DataTableHead>
+                  <DataTableHead>Email</DataTableHead>
+                  {canManage && <DataTableHead align="right">Actions</DataTableHead>}
+                </DataTableHeader>
+                <DataTableBody>
                   {vendors.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="p-4 text-center text-muted-foreground">
-                        No vendors yet.
-                      </td>
-                    </tr>
+                    <DataTableEmpty colSpan={canManage ? 4 : 3} message="No vendors yet." />
                   ) : (
                     vendors.map((v) => (
-                      <tr key={v.id} className="border-b">
-                        <td className="p-3">{v.name}</td>
-                        <td className="p-3">{v.phone || "—"}</td>
-                        <td className="p-3">{v.email || "—"}</td>
-                      </tr>
+                      <DataTableRow key={v.id}>
+                        <DataTableCell className="font-medium">
+                          {v.name}
+                          {!v.is_active && (
+                            <span className="ml-2 text-xs text-muted-foreground">(inactive)</span>
+                          )}
+                        </DataTableCell>
+                        <DataTableCell>{v.phone || "—"}</DataTableCell>
+                        <DataTableCell>{v.email || "—"}</DataTableCell>
+                        {canManage && (
+                          <DataTableCell align="right">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={() => startEditVendor(v)}>Edit</Button>
+                              <Button variant="outline" size="sm" onClick={() => setVendorActive(v.id, !v.is_active)}>
+                                {v.is_active ? "Deactivate" : "Activate"}
+                              </Button>
+                              <ConfirmDeleteButton
+                                message="Delete vendor permanently? Deactivate if linked to POs or bills."
+                                onConfirm={() => deleteVendor(v.id, v.name)}
+                              />
+                            </div>
+                          </DataTableCell>
+                        )}
+                      </DataTableRow>
                     ))
                   )}
-                </tbody>
+                </DataTableBody>
               </table>
-            </CardContent>
-          </Card>
+            </DataTable>
+          </ReportSection>
         </>
       )}
 
       {tab === "bills" && (
-        <Card>
-          <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="p-3 text-left">Date</th>
-                  <th className="p-3 text-left">Vendor</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-right">Amount</th>
-                  <th className="p-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bills.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-4 text-center text-muted-foreground">
-                      No vendor bills yet.
-                    </td>
-                  </tr>
-                ) : (
-                  bills.map((b) => (
-                    <tr key={b.id} className="border-b">
-                      <td className="p-3">{b.bill_date}</td>
-                      <td className="p-3">{relationName(b.vendors)}</td>
-                      <td className="p-3 capitalize">{b.status}</td>
-                      <td className="p-3 text-right font-mono">{money(b.amount)}</td>
-                      <td className="p-3 text-right">
-                        {canManage && b.status === "open" ? (
-                          <Button size="sm" disabled={busy === b.id} onClick={() => payBill(b.id, "cash")}>
-                            {busy === b.id ? "…" : "Pay (cash)"}
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+        <ReportSection
+          title="Vendor bills"
+          subtitle={`${bills.length} bills · ${money(summary.apOpen)} open`}
+          actions={
+            <ExportCsvButton
+              filename="vendor-bills"
+              rows={bills.map((b) => ({
+                date: b.bill_date,
+                vendor: relationName(b.vendors) || "",
+                status: b.status,
+                amount: b.amount,
+              }))}
+              columns={[
+                { key: "date", label: "Date" },
+                { key: "vendor", label: "Vendor" },
+                { key: "status", label: "Status" },
+                { key: "amount", label: "Amount" },
+              ]}
+            />
+          }
+        >
+        <DataTable>
+          <table className="w-full">
+            <DataTableHeader>
+              <DataTableHead>Date</DataTableHead>
+              <DataTableHead>Vendor</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+              <DataTableHead align="right">Amount</DataTableHead>
+              <DataTableHead align="right">Action</DataTableHead>
+            </DataTableHeader>
+            <DataTableBody>
+              {bills.length === 0 ? (
+                <DataTableEmpty colSpan={5} message="No vendor bills yet." />
+              ) : (
+                bills.map((b) => (
+                  <DataTableRow key={b.id}>
+                    <DataTableCell>{b.bill_date}</DataTableCell>
+                    <DataTableCell>{relationName(b.vendors)}</DataTableCell>
+                    <DataTableCell><StatusBadge status={b.status} /></DataTableCell>
+                    <DataTableCell align="right" className="font-mono">{money(b.amount)}</DataTableCell>
+                    <DataTableCell align="right">
+                      {canManage && b.status === "open" ? (
+                        <Button size="sm" disabled={busy === b.id} onClick={() => payBill(b.id, "cash")}>
+                          {busy === b.id ? "…" : "Pay (cash)"}
+                        </Button>
+                      ) : "—"}
+                    </DataTableCell>
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </table>
+        </DataTable>
+        </ReportSection>
       )}
     </div>
   );

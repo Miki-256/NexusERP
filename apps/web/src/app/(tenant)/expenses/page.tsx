@@ -1,6 +1,5 @@
-import { getCurrentMembership, canManage } from "@/lib/org-context";
+import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { ExpensesClient } from "./expenses-client";
 
 export type ExpenseRow = {
@@ -15,8 +14,7 @@ export type ExpenseRow = {
 };
 
 export default async function ExpensesPage() {
-  const ctx = await getCurrentMembership();
-  if (!ctx) redirect("/onboarding");
+  const ctx = await requireAppAccess("expenses");
 
   const supabase = await createClient();
 
@@ -45,7 +43,7 @@ export default async function ExpensesPage() {
     <ExpensesClient
       organizationId={ctx.organization.id}
       currency={ctx.organization.currency}
-      canManage={canManage(ctx.member.role)}
+      canManage={ctx.canManageApp("expenses")}
       initialExpenses={(expenses as unknown as ExpenseRow[]) ?? []}
       categories={(categories as { id: string; name: string }[]) ?? []}
       stores={(stores as { id: string; name: string }[]) ?? []}

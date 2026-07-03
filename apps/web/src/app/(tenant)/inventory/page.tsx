@@ -1,11 +1,9 @@
-import { getCurrentMembership, canManage } from "@/lib/org-context";
+import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { InventoryClient } from "./inventory-client";
 
 export default async function InventoryPage() {
-  const ctx = await getCurrentMembership();
-  if (!ctx) redirect("/onboarding");
+  const ctx = await requireAppAccess("inventory");
 
   const supabase = await createClient();
   const { data: stores } = await supabase
@@ -21,7 +19,7 @@ export default async function InventoryPage() {
     const { data } = await supabase
       .from("inventory_levels")
       .select(
-        "id, quantity, variant_id, product_variants(id, name, barcode, products(name, sell_price))"
+        "id, quantity, variant_id, product_variants(id, name, barcode, products(name, sell_price, reorder_point))"
       )
       .eq("store_id", storeId);
     inventory = (data as unknown as InventoryRow[]) ?? [];
@@ -29,9 +27,10 @@ export default async function InventoryPage() {
 
   return (
     <InventoryClient
+      organizationId={ctx.organization.id}
       stores={stores ?? []}
       initialInventory={inventory as InventoryRow[]}
-      canManage={canManage(ctx.member.role)}
+      canManage={ctx.canManageApp("inventory")}
     />
   );
 }
@@ -44,6 +43,6 @@ export type InventoryRow = {
     id: string;
     name: string;
     barcode: string | null;
-    products: { name: string; sell_price: number };
+    products: { name: string; sell_price: number; reorder_point?: number };
   };
 };

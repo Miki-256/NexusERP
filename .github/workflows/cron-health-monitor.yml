@@ -1,0 +1,43 @@
+# Poll GET /api/health every 5 minutes — fails the workflow on HTTP 503 (degraded queues).
+# Pair with GitHub repo notifications or branch protection required checks.
+name: Health monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check public health probe
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::warning::Set APP_URL repository secret (e.g. https://nexus-erp-preprod.vercel.app)"
+            exit 0
+          fi
+          url="${APP_URL%/}/api/health"
+          echo "GET $url"
+          body=$(mktemp)
+          code=$(curl -fsS -o "$body" -w "%{http_code}" "$url" || echo "000")
+          cat "$body"
+          echo ""
+          echo "HTTP $code"
+          if [ "$code" = "503" ]; then
+            echo "::error::Health probe degraded (ledger or webhook queue backlog)"
+            exit 1
+          fi
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::Health probe failed with HTTP $code"
+            exit 1
+          fi
+          status=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('status','unknown'))" "$body")
+          echo "status=$status"
+          if [ "$status" = "degraded" ]; then
+            echo "::error::Health JSON reports degraded"
+            exit 1
+          fi

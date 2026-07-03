@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { AdminOrg } from "../page";
+import { FormCard } from "@/components/layout/form-card";
+import { SELECT_CLS } from "@/lib/ui-classes";
+import type { AdminOrg } from "@/lib/admin-types";
 
 type Kind = "customers" | "products";
-
-const selectCls = "flex h-10 w-full rounded-md border px-3 text-sm";
 
 const FORMATS: Record<Kind, string> = {
   customers: "name,phone,email,address,notes",
@@ -56,7 +55,7 @@ function parseCsv(text: string): Record<string, string>[] {
   });
 }
 
-export function ImportClient({ orgs }: { orgs: AdminOrg[] }) {
+export function ImportClient({ orgs, canWrite }: { orgs: AdminOrg[]; canWrite: boolean }) {
   const [orgId, setOrgId] = useState("");
   const [kind, setKind] = useState<Kind>("customers");
   const [storeId, setStoreId] = useState("");
@@ -103,22 +102,17 @@ export function ImportClient({ orgs }: { orgs: AdminOrg[] }) {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Data Import</h1>
-      <p className="text-sm text-muted-foreground">
-        Migrate legacy data (e.g. a Base44 CSV export) into an organization. Paste CSV with a
-        header row matching the expected columns.
-      </p>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Import</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <FormCard title="Import">
+      {!canWrite && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Read-only access — imports require App Support or Super Admin role.
+        </p>
+      )}
+      <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label>Organization</Label>
-              <select className={selectCls} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+              <select className={SELECT_CLS} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
                 <option value="">— Select —</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -130,7 +124,7 @@ export function ImportClient({ orgs }: { orgs: AdminOrg[] }) {
             <div className="space-y-2">
               <Label>Data Type</Label>
               <select
-                className={selectCls}
+                className={SELECT_CLS}
                 value={kind}
                 onChange={(e) => setKind(e.target.value as Kind)}
               >
@@ -141,7 +135,7 @@ export function ImportClient({ orgs }: { orgs: AdminOrg[] }) {
             {kind === "products" && (
               <div className="space-y-2">
                 <Label>Stock to Store (optional)</Label>
-                <select className={selectCls} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
+                <select className={SELECT_CLS} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
                   <option value="">— No stock —</option>
                   {stores.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -171,11 +165,10 @@ export function ImportClient({ orgs }: { orgs: AdminOrg[] }) {
           {error && <p className="text-sm text-red-600">{error}</p>}
           {result && <p className="text-sm text-emerald-600">{result}</p>}
 
-          <Button onClick={runImport} disabled={busy}>
+          <Button onClick={runImport} disabled={busy || !canWrite}>
             {busy ? "Importing…" : "Import"}
           </Button>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </FormCard>
   );
 }

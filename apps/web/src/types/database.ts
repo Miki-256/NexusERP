@@ -39,6 +39,31 @@ export interface Database {
           created_at: string;
         };
       };
+      department_roles: {
+        Row: {
+          id: string;
+          organization_id: string;
+          code: string;
+          name: string;
+          description: string | null;
+          app_ids: string[];
+          is_system: boolean;
+          created_at: string;
+        };
+      };
+      organization_member_department_roles: {
+        Row: {
+          member_id: string;
+          role_id: string;
+        };
+      };
+      organization_member_app_overrides: {
+        Row: {
+          member_id: string;
+          app_id: string;
+          access: "grant" | "deny";
+        };
+      };
       stores: {
         Row: {
           id: string;
@@ -64,13 +89,32 @@ export interface Database {
           id: string;
           register_id: string;
           organization_id: string;
-          opened_by: string;
+          opened_by: string | null;
+          opened_by_staff_id: string | null;
+          closed_by_staff_id: string | null;
+          active_staff_id: string | null;
           opened_at: string;
           opening_float: number;
           closed_at: string | null;
           closed_by: string | null;
           closing_cash_counted: number | null;
           notes: string | null;
+        };
+      };
+      pos_staff: {
+        Row: {
+          id: string;
+          organization_id: string;
+          display_name: string;
+          pin_hash: string;
+          role: "cashier" | "manager";
+          store_ids: string[] | null;
+          is_active: boolean;
+          failed_pin_attempts: number;
+          pin_locked_until: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
         };
       };
       categories: {
@@ -93,6 +137,7 @@ export interface Database {
           sell_price: number;
           cost_price: number;
           tax_rate: number | null;
+          image_url: string | null;
           is_active: boolean;
           created_at: string;
         };
@@ -136,7 +181,8 @@ export interface Database {
           customer_phone: string | null;
           idempotency_key: string | null;
           void_reason: string | null;
-          created_by: string;
+          created_by: string | null;
+          pos_staff_id: string | null;
           created_at: string;
         };
       };
@@ -420,11 +466,92 @@ export interface Database {
           p_customer_name: string | null;
           p_customer_phone: string | null;
           p_payments: Json;
+          p_pos_staff_id?: string | null;
+          p_pos_session_token?: string | null;
+          p_customer_id?: string | null;
+          p_promotion_code?: string | null;
+          p_tip_amount?: number;
+          p_manager_discount_pin?: string | null;
         };
+        Returns: Json;
+      };
+      create_pos_staff: {
+        Args: {
+          p_organization_id: string;
+          p_display_name: string;
+          p_pin: string;
+          p_role?: "cashier" | "manager";
+          p_store_ids?: string[] | null;
+        };
+        Returns: string;
+      };
+      reset_pos_staff_pin: {
+        Args: { p_staff_id: string; p_pin: string };
+        Returns: undefined;
+      };
+      set_pos_staff_active: {
+        Args: { p_staff_id: string; p_active: boolean };
+        Returns: undefined;
+      };
+      verify_pos_staff_pin: {
+        Args: { p_register_id: string; p_staff_id: string; p_pin: string };
+        Returns: Json;
+      };
+      get_pos_register_context: {
+        Args: { p_register_id: string };
+        Returns: Json;
+      };
+      get_pos_catalog: {
+        Args: { p_register_id: string };
+        Returns: Json;
+      };
+      get_open_register_session: {
+        Args: { p_register_id: string };
+        Returns: Json;
+      };
+      get_pos_staff_session: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
+      open_register_session_staff: {
+        Args: {
+          p_register_id: string;
+          p_session_token: string;
+          p_opening_float?: number;
+        };
+        Returns: Json;
+      };
+      close_register_session_staff: {
+        Args: {
+          p_session_id: string;
+          p_session_token: string;
+          p_closing_cash?: number;
+        };
+        Returns: undefined;
+      };
+      open_register_session_manager: {
+        Args: {
+          p_register_id: string;
+          p_organization_id: string;
+          p_opening_float?: number;
+          p_staff_id?: string | null;
+        };
+        Returns: Json;
+      };
+      get_pos_sale_receipt: {
+        Args: { p_sale_id: string; p_session_token?: string | null };
         Returns: Json;
       };
       void_sale: {
         Args: { p_sale_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      void_sale_backoffice: {
+        Args: {
+          p_sale_id: string;
+          p_reason: string;
+          p_refund_method?: string;
+        };
         Returns: undefined;
       };
       adjust_inventory: {
@@ -451,9 +578,25 @@ export interface Database {
           p_cost_price: number;
           p_tax_rate: number | null;
           p_store_id: string | null;
-          p_initial_qty: number;
+          p_initial_qty?: number;
+          p_image_url?: string | null;
         };
         Returns: Json;
+      };
+      update_product_with_variant: {
+        Args: {
+          p_product_id: string;
+          p_name: string;
+          p_category_id: string | null;
+          p_sku: string | null;
+          p_barcode: string | null;
+          p_sell_price: number;
+          p_cost_price: number;
+          p_tax_rate: number | null;
+          p_image_url: string | null;
+          p_is_active?: boolean;
+        };
+        Returns: undefined;
       };
       next_receipt_number: {
         Args: { p_store_id: string };
@@ -566,6 +709,42 @@ export interface Database {
       admin_list_stores: {
         Args: { p_org_id: string };
         Returns: { id: string; name: string }[];
+      };
+      get_my_app_permissions: {
+        Args: { p_organization_id?: string | null };
+        Returns: Json;
+      };
+      get_staff_invite_preview: {
+        Args: { p_invite_id: string };
+        Returns: Json;
+      };
+      list_my_workspaces: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      get_my_workspace: {
+        Args: { p_organization_id?: string | null };
+        Returns: Json;
+      };
+      get_my_pending_staff_invite: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
+      accept_my_pending_staff_invite: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
+      save_member_permissions: {
+        Args: {
+          p_member_id: string;
+          p_department_role_ids: string[];
+          p_overrides?: Json;
+        };
+        Returns: undefined;
+      };
+      ensure_org_department_roles: {
+        Args: { p_org_id: string };
+        Returns: number;
       };
       create_purchase_order: {
         Args: {

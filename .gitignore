@@ -7,4 +7,10 @@ dist
 *.log
 .DS_Store
 .vercel
+*.tsbuildinfo
+scripts/k6/fixtures.json
+e2e/fixtures.json
+test-results/
+playwright-report/
 supabase/.temp
+.support/

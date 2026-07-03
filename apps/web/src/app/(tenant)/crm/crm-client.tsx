@@ -6,8 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
+import { PageHeader } from "@/components/layout/page-header";
+import { FormCard } from "@/components/layout/form-card";
+import { StatCard } from "@/components/layout/stat-card";
 import { formatCurrency } from "@/lib/utils";
+import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
+import { Plus, Target, Trophy } from "lucide-react";
 import type { Opportunity } from "./page";
 
 type Stage = Opportunity["stage"];
@@ -38,6 +43,7 @@ export function CrmClient({
   customers: { id: string; name: string | null }[];
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [value, setValue] = useState("");
@@ -45,13 +51,11 @@ export function CrmClient({
   const [contactPhone, setContactPhone] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
 
   async function createOpp(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) return setError("Enter a title");
+    if (!title.trim()) return toast({ title: "Title required", variant: "destructive" });
     setBusy(true);
-    setError("");
     const supabase = createClient();
     const { error: err } = await supabase.from("opportunities").insert({
       organization_id: organizationId,
@@ -63,111 +67,51 @@ export function CrmClient({
       stage: "lead",
     });
     setBusy(false);
-    if (err) return setError(err.message);
-    setTitle("");
-    setValue("");
-    setContactName("");
-    setContactPhone("");
-    setCustomerId("");
+    if (err) return toast({ title: "Could not create", description: err.message, variant: "destructive" });
+    toast({ title: "Opportunity created", description: title });
+    setTitle(""); setValue(""); setContactName(""); setContactPhone(""); setCustomerId("");
     setOpen(false);
     router.refresh();
   }
 
   async function moveStage(id: string, stage: Stage) {
     const supabase = createClient();
-    const { error: err } = await supabase.rpc("set_opportunity_stage", {
-      p_opp_id: id,
-      p_stage: stage,
-    });
-    if (err) return alert(err.message);
+    const { error: err } = await supabase.rpc("set_opportunity_stage", { p_opp_id: id, p_stage: stage });
+    if (err) return toast({ title: "Update failed", description: err.message, variant: "destructive" });
     router.refresh();
   }
 
-  const pipelineValue = opportunities
-    .filter((o) => o.stage !== "lost" && o.stage !== "won")
-    .reduce((s, o) => s + Number(o.expected_value), 0);
-  const wonValue = opportunities
-    .filter((o) => o.stage === "won")
-    .reduce((s, o) => s + Number(o.expected_value), 0);
+  const pipelineValue = opportunities.filter((o) => o.stage !== "lost" && o.stage !== "won").reduce((s, o) => s + Number(o.expected_value), 0);
+  const wonValue = opportunities.filter((o) => o.stage === "won").reduce((s, o) => s + Number(o.expected_value), 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">CRM Pipeline</h1>
-        <Button onClick={() => setOpen((v) => !v)}>{open ? "Close" : "New Opportunity"}</Button>
-      </div>
+    <div className={PAGE_SHELL}>
+      <PageHeader
+        title="CRM Pipeline"
+        description="Track deals from lead to close"
+        action={
+          <Button onClick={() => setOpen((v) => !v)} className="shadow-sm">
+            {open ? "Close" : (<><Plus className="h-4 w-4" />New Opportunity</>)}
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Open Pipeline</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            {formatCurrency(pipelineValue, currency)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Won</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            {formatCurrency(wonValue, currency)}
-          </CardContent>
-        </Card>
+        <StatCard label="Open Pipeline" value={formatCurrency(pipelineValue, currency)} icon={Target} />
+        <StatCard label="Won" value={formatCurrency(wonValue, currency)} icon={Trophy} highlight="positive" />
       </div>
 
       {open && (
-        <Card>
-          <CardHeader>
-            <CardTitle>New Opportunity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={createOpp} className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Title</Label>
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Expected Value</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Customer</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border px-3 text-sm"
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                >
-                  <option value="">— None —</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name || "(unnamed)"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Contact Name</Label>
-                <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Contact Phone</Label>
-                <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-              </div>
-              {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
-              <div>
-                <Button type="submit" disabled={busy}>
-                  {busy ? "Saving…" : "Create"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        <FormCard title="New Opportunity">
+          <form onSubmit={createOpp} className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2"><Label>Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+            <div className="space-y-2"><Label>Expected Value</Label><Input type="number" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} /></div>
+            <div className="space-y-2"><Label>Customer</Label><select className={SELECT_CLS} value={customerId} onChange={(e) => setCustomerId(e.target.value)}><option value="">— None —</option>{customers.map((c) => (<option key={c.id} value={c.id}>{c.name || "(unnamed)"}</option>))}</select></div>
+            <div className="space-y-2"><Label>Contact Name</Label><Input value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
+            <div className="space-y-2"><Label>Contact Phone</Label><Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} /></div>
+            <div><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Create"}</Button></div>
+          </form>
+        </FormCard>
       )}
 
       <div className="grid gap-4 lg:grid-cols-5 sm:grid-cols-2">
@@ -175,52 +119,31 @@ export function CrmClient({
           const items = opportunities.filter((o) => o.stage === stage.key);
           const total = items.reduce((s, o) => s + Number(o.expected_value), 0);
           return (
-            <div key={stage.key} className="space-y-3">
-              <div className="flex items-center justify-between px-1">
+            <div key={stage.key} className="rounded-xl border bg-card p-3 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm font-semibold">{stage.label}</span>
-                <span className="text-xs text-muted-foreground">{items.length}</span>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{items.length}</span>
               </div>
-              <p className="px-1 text-xs text-muted-foreground">
-                {formatCurrency(total, currency)}
-              </p>
+              <p className="mb-3 text-xs font-medium text-muted-foreground">{formatCurrency(total, currency)}</p>
               <div className="space-y-2">
                 {items.map((o) => (
-                  <Card key={o.id}>
-                    <CardContent className="space-y-2 p-3">
-                      <p className="font-medium leading-tight">{o.title}</p>
-                      <p className="font-mono text-sm">
-                        {formatCurrency(Number(o.expected_value), currency)}
-                      </p>
-                      {(o.contact_name || o.contact_phone) && (
-                        <p className="text-xs text-muted-foreground">
-                          {o.contact_name}
-                          {o.contact_phone ? ` · ${o.contact_phone}` : ""}
-                        </p>
+                  <div key={o.id} className="rounded-lg border bg-background p-3 transition-shadow hover:shadow-sm">
+                    <p className="font-medium leading-tight">{o.title}</p>
+                    <p className="mt-1 font-mono text-sm">{formatCurrency(Number(o.expected_value), currency)}</p>
+                    {(o.contact_name || o.contact_phone) && (
+                      <p className="mt-1 text-xs text-muted-foreground">{o.contact_name}{o.contact_phone ? ` · ${o.contact_phone}` : ""}</p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {NEXT[o.stage] && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => moveStage(o.id, NEXT[o.stage]!)}>
+                          → {STAGES.find((s) => s.key === NEXT[o.stage])?.label}
+                        </Button>
                       )}
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {NEXT[o.stage] && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => moveStage(o.id, NEXT[o.stage]!)}
-                          >
-                            → {STAGES.find((s) => s.key === NEXT[o.stage])?.label}
-                          </Button>
-                        )}
-                        {o.stage !== "won" && o.stage !== "lost" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs text-red-600"
-                            onClick={() => moveStage(o.id, "lost")}
-                          >
-                            Lost
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
+                      {o.stage !== "won" && o.stage !== "lost" && (
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600" onClick={() => moveStage(o.id, "lost")}>Lost</Button>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

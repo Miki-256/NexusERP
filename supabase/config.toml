@@ -1,4 +1,4 @@
-project_id = "zjejyimflxdxecizkvgj"
+project_id = "vshtfxebkqmwhgrczqbb"
 
 [api]
 enabled = true
@@ -14,5 +14,8 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+site_url = "http://localhost:3003"
+additional_redirect_urls = [
+  "http://localhost:3003/auth/callback",
+  "https://nexus-erp-preprod.vercel.app/auth/callback"
+]

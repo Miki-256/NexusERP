@@ -18,7 +18,7 @@ const csp = [
   `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
-  `connect-src 'self' https://${supabaseHost} wss://${supabaseHost}`,
+  `connect-src 'self' https://${supabaseHost} wss://${supabaseHost} http://127.0.0.1:17832 http://localhost:17832`,
   "font-src 'self' data:",
 ]
   .filter(Boolean)
@@ -35,16 +35,43 @@ const securityHeaders = [
   },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=()",
+    value: "camera=(self), microphone=(), geolocation=(), payment=()",
   },
 ];
 
+const securityHeadersWithoutPermissions = securityHeaders.filter(
+  (h) => h.key !== "Permissions-Policy"
+);
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@nex/shared"],
-  // Pin file-tracing to this monorepo (avoids picking up ~/package-lock.json).
   outputFileTracingRoot: path.join(__dirname, "../../"),
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    const posCameraPolicy = {
+      key: "Permissions-Policy",
+      value: "camera=(self), microphone=(), geolocation=(), payment=()",
+    };
+    const posHeaders = [...securityHeadersWithoutPermissions, posCameraPolicy];
+    return [
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      // Default ERP headers (camera allowed for same-origin — POS barcode scan).
+      { source: "/:path*", headers: securityHeaders },
+      // POS / register: explicit camera policy (matches default; kept for clarity).
+      { source: "/pos", headers: posHeaders },
+      { source: "/pos/:path*", headers: posHeaders },
+      { source: "/register/:path*", headers: posHeaders },
+    ];
   },
 };
 

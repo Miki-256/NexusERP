@@ -1,124 +1,124 @@
-import { getCurrentMembership } from "@/lib/org-context";
-import { createClient } from "@/lib/supabase/server";
-import { formatCurrency, relationName } from "@/lib/utils";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Suspense } from "react";
+import { getMemberPermissions } from "@/lib/org-context";
+import { redirect } from "next/navigation";
 import Link from "next/link";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AppsLauncher } from "@/components/layout/apps-launcher";
+import { ShoppingCart, FileSpreadsheet } from "lucide-react";
+import type { ErpAppId } from "@/lib/app-permissions";
+import {
+  DashboardFinancialPanel,
+  DashboardKpis,
+  DashboardRecentSales,
+  DashboardSalesTrend,
+  DashboardSidebar,
+} from "./dashboard-sections";
+import { loadDashboardBundle } from "./dashboard-bundle";
 
-export default async function DashboardPage() {
-  const ctx = await getCurrentMembership();
-  if (!ctx) return null;
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[100px] rounded-lg" />
+        ))}
+      </div>
+      <Skeleton className="h-80 rounded-lg" />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-80 rounded-lg" />
+        </div>
+        <Skeleton className="h-80 rounded-lg" />
+      </div>
+    </div>
+  );
+}
 
-  const supabase = await createClient();
-  const { data: stats } = await supabase.rpc("dashboard_stats", {
-    p_organization_id: ctx.organization.id,
+async function DashboardBody({
+  orgId,
+  currency,
+  canAccessAccounting,
+  accessibleApps,
+}: {
+  orgId: string;
+  currency: string;
+  canAccessAccounting: boolean;
+  accessibleApps: ErpAppId[];
+}) {
+  const bundle = await loadDashboardBundle(orgId, {
+    includeAccounting: canAccessAccounting,
+    includeExpenses: accessibleApps.includes("expenses"),
   });
 
-  const s = (stats ?? {}) as {
-    sales_total?: number;
-    transaction_count?: number;
-    cash_total?: number;
-    mobile_total?: number;
-    bank_total?: number;
-  };
+  return (
+    <>
+      <DashboardKpis bundle={bundle} currency={currency} canAccessAccounting={canAccessAccounting} />
 
-  const { data: registers } = await supabase
-    .from("registers")
-    .select("id, name, stores(name)")
-    .eq("organization_id", ctx.organization.id)
-    .eq("is_active", true);
+      {canAccessAccounting && <DashboardFinancialPanel bundle={bundle} currency={currency} />}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <DashboardSalesTrend bundle={bundle} currency={currency} />
+          <DashboardRecentSales bundle={bundle} currency={currency} />
+        </div>
+        <DashboardSidebar bundle={bundle} currency={currency} accessibleApps={accessibleApps} />
+      </div>
+    </>
+  );
+}
+
+export default async function DashboardPage() {
+  const ctx = await getMemberPermissions();
+  if (!ctx) redirect("/onboarding");
+
+  const orgId = ctx.organization.id;
+  const currency = ctx.organization.currency?.trim() || "ETB";
+  const canAccessAccounting = ctx.canAccessApp("accounting");
+  const accessibleApps = Array.from(ctx.accessibleApps) as ErpAppId[];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Today&apos;s overview</p>
-        </div>
-        <Button asChild>
-          <Link href="/pos">Open POS</Link>
-        </Button>
-      </div>
+      <PageHeader
+        breadcrumb="Executive overview"
+        title={`${ctx.organization.name} — Dashboard`}
+        description={
+          canAccessAccounting
+            ? "Real-time POS performance, ledger profitability, cash position, and receivables at a glance."
+            : "Real-time POS performance and sales activity at a glance."
+        }
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/reports">
+                <FileSpreadsheet className="h-4 w-4" />
+                Export reports
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/pos">
+                <ShoppingCart className="h-4 w-4" />
+                Open POS
+              </Link>
+            </Button>
+          </div>
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Sales today
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {formatCurrency(s.sales_total ?? 0, ctx.organization.currency)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Transactions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{s.transaction_count ?? 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Cash
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {formatCurrency(s.cash_total ?? 0, ctx.organization.currency)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Mobile money
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {formatCurrency(s.mobile_total ?? 0, ctx.organization.currency)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardBody
+          orgId={orgId}
+          currency={currency}
+          canAccessAccounting={canAccessAccounting}
+          accessibleApps={accessibleApps}
+        />
+      </Suspense>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Registers</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="divide-y">
-            {(registers ?? []).map((reg) => (
-              <li
-                key={reg.id}
-                className="flex items-center justify-between py-3"
-              >
-                <span>
-                  {reg.name}{" "}
-                  <span className="text-muted-foreground">
-                    — {relationName(reg.stores as { name: string } | { name: string }[])}
-                  </span>
-                </span>
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/pos/${reg.id}`}>Start selling</Link>
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      <div className="border-t border-border/60 pt-10">
+        <AppsLauncher accessibleAppIds={Array.from(ctx.accessibleApps)} compact />
+      </div>
     </div>
   );
 }

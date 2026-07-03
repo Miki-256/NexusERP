@@ -1,11 +1,9 @@
-import { getCurrentMembership, canManage } from "@/lib/org-context";
+import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { StoresClient } from "./stores-client";
 
 export default async function StoresPage() {
-  const ctx = await getCurrentMembership();
-  if (!ctx) redirect("/onboarding");
+  const ctx = await requireAppAccess("stores");
 
   const supabase = await createClient();
   const { data: stores } = await supabase
@@ -18,7 +16,7 @@ export default async function StoresPage() {
     <StoresClient
       stores={stores ?? []}
       organizationId={ctx.organization.id}
-      canManage={canManage(ctx.member.role)}
+      canManage={ctx.canManageApp("stores")}
     />
   );
 }

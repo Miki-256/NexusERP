@@ -1,4 +1,9 @@
 import { create } from "zustand";
+import {
+  clampCartDiscount,
+  clampLineDiscount,
+  normalizeCartDiscounts,
+} from "@/lib/pos/discount-policy";
 
 export interface CartLine {
   variantId: string;
@@ -12,11 +17,32 @@ export interface CartLine {
 interface CartState {
   lines: CartLine[];
   cartDiscount: number;
-  heldCarts: { id: string; lines: CartLine[]; discount: number }[];
+  promoCode: string | null;
+  promoDiscount: number;
+  promotionId: string | null;
+  promotionName: string | null;
+  heldCarts: {
+    id: string;
+    lines: CartLine[];
+    discount: number;
+    promoCode: string | null;
+    promoDiscount: number;
+    promotionId: string | null;
+    promotionName: string | null;
+    heldAt: number;
+  }[];
   addLine: (line: Omit<CartLine, "quantity" | "discountAmount"> & { quantity?: number }) => void;
   updateQuantity: (variantId: string, quantity: number) => void;
   removeLine: (variantId: string) => void;
   setCartDiscount: (amount: number) => void;
+  setLineDiscount: (variantId: string, amount: number) => void;
+  applyPromotion: (promo: {
+    code: string;
+    discountAmount: number;
+    promotionId: string;
+    name: string;
+  }) => void;
+  clearPromotion: () => void;
   clear: () => void;
   hold: () => void;
   recall: (id: string) => void;
@@ -25,6 +51,10 @@ interface CartState {
 export const useCartStore = create<CartState>((set, get) => ({
   lines: [],
   cartDiscount: 0,
+  promoCode: null,
+  promoDiscount: 0,
+  promotionId: null,
+  promotionName: null,
   heldCarts: [],
 
   addLine: (line) => {
@@ -61,11 +91,15 @@ export const useCartStore = create<CartState>((set, get) => ({
       get().removeLine(variantId);
       return;
     }
-    set((state) => ({
-      lines: state.lines.map((l) =>
-        l.variantId === variantId ? { ...l, quantity } : l
-      ),
-    }));
+    set((state) => {
+      const lines = state.lines.map((l) => {
+        if (l.variantId !== variantId) return l;
+        const updated = { ...l, quantity };
+        return { ...updated, discountAmount: clampLineDiscount(updated, l.discountAmount) };
+      });
+      const cartDiscount = clampCartDiscount(lines, state.cartDiscount, state.promoDiscount);
+      return { lines, cartDiscount };
+    });
   },
 
   removeLine: (variantId) => {
@@ -74,29 +108,102 @@ export const useCartStore = create<CartState>((set, get) => ({
     }));
   },
 
-  setCartDiscount: (amount) => set({ cartDiscount: amount }),
+  setCartDiscount: (amount) =>
+    set((state) => ({
+      cartDiscount: clampCartDiscount(state.lines, amount, state.promoDiscount),
+    })),
 
-  clear: () => set({ lines: [], cartDiscount: 0 }),
+  setLineDiscount: (variantId, amount) => {
+    set((state) => {
+      const lines = state.lines.map((l) =>
+        l.variantId === variantId
+          ? { ...l, discountAmount: clampLineDiscount(l, amount) }
+          : l
+      );
+      const cartDiscount = clampCartDiscount(lines, state.cartDiscount, state.promoDiscount);
+      return { lines, cartDiscount };
+    });
+  },
+
+  applyPromotion: (promo) =>
+    set((state) => {
+      const promoDiscount = Math.max(0, promo.discountAmount);
+      return {
+        promoCode: promo.code,
+        promoDiscount,
+        promotionId: promo.promotionId,
+        promotionName: promo.name,
+        cartDiscount: clampCartDiscount(state.lines, state.cartDiscount, promoDiscount),
+      };
+    }),
+
+  clearPromotion: () =>
+    set({
+      promoCode: null,
+      promoDiscount: 0,
+      promotionId: null,
+      promotionName: null,
+    }),
+
+  clear: () =>
+    set({
+      lines: [],
+      cartDiscount: 0,
+      promoCode: null,
+      promoDiscount: 0,
+      promotionId: null,
+      promotionName: null,
+    }),
 
   hold: () => {
-    const { lines, cartDiscount, heldCarts } = get();
+    const {
+      lines,
+      cartDiscount,
+      promoCode,
+      promoDiscount,
+      promotionId,
+      promotionName,
+      heldCarts,
+    } = get();
     if (lines.length === 0) return;
     set({
       heldCarts: [
         ...heldCarts,
-        { id: crypto.randomUUID(), lines: [...lines], discount: cartDiscount },
+        {
+          id: crypto.randomUUID(),
+          lines: [...lines],
+          discount: cartDiscount,
+          promoCode,
+          promoDiscount,
+          promotionId,
+          promotionName,
+          heldAt: Date.now(),
+        },
       ],
       lines: [],
       cartDiscount: 0,
+      promoCode: null,
+      promoDiscount: 0,
+      promotionId: null,
+      promotionName: null,
     });
   },
 
   recall: (id) => {
     const held = get().heldCarts.find((h) => h.id === id);
     if (!held) return;
+    const normalized = normalizeCartDiscounts(
+      held.lines,
+      held.discount,
+      held.promoDiscount
+    );
     set({
-      lines: held.lines,
-      cartDiscount: held.discount,
+      lines: normalized.lines,
+      cartDiscount: normalized.cartDiscount,
+      promoCode: held.promoCode,
+      promoDiscount: held.promoDiscount,
+      promotionId: held.promotionId,
+      promotionName: held.promotionName,
       heldCarts: get().heldCarts.filter((h) => h.id !== id),
     });
   },
@@ -106,7 +213,8 @@ export function calcCartTotals(
   lines: CartLine[],
   cartDiscount: number,
   taxRate: number,
-  taxInclusive: boolean
+  taxInclusive: boolean,
+  promoDiscount = 0
 ) {
   let subtotal = 0;
   let tax = 0;
@@ -122,6 +230,6 @@ export function calcCartTotals(
     }
   }
 
-  const total = subtotal + (taxInclusive ? 0 : tax) - cartDiscount;
+  const total = subtotal + (taxInclusive ? 0 : tax) - cartDiscount - promoDiscount;
   return { subtotal, tax, total: Math.max(0, total) };
 }

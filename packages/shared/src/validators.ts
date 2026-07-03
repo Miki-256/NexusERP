@@ -22,6 +22,33 @@ export const signupSchema = z.object({
   fullName: z.string().min(1).max(100),
 });
 
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  inviteId: z.string().uuid().nullable().optional(),
+});
+
+export const inviteSignupSchema = signupSchema.extend({
+  inviteId: z.string().uuid(),
+});
+
+export const activateUnconfirmedSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const logFailedLoginSchema = z.object({
+  email: z.string().email(),
+});
+
+export const mobileMoneyWebhookSchema = z.object({
+  organization_id: z.string().uuid(),
+  reference: z.string().min(1).max(100),
+  provider: z.string().max(50).optional(),
+  amount: z.number().positive().optional(),
+  external_id: z.string().max(200).optional(),
+});
+
 export const organizationSetupSchema = z.object({
   name: z.string().min(1).max(200),
   currency: z.string().length(3).default("ETB"),

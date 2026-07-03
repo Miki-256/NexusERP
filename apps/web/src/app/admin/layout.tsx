@@ -1,6 +1,10 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { ShieldCheck, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { getPlatformAdminContext } from "@/lib/platform-admin";
+import { AdminMobileNav, AdminSidebar } from "./admin-sidebar";
 
 export default async function AdminLayout({
   children,
@@ -13,36 +17,35 @@ export default async function AdminLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // platform_admins is RLS-protected: only platform admins can read it.
-  const { data: adminRow } = await supabase
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!adminRow) redirect("/dashboard");
+  const ctx = await getPlatformAdminContext();
+  if (!ctx) redirect("/dashboard");
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="mx-auto flex max-w-6xl items-center justify-between p-4">
-          <div className="flex items-center gap-6">
-            <span className="font-bold">Nexus · Super Admin</span>
-            <nav className="flex gap-4 text-sm">
-              <Link href="/admin" className="hover:underline">
-                Organizations
-              </Link>
-              <Link href="/admin/import" className="hover:underline">
-                Data Import
-              </Link>
-            </nav>
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-card/95 backdrop-blur-md">
+        <div className="flex items-center justify-between px-4 py-3.5 lg:px-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-semibold">Platform Admin</span>
+              <p className="text-xs text-muted-foreground">{user.email}</p>
+            </div>
           </div>
-          <Link href="/dashboard" className="text-sm text-muted-foreground hover:underline">
-            ← Back to app
-          </Link>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/dashboard">
+              <ArrowLeft className="h-4 w-4" />
+              Back to app
+            </Link>
+          </Button>
         </div>
+        <AdminMobileNav role={ctx.role} />
       </header>
-      <main className="mx-auto max-w-6xl p-6">{children}</main>
+      <div className="mx-auto flex max-w-7xl">
+        <AdminSidebar role={ctx.role} />
+        <main className="min-w-0 flex-1 animate-fade-in p-4 lg:p-8">{children}</main>
+      </div>
     </div>
   );
 }

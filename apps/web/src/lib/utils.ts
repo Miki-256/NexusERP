@@ -14,9 +14,18 @@ export function relationName(
 }
 
 export function formatCurrency(amount: number, currency = "ETB") {
-  return new Intl.NumberFormat("en-ET", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount);
+  const code = currency?.trim() || "ETB";
+  try {
+    return new Intl.NumberFormat("en-ET", {
+      style: "currency",
+      currency: code,
+      minimumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return new Intl.NumberFormat("en-ET", {
+      style: "currency",
+      currency: "ETB",
+      minimumFractionDigits: 2,
+    }).format(amount);
+  }
 }

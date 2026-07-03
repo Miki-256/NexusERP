@@ -1,6 +1,5 @@
-import { getCurrentMembership, canManage } from "@/lib/org-context";
+import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { HrClient } from "./hr-client";
 
 export type Employee = {
@@ -30,10 +29,9 @@ export type PayrollRun = {
 };
 
 export default async function HrPage() {
-  const ctx = await getCurrentMembership();
-  if (!ctx) redirect("/onboarding");
+  const ctx = await requireAppAccess("hr");
 
-  const manage = canManage(ctx.member.role);
+  const manage = ctx.canManageApp("hr");
   const supabase = await createClient();
   const orgId = ctx.organization.id;
 
