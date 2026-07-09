@@ -29,6 +29,7 @@ import { Package, Pencil, Plus } from "lucide-react";
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
 import { TableToolbar, TablePagination } from "@/components/layout/table-toolbar";
 import type { CategoryRow } from "./page";
+import type { ProductExtendedFields } from "@/lib/scm/types";
 
 type Tab = "products" | "import" | "receive" | "categories";
 
@@ -78,6 +79,9 @@ export function ProductsClient({
   const [mode, setMode] = useState<"list" | "create" | "edit">("list");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(false);
+  const [extendedLoading, setExtendedLoading] = useState(false);
+  const [extendedFields, setExtendedFields] = useState<Partial<ProductExtendedFields>>({});
+  const [trackLots, setTrackLots] = useState(false);
   const [searchInput, setSearchInput] = useState(searchQuery);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -113,7 +117,32 @@ export function ProductsClient({
 
   function openEdit(product: Product) {
     setEditingProduct(product);
+    setExtendedFields({});
+    setTrackLots(false);
     setMode("edit");
+    setExtendedLoading(true);
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase.rpc("get_product_detail", { p_product_id: product.id });
+      const detail = (data ?? {}) as { product?: Record<string, unknown> };
+      const p = detail.product;
+      if (p) {
+        setExtendedFields({
+          lifecycle_status: (p.lifecycle_status as ProductExtendedFields["lifecycle_status"]) ?? "active",
+          base_uom_code: (p.base_uom_code as string) ?? "ea",
+          weight_kg: (p.weight_kg as number | null) ?? null,
+          length_cm: (p.length_cm as number | null) ?? null,
+          width_cm: (p.width_cm as number | null) ?? null,
+          height_cm: (p.height_cm as number | null) ?? null,
+          hs_code: (p.hs_code as string | null) ?? null,
+          country_of_origin: (p.country_of_origin as string | null) ?? null,
+          shelf_life_days: (p.shelf_life_days as number | null) ?? null,
+          description: (p.description as string | null) ?? null,
+        });
+        setTrackLots(Boolean(p.track_lots));
+      }
+      setExtendedLoading(false);
+    })();
     requestAnimationFrame(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -122,6 +151,23 @@ export function ProductsClient({
   function closeForm() {
     setMode("list");
     setEditingProduct(null);
+    setExtendedFields({});
+    setTrackLots(false);
+  }
+
+  function extendedPayload(values: ProductFormValues) {
+    return {
+      lifecycle_status: values.lifecycleStatus,
+      base_uom_code: values.baseUomCode || "ea",
+      description: values.description || null,
+      hs_code: values.hsCode || null,
+      country_of_origin: values.countryOfOrigin || null,
+      weight_kg: values.weightKg ? parseFloat(values.weightKg) : null,
+      length_cm: values.lengthCm ? parseFloat(values.lengthCm) : null,
+      width_cm: values.widthCm ? parseFloat(values.widthCm) : null,
+      height_cm: values.heightCm ? parseFloat(values.heightCm) : null,
+      shelf_life_days: values.shelfLifeDays ? parseInt(values.shelfLifeDays, 10) : null,
+    };
   }
 
   async function handleBarcodeDuplicate(code: string) {
@@ -292,12 +338,36 @@ export function ProductsClient({
         p_product_id: editingProduct.id,
         p_reorder_point: parseFloat(values.reorderPoint) || 0,
       });
+      const { error: extendedError } = await supabase.rpc("update_product_extended", {
+        p_product_id: editingProduct.id,
+        p_fields: extendedPayload(values),
+      });
+      const { error: lotError } = await supabase.rpc("set_product_lot_tracking", {
+        p_product_id: editingProduct.id,
+        p_track_lots: values.trackLots,
+      });
       if (reorderError) {
         toast({
           title: "Product saved but reorder point failed",
           description: reorderError.message.includes("Could not find the function")
             ? "Apply migration 20260618000034_inventory_advanced.sql in Supabase."
             : reorderError.message,
+          variant: "destructive",
+        });
+      } else if (extendedError) {
+        toast({
+          title: "Product saved but master data failed",
+          description: extendedError.message.includes("Could not find the function")
+            ? "Apply SCM Wave 1 migrations in Supabase."
+            : extendedError.message,
+          variant: "destructive",
+        });
+      } else if (lotError) {
+        toast({
+          title: "Product saved but lot tracking failed",
+          description: lotError.message.includes("Could not find the function")
+            ? "Apply SCM Wave 2 migrations in Supabase."
+            : lotError.message,
           variant: "destructive",
         });
       } else {
@@ -354,6 +424,17 @@ export function ProductsClient({
         sku: editingProduct.sku ?? "",
         categoryId: editingProduct.category_id ?? "",
         isActive: editingProduct.is_active,
+        trackLots,
+        lifecycleStatus: extendedFields.lifecycle_status ?? "active",
+        baseUomCode: extendedFields.base_uom_code ?? "ea",
+        description: extendedFields.description ?? "",
+        weightKg: extendedFields.weight_kg != null ? String(extendedFields.weight_kg) : "",
+        lengthCm: extendedFields.length_cm != null ? String(extendedFields.length_cm) : "",
+        widthCm: extendedFields.width_cm != null ? String(extendedFields.width_cm) : "",
+        heightCm: extendedFields.height_cm != null ? String(extendedFields.height_cm) : "",
+        hsCode: extendedFields.hs_code ?? "",
+        countryOfOrigin: extendedFields.country_of_origin ?? "",
+        shelfLifeDays: extendedFields.shelf_life_days != null ? String(extendedFields.shelf_life_days) : "",
       }
     : undefined;
 
@@ -459,13 +540,14 @@ export function ProductsClient({
       {mode === "edit" && canManage && editingProduct && (
         <div ref={formRef} className="mb-6">
           <ProductForm
-          formKey={editingProduct.id}
+          formKey={`${editingProduct.id}-${extendedLoading ? "loading" : "ready"}`}
           title={`Edit — ${editingProduct.name}`}
           submitLabel="Save changes"
-          loading={loading}
+          loading={loading || extendedLoading}
           categories={categoriesForSelect}
           stores={stores}
           showActiveToggle
+          showExtendedFields={!extendedLoading}
           initialValues={editInitialValues}
           existingImageUrl={editingProduct.image_url}
           onBarcodeDuplicate={handleBarcodeDuplicate}

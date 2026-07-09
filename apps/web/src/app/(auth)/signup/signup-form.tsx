@@ -9,6 +9,7 @@ import { LoadingButton, LoadingSpinner } from "@/components/ui/loading";
 import { completeSessionRedirect } from "@/lib/session-redirect";
 import { POST_AUTH_BOOTSTRAP_PATH } from "@/lib/post-auth-path";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/layout/auth-shell";
 
@@ -165,14 +166,14 @@ export function SignupForm({ inviteId }: { inviteId: string | null }) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             minLength={8}
             required
             placeholder="At least 8 characters"
+            autoComplete="new-password"
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}

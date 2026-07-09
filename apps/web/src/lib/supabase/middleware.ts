@@ -116,7 +116,7 @@ export async function updateSession(request: NextRequest) {
 
   if (user && isAuthPage && request.method === "GET") {
     const url = request.nextUrl.clone();
-    url.pathname = POST_AUTH_BOOTSTRAP_PATH;
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url, 303);
   }
 

@@ -20,6 +20,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { relationName } from "@/lib/utils";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Pencil } from "lucide-react";
@@ -182,6 +184,31 @@ export function ProjectsClient({
       )}
 
       {tab === "projects" ? (
+        <ResponsiveTableLayout
+          mobile={
+            projects.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No projects.</p>
+            ) : (
+              projects.map((p) => (
+                <MobileRecordCard key={p.id}>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <p className="font-semibold">{p.name}</p>
+                    <StatusBadge status={p.is_active ? "active" : "suspended"} />
+                  </div>
+                  <MobileRecordCardRow label="Customer">
+                    {relationName(p.customers as { name: string } | { name: string }[] | null) || "—"}
+                  </MobileRecordCardRow>
+                  {canManage && (
+                    <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => openEditProject(p)}>
+                      <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                  )}
+                </MobileRecordCard>
+              ))
+            )
+          }
+        >
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
@@ -213,7 +240,35 @@ export function ProjectsClient({
             </DataTableBody>
           </table>
         </DataTable>
+        </ResponsiveTableLayout>
       ) : (
+        <ResponsiveTableLayout
+          mobile={
+            tasks.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No tasks.</p>
+            ) : (
+              tasks.map((t) => (
+                <MobileRecordCard key={t.id}>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <p className="font-semibold">{t.title}</p>
+                    <StatusBadge status={t.status} />
+                  </div>
+                  <MobileRecordCardRow label="Project">{relationName(t.projects)}</MobileRecordCardRow>
+                  {t.status !== "done" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 w-full"
+                      onClick={() => setTaskStatus(t.id, t.status === "todo" ? "in_progress" : "done")}
+                    >
+                      {t.status === "todo" ? "Start" : "Done"}
+                    </Button>
+                  )}
+                </MobileRecordCard>
+              ))
+            )
+          }
+        >
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
@@ -240,6 +295,7 @@ export function ProjectsClient({
             </DataTableBody>
           </table>
         </DataTable>
+        </ResponsiveTableLayout>
       )}
     </div>
   );

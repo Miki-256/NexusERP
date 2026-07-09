@@ -1,21 +1,44 @@
 import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
 import { TeamClient } from "./team-client";
+import type { TeamMemberRow } from "./erp-member-row";
 
 export default async function TeamPage() {
   const ctx = await requireAppAccess("team");
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const inviterName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    user?.email?.split("@")[0] ||
+    "A team admin";
+
   const { data: invites } = await supabase
     .from("staff_invites")
-    .select("*")
+    .select("id, email, role, created_at, department_role_ids")
     .eq("organization_id", ctx.organization.id)
     .is("accepted_at", null)
     .order("created_at", { ascending: false });
 
-  const { data: members } = await supabase
-    .from("organization_members")
-    .select("id, role, is_active, user_id")
-    .eq("organization_id", ctx.organization.id);
+  const { data: teamMembers, error: teamMembersError } = await supabase.rpc(
+    "get_organization_team_members",
+    { p_org_id: ctx.organization.id }
+  );
+
+  const members: TeamMemberRow[] =
+    !teamMembersError && teamMembers
+      ? (teamMembers as TeamMemberRow[])
+      : (
+          await supabase
+            .from("organization_members")
+            .select("id, role, is_active, user_id, created_at")
+            .eq("organization_id", ctx.organization.id)
+        ).data?.map((m) => ({
+          ...m,
+          email: null as string | null,
+          display_name: m.user_id.slice(0, 8),
+        })) ?? [];
 
   const { data: posStaff } = await supabase
     .from("pos_staff")
@@ -73,6 +96,8 @@ export default async function TeamPage() {
   return (
     <TeamClient
       organizationId={ctx.organization.id}
+      organizationName={ctx.organization.name}
+      inviterName={inviterName}
       invites={invites ?? []}
       members={members ?? []}
       posStaff={posStaff ?? []}

@@ -25,6 +25,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { groupByField } from "@/lib/finance-aggregates";
 import { ChartCard, FinanceDonutChart } from "@/components/charts/finance-charts";
@@ -369,6 +371,42 @@ export function InvoicingClient({
         }
       >
         <TableToolbar search={search} onSearchChange={setSearch} placeholder="Search invoice or customer…" className="mb-4" />
+        <ResponsiveTableLayout
+          mobile={
+            filtered.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No invoices match your search.</p>
+            ) : (
+              filtered.map((inv) => (
+                <MobileRecordCard key={inv.id}>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">{inv.invoice_no}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {relationName(inv.customers as { name: string } | { name: string }[] | null) || "—"}
+                      </p>
+                    </div>
+                    <StatusBadge status={inv.status} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <MobileRecordCardRow label="Date">{inv.invoice_date}</MobileRecordCardRow>
+                    <MobileRecordCardRow label="Due">{inv.due_date || "—"}</MobileRecordCardRow>
+                    <MobileRecordCardRow label="Total">{money(inv.total)}</MobileRecordCardRow>
+                  </div>
+                  {canManage && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {inv.status === "draft" && (
+                        <Button size="sm" variant="outline" disabled={!!busy} className="flex-1" onClick={() => postInvoice(inv.id)}>Post</Button>
+                      )}
+                      {inv.status === "posted" && (
+                        <Button size="sm" disabled={!!busy} className="flex-1" onClick={() => payInvoice(inv.id)}>Mark paid</Button>
+                      )}
+                    </div>
+                  )}
+                </MobileRecordCard>
+              ))
+            )
+          }
+        >
         <DataTable>
         <table className="w-full">
           <DataTableHeader>
@@ -408,6 +446,7 @@ export function InvoicingClient({
           </DataTableBody>
         </table>
       </DataTable>
+      </ResponsiveTableLayout>
       </ReportSection>
         </>
       )}
@@ -490,6 +529,37 @@ export function InvoicingClient({
 
           <ReportSection title="Credit note register" subtitle={`${filteredCreditNotes.length} credit notes`}>
             <TableToolbar search={search} onSearchChange={setSearch} placeholder="Search credit note or customer…" className="mb-4" />
+            <ResponsiveTableLayout
+              mobile={
+                filteredCreditNotes.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">No credit notes yet.</p>
+                ) : (
+                  filteredCreditNotes.map((cn) => (
+                    <MobileRecordCard key={cn.id}>
+                      <div className="mb-3 flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">{cn.credit_note_no}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {relationName(cn.customers as { name: string } | { name: string }[] | null) || "—"}
+                          </p>
+                        </div>
+                        <StatusBadge status={cn.status} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <MobileRecordCardRow label="Date">{cn.credit_date}</MobileRecordCardRow>
+                        <MobileRecordCardRow label="Settlement">{cn.settlement_method.replace("_", " ")}</MobileRecordCardRow>
+                        <MobileRecordCardRow label="Total">{money(cn.total)}</MobileRecordCardRow>
+                      </div>
+                      {canManage && cn.status === "draft" && (
+                        <Button size="sm" variant="outline" disabled={!!busy} className="mt-3 w-full" onClick={() => postCreditNote(cn.id)}>
+                          Post to ledger
+                        </Button>
+                      )}
+                    </MobileRecordCard>
+                  ))
+                )
+              }
+            >
             <DataTable>
               <table className="w-full">
                 <DataTableHeader>
@@ -528,6 +598,7 @@ export function InvoicingClient({
                 </DataTableBody>
               </table>
             </DataTable>
+            </ResponsiveTableLayout>
           </ReportSection>
         </>
       )}

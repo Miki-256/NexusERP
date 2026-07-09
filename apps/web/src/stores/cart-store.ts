@@ -14,23 +14,50 @@ export interface CartLine {
   discountAmount: number;
 }
 
+export type HeldCart = {
+  id: string;
+  lines: CartLine[];
+  discount: number;
+  promoCode: string | null;
+  promoDiscount: number;
+  promotionId: string | null;
+  promotionName: string | null;
+  heldAt: number;
+};
+
+const HELD_CARTS_KEY = (registerId: string) => `pos-held-carts-${registerId}`;
+
+function loadHeldCarts(registerId: string): HeldCart[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HELD_CARTS_KEY(registerId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as HeldCart[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHeldCarts(registerId: string, heldCarts: HeldCart[]) {
+  if (typeof window === "undefined" || !registerId) return;
+  try {
+    localStorage.setItem(HELD_CARTS_KEY(registerId), JSON.stringify(heldCarts));
+  } catch {
+    /* quota */
+  }
+}
+
 interface CartState {
+  activeRegisterId: string | null;
   lines: CartLine[];
   cartDiscount: number;
   promoCode: string | null;
   promoDiscount: number;
   promotionId: string | null;
   promotionName: string | null;
-  heldCarts: {
-    id: string;
-    lines: CartLine[];
-    discount: number;
-    promoCode: string | null;
-    promoDiscount: number;
-    promotionId: string | null;
-    promotionName: string | null;
-    heldAt: number;
-  }[];
+  heldCarts: HeldCart[];
+  initForRegister: (registerId: string) => void;
   addLine: (line: Omit<CartLine, "quantity" | "discountAmount"> & { quantity?: number }) => void;
   updateQuantity: (variantId: string, quantity: number) => void;
   removeLine: (variantId: string) => void;
@@ -49,6 +76,7 @@ interface CartState {
 }
 
 export const useCartStore = create<CartState>((set, get) => ({
+  activeRegisterId: null,
   lines: [],
   cartDiscount: 0,
   promoCode: null,
@@ -56,6 +84,21 @@ export const useCartStore = create<CartState>((set, get) => ({
   promotionId: null,
   promotionName: null,
   heldCarts: [],
+
+  initForRegister: (registerId) => {
+    const current = get().activeRegisterId;
+    if (current === registerId) return;
+    set({
+      activeRegisterId: registerId,
+      lines: [],
+      cartDiscount: 0,
+      promoCode: null,
+      promoDiscount: 0,
+      promotionId: null,
+      promotionName: null,
+      heldCarts: loadHeldCarts(registerId),
+    });
+  },
 
   addLine: (line) => {
     const qty = line.quantity ?? 1;
@@ -164,22 +207,25 @@ export const useCartStore = create<CartState>((set, get) => ({
       promotionId,
       promotionName,
       heldCarts,
+      activeRegisterId,
     } = get();
     if (lines.length === 0) return;
+    const nextHeld: HeldCart[] = [
+      ...heldCarts,
+      {
+        id: crypto.randomUUID(),
+        lines: [...lines],
+        discount: cartDiscount,
+        promoCode,
+        promoDiscount,
+        promotionId,
+        promotionName,
+        heldAt: Date.now(),
+      },
+    ];
+    if (activeRegisterId) saveHeldCarts(activeRegisterId, nextHeld);
     set({
-      heldCarts: [
-        ...heldCarts,
-        {
-          id: crypto.randomUUID(),
-          lines: [...lines],
-          discount: cartDiscount,
-          promoCode,
-          promoDiscount,
-          promotionId,
-          promotionName,
-          heldAt: Date.now(),
-        },
-      ],
+      heldCarts: nextHeld,
       lines: [],
       cartDiscount: 0,
       promoCode: null,
@@ -190,13 +236,16 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   recall: (id) => {
-    const held = get().heldCarts.find((h) => h.id === id);
+    const { heldCarts, activeRegisterId } = get();
+    const held = heldCarts.find((h) => h.id === id);
     if (!held) return;
     const normalized = normalizeCartDiscounts(
       held.lines,
       held.discount,
       held.promoDiscount
     );
+    const nextHeld = heldCarts.filter((h) => h.id !== id);
+    if (activeRegisterId) saveHeldCarts(activeRegisterId, nextHeld);
     set({
       lines: normalized.lines,
       cartDiscount: normalized.cartDiscount,
@@ -204,7 +253,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       promoDiscount: held.promoDiscount,
       promotionId: held.promotionId,
       promotionName: held.promotionName,
-      heldCarts: get().heldCarts.filter((h) => h.id !== id),
+      heldCarts: nextHeld,
     });
   },
 }));

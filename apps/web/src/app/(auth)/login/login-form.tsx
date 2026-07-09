@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { LoadingButton, PageLoader } from "@/components/ui/loading";
-import { POST_AUTH_BOOTSTRAP_PATH } from "@/lib/post-auth-path";
 import { scheduleLoginEscapeRedirect, withTimeout } from "@/lib/post-auth-session";
 import { completeSessionRedirect } from "@/lib/session-redirect";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/layout/auth-shell";
 import { authLinkErrorMessage } from "@/lib/auth-callback-url";
@@ -43,9 +43,11 @@ export function LoginForm({
   const [busy, setBusy] = useState(false);
   const [busyMessage, setBusyMessage] = useState("Signing in…");
 
+  const postAuthPath = "/dashboard";
+
   useEffect(() => {
     if (!busy) return;
-    return scheduleLoginEscapeRedirect(POST_AUTH_BOOTSTRAP_PATH, 4000);
+    return scheduleLoginEscapeRedirect(postAuthPath, 4000);
   }, [busy]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -85,7 +87,7 @@ export function LoginForm({
       if (response.type === "opaqueredirect" || response.status === 0) {
         setBusyMessage("Opening your workspace…");
         navigated = true;
-        completeSessionRedirect(POST_AUTH_BOOTSTRAP_PATH);
+        completeSessionRedirect(postAuthPath);
         return;
       }
 
@@ -107,7 +109,7 @@ export function LoginForm({
 
       setBusyMessage("Opening your workspace…");
       navigated = true;
-      completeSessionRedirect(payload.redirect ?? POST_AUTH_BOOTSTRAP_PATH);
+      completeSessionRedirect(payload.redirect ?? postAuthPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -184,18 +186,18 @@ export function LoginForm({
                 Forgot password?
               </Link>
             </div>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <LoadingButton
             type="submit"
-            className="w-full shadow-sm"
+            className="touch-target min-h-11 w-full shadow-sm"
             loading={busy}
             loadingLabel={busyMessage}
           >

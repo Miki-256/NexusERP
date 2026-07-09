@@ -19,6 +19,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Pencil, Plus, Tag, X } from "lucide-react";
 
@@ -210,6 +212,45 @@ export function PromotionsClient({
         </FormCard>
       )}
 
+      <ResponsiveTableLayout
+        mobile={
+          promotions.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No promotions yet.</p>
+          ) : (
+            promotions.map((p) => (
+              <MobileRecordCard key={p.id}>
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <span className="inline-flex min-w-0 items-center gap-2 font-semibold">
+                    <Tag className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{p.name}</span>
+                  </span>
+                  <Badge variant={p.is_active ? "default" : "secondary"}>
+                    {p.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+                <div className="space-y-1.5">
+                  <MobileRecordCardRow label="Code">{p.code ?? "—"}</MobileRecordCardRow>
+                  <MobileRecordCardRow label="Discount">
+                    {p.discount_type === "percent" ? `${p.discount_value}%` : p.discount_value}
+                  </MobileRecordCardRow>
+                  <MobileRecordCardRow label="Min order">{p.min_order_total}</MobileRecordCardRow>
+                </div>
+                {canManage && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => openEdit(p)}>
+                      <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => void toggleActive(p.id, !p.is_active)}>
+                      {p.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                  </div>
+                )}
+              </MobileRecordCard>
+            ))
+          )
+        }
+      >
       <DataTable>
         <table className="w-full">
           <DataTableHeader>
@@ -265,6 +306,7 @@ export function PromotionsClient({
           </DataTableBody>
         </table>
       </DataTable>
+      </ResponsiveTableLayout>
     </div>
   );
 }

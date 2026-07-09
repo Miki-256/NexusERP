@@ -113,6 +113,9 @@ export const getMemberPermissions = cache(async function getMemberPermissions() 
       return perms.canManage.has(appId);
     },
     canManageTeam: perms.accessible.has("team") && perms.canManage.has("team"),
+    canManageCommunications:
+      perms.canManage.has("communications") ||
+      ((role === "owner" || role === "manager") && perms.accessible.has("communications")),
   };
 });
 

@@ -23,6 +23,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { groupByField } from "@/lib/finance-aggregates";
 import {
@@ -238,6 +240,30 @@ export function ExpensesClient({
           placeholder="Search vendor, category, description…"
           className="mb-4"
         />
+        <ResponsiveTableLayout
+          mobile={
+            filtered.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No expenses match your search.</p>
+            ) : (
+              filtered.map((e) => (
+                <MobileRecordCard key={e.id}>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{relationName(e.expense_categories) || "Uncategorized"}</p>
+                      <p className="truncate text-xs text-muted-foreground">{e.description || e.vendor_name || "—"}</p>
+                    </div>
+                    <p className="shrink-0 font-mono font-semibold">{formatCurrency(Number(e.amount), currency)}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <MobileRecordCardRow label="Date">{e.expense_date}</MobileRecordCardRow>
+                    <MobileRecordCardRow label="Vendor">{e.vendor_name || "—"}</MobileRecordCardRow>
+                    <MobileRecordCardRow label="Payment">{e.payment_method.replace("_", " ")}</MobileRecordCardRow>
+                  </div>
+                </MobileRecordCard>
+              ))
+            )
+          }
+        >
         <DataTable>
         <table className="w-full">
           <DataTableHeader>
@@ -266,6 +292,7 @@ export function ExpensesClient({
           </DataTableBody>
         </table>
       </DataTable>
+      </ResponsiveTableLayout>
       </ReportSection>
     </div>
   );

@@ -19,12 +19,23 @@ export async function POST(request: NextRequest) {
     const email = parsed.data.email.trim().toLowerCase();
 
     const admin = createAdminClient();
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const userAgent = request.headers.get("user-agent")?.slice(0, 500) ?? null;
+
     await admin.rpc("log_security_event", {
       p_event_type: "login_failed",
       p_email: email,
-      p_ip_address: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-      p_user_agent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
+      p_ip_address: ip,
+      p_user_agent: userAgent,
       p_metadata: {},
+    });
+
+    // Tenant-scoped alert for org owners/managers of matching members
+    await admin.rpc("enqueue_security_login_failed_notifications", {
+      p_email: email,
+      p_ip_address: ip,
+      p_user_agent: userAgent,
     });
 
     return NextResponse.json({ ok: true });

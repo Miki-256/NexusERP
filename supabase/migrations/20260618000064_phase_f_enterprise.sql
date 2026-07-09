@@ -89,14 +89,18 @@ CREATE INDEX IF NOT EXISTS idx_fa_depr_asset ON fixed_asset_depreciation(asset_i
 ALTER TABLE fixed_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fixed_asset_depreciation ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS fixed_assets_select ON fixed_assets;
 CREATE POLICY fixed_assets_select ON fixed_assets FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS fixed_assets_write ON fixed_assets;
 CREATE POLICY fixed_assets_write ON fixed_assets FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS fa_depr_select ON fixed_asset_depreciation;
 CREATE POLICY fa_depr_select ON fixed_asset_depreciation FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS fa_depr_write ON fixed_asset_depreciation;
 CREATE POLICY fa_depr_write ON fixed_asset_depreciation FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
@@ -417,17 +421,21 @@ CREATE TABLE IF NOT EXISTS public.consolidation_group_members (
 ALTER TABLE consolidation_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE consolidation_group_members ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS consolidation_groups_select ON consolidation_groups;
 CREATE POLICY consolidation_groups_select ON consolidation_groups FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS consolidation_groups_write ON consolidation_groups;
 CREATE POLICY consolidation_groups_write ON consolidation_groups FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS consolidation_members_select ON consolidation_group_members;
 CREATE POLICY consolidation_members_select ON consolidation_group_members FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM consolidation_groups cg
     WHERE cg.id = group_id AND cg.organization_id IN (SELECT public.user_organization_ids())
   ));
+DROP POLICY IF EXISTS consolidation_members_write ON consolidation_group_members;
 CREATE POLICY consolidation_members_write ON consolidation_group_members FOR ALL
   USING (EXISTS (
     SELECT 1 FROM consolidation_groups cg
@@ -697,8 +705,10 @@ CREATE TABLE IF NOT EXISTS public.recurring_journal_templates (
 CREATE INDEX IF NOT EXISTS idx_recurring_je_org ON recurring_journal_templates(organization_id, next_run_date);
 
 ALTER TABLE recurring_journal_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS recurring_je_select ON recurring_journal_templates;
 CREATE POLICY recurring_je_select ON recurring_journal_templates FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS recurring_je_write ON recurring_journal_templates;
 CREATE POLICY recurring_je_write ON recurring_journal_templates FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
@@ -874,8 +884,10 @@ CREATE TABLE IF NOT EXISTS public.invoice_reminder_logs (
 CREATE INDEX IF NOT EXISTS idx_inv_reminder_invoice ON invoice_reminder_logs(invoice_id, reminded_at DESC);
 
 ALTER TABLE invoice_reminder_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS inv_reminder_select ON invoice_reminder_logs;
 CREATE POLICY inv_reminder_select ON invoice_reminder_logs FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS inv_reminder_write ON invoice_reminder_logs;
 CREATE POLICY inv_reminder_write ON invoice_reminder_logs FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
@@ -964,8 +976,10 @@ CREATE TABLE IF NOT EXISTS public.financial_report_snapshots (
 CREATE INDEX IF NOT EXISTS idx_fin_report_snapshots_org ON financial_report_snapshots(organization_id, created_at DESC);
 
 ALTER TABLE financial_report_snapshots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS fin_snapshots_select ON financial_report_snapshots;
 CREATE POLICY fin_snapshots_select ON financial_report_snapshots FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS fin_snapshots_write ON financial_report_snapshots;
 CREATE POLICY fin_snapshots_write ON financial_report_snapshots FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));

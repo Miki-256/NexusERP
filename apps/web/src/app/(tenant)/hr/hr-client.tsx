@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { TabBar } from "@/components/layout/tab-bar";
 import { FormCard } from "@/components/layout/form-card";
 import { StatusBadge } from "@/components/layout/status-badge";
+import { TablePagination, TableToolbar } from "@/components/layout/table-toolbar";
 import {
   DataTable,
   DataTableBody,
@@ -23,10 +24,40 @@ import {
 } from "@/components/layout/data-table";
 import { formatCurrency } from "@/lib/utils";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
-import { Plus, Pencil, X, UserRound } from "lucide-react";
+import { Plus, Pencil, X, UserRound, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
+import { OrganizationTab } from "./organization-tab";
+import { PayrollTab } from "./payroll-tab";
+import { PerformanceTab } from "./performance-tab";
+import { BenefitsTab } from "./benefits-tab";
+import { AnalyticsTab } from "./analytics-tab";
+import { LifecycleTab } from "./lifecycle-tab";
+import { IntegrationsTab } from "./integrations-tab";
+import type {
+  BenefitEnrollmentRow,
+  BenefitPlanRow,
+  ComplianceExpiryRow,
+  EmploymentContractRow,
+  EmployeeTrainingRow,
+  HrPolicyRow,
+  HrWorkforceDashboard,
+  OffboardingTaskRow,
+  PerformanceGoalRow,
+  ProbationReviewRow,
+  ContractRenewalRow,
+  HrPayrollGlMappingRow,
+  HrWebhookDeliveryRow,
+  HrWebhookEndpointRow,
+  PayComponentRow,
+  PerformanceReviewRow,
+  PolicyAckRow,
+  ReviewCycleRow,
+  SkillRow,
+  TrainingCourseRow,
+} from "@/lib/hr/types";
 import type { Employee, PayrollRun } from "./page";
 
 type PayMethod = "cash" | "mobile_money" | "bank_transfer";
@@ -34,39 +65,122 @@ type PayMethod = "cash" | "mobile_money" | "bank_transfer";
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
-function monthStartIso() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
 
 export function HrClient({
   organizationId,
   currency,
   canManage,
   employees,
+  employeeTotal,
+  payrollEmployees,
+  page,
+  pageSize,
+  search,
+  statusFilter,
   stores,
   runs,
+  teamMembers,
+  orgDirectory,
+  reviewCycles,
+  performanceGoals,
+  performanceGoalTotal,
+  performanceReviews,
+  performanceReviewTotal,
+  skills,
+  trainingCourses,
+  employeeTraining,
+  employeeTrainingTotal,
+  benefitPlans,
+  benefitEnrollments,
+  benefitEnrollmentTotal,
+  hrPolicies,
+  policyAcknowledgements,
+  expiringCompliance,
+  workforceDashboard,
+  offboardingTasks,
+  offboardingTotal,
+  probationReviews,
+  probationTotal,
+  employmentContracts,
+  contractTotal,
+  contractsDue,
+  glMappings,
+  payComponents,
+  webhookEndpoints,
+  webhookDeliveries,
+  webhookDeliveryTotal,
 }: {
   organizationId: string;
   currency: string;
   canManage: boolean;
   employees: Employee[];
+  employeeTotal: number;
+  payrollEmployees: Employee[];
+  page: number;
+  pageSize: number;
+  search: string;
+  statusFilter: Employee["status"] | null;
   stores: { id: string; name: string }[];
   runs: PayrollRun[];
+  teamMembers: { user_id: string; email: string; display_name: string }[];
+  orgDirectory: { id: string; name: string }[];
+  reviewCycles: ReviewCycleRow[];
+  performanceGoals: PerformanceGoalRow[];
+  performanceGoalTotal: number;
+  performanceReviews: PerformanceReviewRow[];
+  performanceReviewTotal: number;
+  skills: SkillRow[];
+  trainingCourses: TrainingCourseRow[];
+  employeeTraining: EmployeeTrainingRow[];
+  employeeTrainingTotal: number;
+  benefitPlans: BenefitPlanRow[];
+  benefitEnrollments: BenefitEnrollmentRow[];
+  benefitEnrollmentTotal: number;
+  hrPolicies: HrPolicyRow[];
+  policyAcknowledgements: PolicyAckRow[];
+  expiringCompliance: ComplianceExpiryRow[];
+  workforceDashboard: HrWorkforceDashboard | null;
+  offboardingTasks: OffboardingTaskRow[];
+  offboardingTotal: number;
+  probationReviews: ProbationReviewRow[];
+  probationTotal: number;
+  employmentContracts: EmploymentContractRow[];
+  contractTotal: number;
+  contractsDue: ContractRenewalRow[];
+  glMappings: HrPayrollGlMappingRow[];
+  payComponents: PayComponentRow[];
+  webhookEndpoints: HrWebhookEndpointRow[];
+  webhookDeliveries: HrWebhookDeliveryRow[];
+  webhookDeliveryTotal: number;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"employees" | "payroll">("employees");
+  const [tab, setTab] = useState<
+    | "employees"
+    | "organization"
+    | "payroll"
+    | "performance"
+    | "benefits"
+    | "analytics"
+    | "lifecycle"
+    | "integrations"
+  >("employees");
 
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
         title="Human Resources"
-        description={`${employees.length} employee${employees.length === 1 ? "" : "s"}`}
+        description={`${employeeTotal} employee${employeeTotal === 1 ? "" : "s"}`}
         action={
           <TabBar
             tabs={[
               { key: "employees" as const, label: "Employees" },
+              { key: "organization" as const, label: "Organization" },
               ...(canManage ? [{ key: "payroll" as const, label: "Payroll" }] : []),
+              ...(canManage ? [{ key: "performance" as const, label: "Performance" }] : []),
+              ...(canManage ? [{ key: "benefits" as const, label: "Benefits" }] : []),
+              ...(canManage ? [{ key: "analytics" as const, label: "Analytics" }] : []),
+              ...(canManage ? [{ key: "lifecycle" as const, label: "Lifecycle" }] : []),
+              ...(canManage ? [{ key: "integrations" as const, label: "Integrations" }] : []),
             ]}
             value={tab}
             onChange={setTab}
@@ -80,18 +194,78 @@ export function HrClient({
           currency={currency}
           canManage={canManage}
           employees={employees}
+          employeeTotal={employeeTotal}
+          page={page}
+          pageSize={pageSize}
+          search={search}
+          statusFilter={statusFilter}
           stores={stores}
+          teamMembers={teamMembers}
           onChanged={() => router.refresh()}
         />
-      ) : (
+      ) : tab === "organization" ? (
+        <OrganizationTab
+          organizationId={organizationId}
+          canManage={canManage}
+          employees={orgDirectory}
+        />
+      ) : tab === "performance" ? (
+        <PerformanceTab
+          organizationId={organizationId}
+          employees={orgDirectory}
+          cycles={reviewCycles}
+          goals={performanceGoals}
+          goalTotal={performanceGoalTotal}
+          reviews={performanceReviews}
+          reviewTotal={performanceReviewTotal}
+          skills={skills}
+          courses={trainingCourses}
+          training={employeeTraining}
+          trainingTotal={employeeTrainingTotal}
+        />
+      ) : tab === "benefits" ? (
+        <BenefitsTab
+          organizationId={organizationId}
+          currency={currency}
+          employees={orgDirectory}
+          plans={benefitPlans}
+          enrollments={benefitEnrollments}
+          enrollmentTotal={benefitEnrollmentTotal}
+          policies={hrPolicies}
+          acknowledgements={policyAcknowledgements}
+          expiringItems={expiringCompliance}
+        />
+      ) : tab === "analytics" && workforceDashboard ? (
+        <AnalyticsTab organizationId={organizationId} initialDashboard={workforceDashboard} />
+      ) : tab === "lifecycle" ? (
+        <LifecycleTab
+          organizationId={organizationId}
+          employees={orgDirectory}
+          offboardingTasks={offboardingTasks}
+          offboardingTotal={offboardingTotal}
+          probationReviews={probationReviews}
+          probationTotal={probationTotal}
+          contracts={employmentContracts}
+          contractTotal={contractTotal}
+          contractsDue={contractsDue}
+        />
+      ) : tab === "integrations" ? (
+        <IntegrationsTab
+          organizationId={organizationId}
+          glMappings={glMappings}
+          payComponents={payComponents}
+          webhookEndpoints={webhookEndpoints}
+          webhookDeliveries={webhookDeliveries}
+          webhookDeliveryTotal={webhookDeliveryTotal}
+        />
+      ) : tab === "payroll" ? (
         <PayrollTab
           organizationId={organizationId}
           currency={currency}
-          employees={employees.filter((e) => e.status === "active")}
           runs={runs}
           onChanged={() => router.refresh()}
         />
-      )}
+      ) : null}
     </div>
   );
 }
@@ -101,16 +275,30 @@ function EmployeesTab({
   currency,
   canManage,
   employees,
+  employeeTotal,
+  page,
+  pageSize,
+  search,
+  statusFilter,
   stores,
+  teamMembers,
   onChanged,
 }: {
   organizationId: string;
   currency: string;
   canManage: boolean;
   employees: Employee[];
+  employeeTotal: number;
+  page: number;
+  pageSize: number;
+  search: string;
+  statusFilter: Employee["status"] | null;
   stores: { id: string; name: string }[];
+  teamMembers: { user_id: string; email: string; display_name: string }[];
   onChanged: () => void;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [formMode, setFormMode] = useState<"closed" | "create" | "edit">("closed");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -125,7 +313,26 @@ function EmployeesTab({
   const [storeId, setStoreId] = useState("");
   const [hireDate, setHireDate] = useState(todayIso());
   const [status, setStatus] = useState<Employee["status"]>("active");
+  const [linkedUserId, setLinkedUserId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [searchInput, setSearchInput] = useState(search);
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  function setQuery(updates: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      if (!value) params.delete(key);
+      else params.set(key, value);
+    }
+    router.push(`/hr?${params.toString()}`);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(employeeTotal / pageSize));
+
+  function formatSalary(value: number | null) {
+    if (value == null) return "—";
+    return formatCurrency(Number(value), currency);
+  }
 
   function resetForm() {
     setName("");
@@ -138,6 +345,7 @@ function EmployeesTab({
     setMethod("bank_transfer");
     setHireDate(todayIso());
     setStatus("active");
+    setLinkedUserId("");
     setEditingId(null);
     setFormMode("closed");
     setOpen(false);
@@ -161,6 +369,7 @@ function EmployeesTab({
     setStoreId(employee.store_id ?? "");
     setHireDate(employee.hire_date);
     setStatus(employee.status);
+    setLinkedUserId(employee.user_id ?? "");
     setFormMode("edit");
     setOpen(true);
   }
@@ -183,20 +392,45 @@ function EmployeesTab({
       status,
     };
 
-    const { error: err } =
-      formMode === "edit" && editingId
-        ? await supabase
-            .from("employees")
-            .update(payload)
-            .eq("id", editingId)
-            .eq("organization_id", organizationId)
-        : await supabase.from("employees").insert({
-            organization_id: organizationId,
-            ...payload,
-          });
+    let savedId: string | undefined = editingId ?? undefined;
+    let err: { message: string } | null = null;
 
+    if (formMode === "edit" && editingId) {
+      const res = await supabase
+        .from("employees")
+        .update(payload)
+        .eq("id", editingId)
+        .eq("organization_id", organizationId);
+      err = res.error;
+    } else {
+      const res = await supabase
+        .from("employees")
+        .insert({
+          organization_id: organizationId,
+          ...payload,
+        })
+        .select("id")
+        .single();
+      err = res.error;
+      savedId = res.data?.id;
+    }
     setBusy(false);
     if (err) return toast({ title: "Could not save", description: err.message, variant: "destructive" });
+
+    const priorUserId = editingId
+      ? employees.find((e) => e.id === editingId)?.user_id ?? ""
+      : "";
+
+    if (savedId && linkedUserId !== priorUserId) {
+      const { error: linkErr } = await supabase.rpc("link_employee_to_user", {
+        p_employee_id: savedId,
+        p_user_id: linkedUserId || null,
+      });
+      if (linkErr) {
+        toast({ title: "Saved, but link failed", description: linkErr.message, variant: "destructive" });
+      }
+    }
+
     toast({ title: formMode === "edit" ? "Employee updated" : "Employee added", description: name });
     resetForm();
     onChanged();
@@ -322,6 +556,21 @@ function EmployeesTab({
                   </select>
                 </div>
               )}
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Link ERP user (self-service)</Label>
+                <select
+                  className={SELECT_CLS}
+                  value={linkedUserId}
+                  onChange={(e) => setLinkedUserId(e.target.value)}
+                >
+                  <option value="">— Not linked —</option>
+                  {teamMembers.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.display_name} ({m.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex gap-2 sm:col-span-3">
                 <Button type="submit" disabled={busy} className="cursor-pointer">
                   {busy ? "Saving…" : formMode === "edit" ? "Update" : "Save"}
@@ -333,6 +582,28 @@ function EmployeesTab({
             </form>
         </FormCard>
       )}
+
+      <TableToolbar
+        search={searchInput}
+        placeholder="Search employees…"
+        onSearchChange={setSearchInput}
+        onSearchSubmit={() => setQuery({ q: searchInput || null, page: "1" })}
+        filterOpen={filterOpen}
+        onFilterOpenChange={setFilterOpen}
+        filterActive={!!statusFilter}
+        filterContent={
+          <select
+            className={SELECT_CLS + " h-9 min-w-[140px]"}
+            value={statusFilter ?? ""}
+            onChange={(e) => setQuery({ status: e.target.value || null, page: "1" })}
+          >
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="on_leave">On leave</option>
+            <option value="terminated">Terminated</option>
+          </select>
+        }
+      />
 
       <div className="space-y-3 lg:hidden">
         {employees.length === 0 ? (
@@ -346,7 +617,10 @@ function EmployeesTab({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{e.name}</p>
-                  <p className="text-xs text-muted-foreground">{e.position || "No position"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.position || "No position"}
+                    {e.org_unit_name ? ` · ${e.org_unit_name}` : ""}
+                  </p>
                 </div>
                 <StatusBadge status={e.status} />
               </div>
@@ -354,12 +628,16 @@ function EmployeesTab({
                 <MobileRecordCardRow label="Type">
                   <span className="capitalize">{e.employment_type.replace("_", " ")}</span>
                 </MobileRecordCardRow>
-                <MobileRecordCardRow label="Salary">
-                  {formatCurrency(Number(e.base_salary), currency)}
-                </MobileRecordCardRow>
+                <MobileRecordCardRow label="Salary">{formatSalary(e.base_salary)}</MobileRecordCardRow>
               </div>
               {canManage && (
                 <div className="mt-3 flex justify-end gap-2 border-t border-border pt-3">
+                  <Button variant="outline" size="sm" className="cursor-pointer" asChild>
+                    <Link href={`/hr/employees/${e.id}`}>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Profile
+                    </Link>
+                  </Button>
                   <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => openEdit(e)}>
                     <Pencil className="h-3.5 w-3.5" />
                     Edit
@@ -381,6 +659,7 @@ function EmployeesTab({
           <DataTableHeader>
             <DataTableHead>Name</DataTableHead>
             <DataTableHead>Position</DataTableHead>
+            <DataTableHead>Department</DataTableHead>
             <DataTableHead>Type</DataTableHead>
             <DataTableHead>Status</DataTableHead>
             <DataTableHead align="right">Base Salary</DataTableHead>
@@ -388,18 +667,29 @@ function EmployeesTab({
           </DataTableHeader>
           <DataTableBody>
             {employees.length === 0 ? (
-              <DataTableEmpty colSpan={canManage ? 6 : 5} message="No employees yet." />
+              <DataTableEmpty colSpan={canManage ? 7 : 6} message="No employees yet." />
             ) : (
               employees.map((e) => (
                 <DataTableRow key={e.id}>
-                  <DataTableCell className="font-medium">{e.name}</DataTableCell>
+                  <DataTableCell className="font-medium">
+                    <Link href={`/hr/employees/${e.id}`} className="hover:underline">
+                      {e.name}
+                    </Link>
+                  </DataTableCell>
                   <DataTableCell>{e.position || "—"}</DataTableCell>
+                  <DataTableCell className="text-muted-foreground">{e.org_unit_name || "—"}</DataTableCell>
                   <DataTableCell className="capitalize text-muted-foreground">{e.employment_type.replace("_", " ")}</DataTableCell>
                   <DataTableCell><StatusBadge status={e.status} /></DataTableCell>
-                  <DataTableCell align="right" className="font-mono">{formatCurrency(Number(e.base_salary), currency)}</DataTableCell>
+                  <DataTableCell align="right" className="font-mono">{formatSalary(e.base_salary)}</DataTableCell>
                   {canManage && (
                     <DataTableCell align="right">
                       <div className="flex flex-wrap justify-end gap-2">
+                        <Button variant="outline" size="sm" className="cursor-pointer" asChild>
+                          <Link href={`/hr/employees/${e.id}`}>
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Profile
+                          </Link>
+                        </Button>
                         <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => openEdit(e)}>
                           <Pencil className="h-3.5 w-3.5" />
                           Edit
@@ -418,212 +708,13 @@ function EmployeesTab({
         </table>
       </DataTable>
       </div>
-    </div>
-  );
-}
 
-type Line = { gross: string; allowances: string; deductions: string; tax: string };
-
-function PayrollTab({
-  organizationId,
-  currency,
-  employees,
-  runs,
-  onChanged,
-}: {
-  organizationId: string;
-  currency: string;
-  employees: Employee[];
-  runs: PayrollRun[];
-  onChanged: () => void;
-}) {
-  const { toast } = useToast();
-  const [periodStart, setPeriodStart] = useState(monthStartIso());
-  const [periodEnd, setPeriodEnd] = useState(todayIso());
-  const [method, setMethod] = useState<PayMethod>("bank_transfer");
-  const [lines, setLines] = useState<Record<string, Line>>(() =>
-    Object.fromEntries(
-      employees.map((e) => [
-        e.id,
-        { gross: String(e.base_salary || ""), allowances: "", deductions: "", tax: "" },
-      ])
-    )
-  );
-  const [busy, setBusy] = useState(false);
-
-  function update(id: string, field: keyof Line, value: string) {
-    setLines((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
-  }
-
-  const totals = useMemo(() => {
-    let gross = 0,
-      net = 0;
-    for (const e of employees) {
-      const l = lines[e.id];
-      if (!l) continue;
-      const g = Number(l.gross) || 0;
-      const a = Number(l.allowances) || 0;
-      const d = Number(l.deductions) || 0;
-      const t = Number(l.tax) || 0;
-      gross += g + a;
-      net += g + a - d - t;
-    }
-    return { gross, net };
-  }, [employees, lines]);
-
-  async function runPayroll() {
-    const payload = employees
-      .map((e) => {
-        const l = lines[e.id];
-        return {
-          employeeId: e.id,
-          gross: Number(l?.gross) || 0,
-          allowances: Number(l?.allowances) || 0,
-          deductions: Number(l?.deductions) || 0,
-          tax: Number(l?.tax) || 0,
-        };
-      })
-      .filter((l) => l.gross > 0 || l.allowances > 0);
-
-    if (payload.length === 0) return toast({ title: "No pay entered", description: "Enter pay for at least one employee.", variant: "destructive" });
-    setBusy(true);
-    const supabase = createClient();
-    const { error: err } = await supabase.rpc("run_payroll", {
-      p_org_id: organizationId,
-      p_period_start: periodStart,
-      p_period_end: periodEnd,
-      p_payment_method: method,
-      p_lines: payload,
-    });
-    setBusy(false);
-    if (err) return toast({ title: "Payroll failed", description: err.message, variant: "destructive" });
-    toast({ title: "Payroll posted" });
-    onChanged();
-  }
-
-  return (
-    <div className="space-y-6">
-      <FormCard title="Run Payroll">
-          <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Period Start</Label>
-              <DatePicker value={periodStart} onChange={setPeriodStart} max={periodEnd || undefined} />
-            </div>
-            <div className="space-y-2">
-              <Label>Period End</Label>
-              <DatePicker value={periodEnd} onChange={setPeriodEnd} min={periodStart || undefined} />
-            </div>
-            <div className="space-y-2">
-              <Label>Pay Method</Label>
-              <select
-                className={SELECT_CLS}
-                value={method}
-                onChange={(e) => setMethod(e.target.value as PayMethod)}
-              >
-                <option value="bank_transfer">Bank transfer</option>
-                <option value="cash">Cash</option>
-                <option value="mobile_money">Mobile money</option>
-              </select>
-            </div>
-          </div>
-
-          {employees.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Add active employees first.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-2 text-left">Employee</th>
-                    <th className="p-2 text-right">Gross</th>
-                    <th className="p-2 text-right">Allowances</th>
-                    <th className="p-2 text-right">Deductions</th>
-                    <th className="p-2 text-right">Tax</th>
-                    <th className="p-2 text-right">Net</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map((e) => {
-                    const l = lines[e.id] ?? { gross: "", allowances: "", deductions: "", tax: "" };
-                    const net =
-                      (Number(l.gross) || 0) +
-                      (Number(l.allowances) || 0) -
-                      (Number(l.deductions) || 0) -
-                      (Number(l.tax) || 0);
-                    return (
-                      <tr key={e.id} className="border-b">
-                        <td className="p-2 font-medium">{e.name}</td>
-                        {(["gross", "allowances", "deductions", "tax"] as const).map((f) => (
-                          <td key={f} className="p-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              className="h-9 text-right"
-                              value={l[f]}
-                              onChange={(ev) => update(e.id, f, ev.target.value)}
-                            />
-                          </td>
-                        ))}
-                        <td className="p-2 text-right font-mono">
-                          {formatCurrency(net, currency)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t font-semibold">
-                    <td className="p-2">Totals</td>
-                    <td className="p-2 text-right font-mono" colSpan={4}>
-                      Gross {formatCurrency(totals.gross, currency)}
-                    </td>
-                    <td className="p-2 text-right font-mono">
-                      {formatCurrency(totals.net, currency)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-
-          <Button onClick={runPayroll} disabled={busy || employees.length === 0}>
-            {busy ? "Posting…" : "Run & Post Payroll"}
-          </Button>
-          </div>
-      </FormCard>
-
-      <div className="space-y-3">
-        <h3 className="font-semibold">Payroll History</h3>
-        <DataTable>
-          <table className="w-full">
-            <DataTableHeader>
-              <DataTableHead>Period</DataTableHead>
-              <DataTableHead>Status</DataTableHead>
-              <DataTableHead align="right">Gross</DataTableHead>
-              <DataTableHead align="right">Tax</DataTableHead>
-              <DataTableHead align="right">Deductions</DataTableHead>
-              <DataTableHead align="right">Net</DataTableHead>
-            </DataTableHeader>
-            <DataTableBody>
-              {runs.length === 0 ? (
-                <DataTableEmpty colSpan={6} message="No payroll runs yet." />
-              ) : (
-                runs.map((r) => (
-                  <DataTableRow key={r.id}>
-                    <DataTableCell>{r.period_start} → {r.period_end}</DataTableCell>
-                    <DataTableCell><StatusBadge status={r.status} /></DataTableCell>
-                    <DataTableCell align="right" className="font-mono">{formatCurrency(Number(r.total_gross), currency)}</DataTableCell>
-                    <DataTableCell align="right" className="font-mono">{formatCurrency(Number(r.total_tax), currency)}</DataTableCell>
-                    <DataTableCell align="right" className="font-mono">{formatCurrency(Number(r.total_deductions), currency)}</DataTableCell>
-                    <DataTableCell align="right" className="font-mono font-semibold">{formatCurrency(Number(r.total_net), currency)}</DataTableCell>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </table>
-        </DataTable>
-      </div>
+      <TablePagination
+        page={page}
+        totalPages={totalPages}
+        total={employeeTotal}
+        onPageChange={(p) => setQuery({ page: String(p) })}
+      />
     </div>
   );
 }

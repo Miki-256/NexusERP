@@ -1,4 +1,5 @@
 import type { PosCatalogItem } from "@/components/pos/product-card";
+import { barcodeLookupVariants, normalizeBarcode } from "@/lib/pos/barcode-scan";
 
 export type CatalogSearchIndex = {
   byBarcode: Map<string, string>;
@@ -18,6 +19,25 @@ export function buildCatalogSearchIndex(catalog: PosCatalogItem[]): CatalogSearc
   }
 
   return { byBarcode, bySku, byVariantId };
+}
+
+/** O(1) barcode / SKU lookup — single path for scan, search, and keyboard entry. */
+export function lookupCatalogByBarcode(
+  index: CatalogSearchIndex,
+  code: string
+): PosCatalogItem | undefined {
+  const normalized = normalizeBarcode(code);
+  const variants = barcodeLookupVariants(normalized);
+  for (const v of variants) {
+    const variantId = index.byBarcode.get(v);
+    if (variantId) {
+      const hit = index.byVariantId.get(variantId);
+      if (hit) return hit;
+    }
+  }
+  const bySku = index.bySku.get(normalized.toLowerCase());
+  if (bySku) return index.byVariantId.get(bySku);
+  return undefined;
 }
 
 export function filterCatalogItems(

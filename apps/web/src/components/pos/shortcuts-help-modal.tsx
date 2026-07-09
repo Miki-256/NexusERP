@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 const SHORTCUTS = [
   { key: "F2", label: "Focus search / barcode" },
@@ -15,17 +16,28 @@ const SHORTCUTS = [
 ];
 
 export function ShortcutsHelpModal({ onClose }: { onClose: () => void }) {
+  const panelRef = usePosModal(onClose);
+
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-shortcuts-title"
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="pos-heading text-lg font-bold text-slate-900">Keyboard shortcuts</h2>
+          <h2 id="pos-shortcuts-title" className="pos-heading text-lg font-bold text-slate-900">
+            Keyboard shortcuts
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+            className="cursor-pointer rounded-lg p-1 text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
+            aria-label="Close keyboard shortcuts"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
         <ul className="space-y-2">

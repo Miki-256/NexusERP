@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid,
@@ -11,6 +12,7 @@ import {
   Clock,
   type LucideIcon,
 } from "lucide-react";
+import { HorizontalScrollStrip } from "./horizontal-scroll-strip";
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
   beverages: Coffee,
@@ -23,7 +25,18 @@ function iconForCategory(name: string): LucideIcon {
   return CATEGORY_ICONS[name.toLowerCase()] ?? LayoutGrid;
 }
 
-export function CategoryNav({
+function activeCategoryId(
+  active: string,
+  favoritesActive?: boolean,
+  recentActive?: boolean
+): string {
+  if (favoritesActive) return "cat-favorites";
+  if (recentActive) return "cat-recent";
+  if (active === "all") return "cat-all";
+  return `cat-${active.replace(/\s+/g, "-").toLowerCase()}`;
+}
+
+export const CategoryNav = memo(function CategoryNav({
   categories,
   active,
   onChange,
@@ -44,56 +57,84 @@ export function CategoryNav({
   onFavorites?: () => void;
   onRecent?: () => void;
 }) {
+  const activeSelector = `[data-category-id="${activeCategoryId(active, favoritesActive, recentActive)}"]`;
+
   const pillBase =
-    "pos-category-pill flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600";
+    "pos-category-pill flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary focus-visible:ring-offset-2";
 
   return (
-    <div className="flex gap-2 overflow-x-auto pos-scroll-hide pb-1">
-      <button
-        type="button"
-        onClick={() => onChange("all")}
-        className={cn(pillBase, active === "all" && !favoritesActive && !recentActive && "active")}
-      >
-        <LayoutGrid className="h-4 w-4" />
-        All
-      </button>
-      {showRecent && (
+    <HorizontalScrollStrip
+      ariaLabel="Product categories"
+      activeItemSelector={activeSelector}
+      className="flex gap-2 pb-1"
+    >
+      <div role="tablist" aria-label="Filter products by category" className="flex gap-2">
         <button
           type="button"
-          onClick={onRecent}
-          className={cn(pillBase, recentActive && "active")}
+          role="tab"
+          id="cat-all"
+          data-category-id="cat-all"
+          aria-selected={active === "all" && !favoritesActive && !recentActive}
+          aria-controls="pos-catalog-panel"
+          onClick={() => onChange("all")}
+          className={cn(pillBase, active === "all" && !favoritesActive && !recentActive && "active")}
         >
-          <Clock className="h-4 w-4" />
-          Recent
+          <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
+          All products
         </button>
-      )}
-      {showFavorites && (
-        <button
-          type="button"
-          onClick={onFavorites}
-          className={cn(pillBase, favoritesActive && "active")}
-        >
-          <Star className="h-4 w-4" />
-          Favorites
-        </button>
-      )}
-      {categories.map((cat) => {
-        const Icon = iconForCategory(cat);
-        return (
+        {showRecent && (
           <button
-            key={cat}
             type="button"
-            onClick={() => onChange(cat)}
-            className={cn(
-              pillBase,
-              active === cat && !favoritesActive && !recentActive && "active"
-            )}
+            role="tab"
+            id="cat-recent"
+            data-category-id="cat-recent"
+            aria-selected={!!recentActive}
+            aria-controls="pos-catalog-panel"
+            onClick={onRecent}
+            className={cn(pillBase, recentActive && "active")}
           >
-            <Icon className="h-4 w-4" />
-            {cat}
+            <Clock className="h-4 w-4 shrink-0" aria-hidden />
+            Recent
           </button>
-        );
-      })}
-    </div>
+        )}
+        {showFavorites && (
+          <button
+            type="button"
+            role="tab"
+            id="cat-favorites"
+            data-category-id="cat-favorites"
+            aria-selected={!!favoritesActive}
+            aria-controls="pos-catalog-panel"
+            onClick={onFavorites}
+            className={cn(pillBase, favoritesActive && "active")}
+          >
+            <Star className="h-4 w-4 shrink-0" aria-hidden />
+            Favorites
+          </button>
+        )}
+        {categories.map((cat) => {
+          const Icon = iconForCategory(cat);
+          const id = `cat-${cat.replace(/\s+/g, "-").toLowerCase()}`;
+          const isActive = active === cat && !favoritesActive && !recentActive;
+          return (
+            <button
+              key={cat}
+              type="button"
+              role="tab"
+              id={id}
+              data-category-id={id}
+              aria-selected={isActive}
+              aria-controls="pos-catalog-panel"
+              aria-label={`${cat} category`}
+              onClick={() => onChange(cat)}
+              className={cn(pillBase, isActive && "active")}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden />
+              {cat}
+            </button>
+          );
+        })}
+      </div>
+    </HorizontalScrollStrip>
   );
-}
+});

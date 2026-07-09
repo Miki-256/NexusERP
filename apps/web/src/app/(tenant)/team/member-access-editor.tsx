@@ -16,6 +16,7 @@ import {
 import { ERP_APPS } from "@/lib/apps-registry";
 import { APP_CATEGORIES } from "@/lib/apps-registry";
 import { SELECT_CLS } from "@/lib/ui-classes";
+import { DepartmentRolePicker } from "./department-role-picker";
 
 export type DepartmentRoleRow = {
   id: string;
@@ -86,10 +87,6 @@ export function MemberAccessEditor({
     );
   }, [departmentRoles, roleIds, overrides, memberRole, usesCustom]);
 
-  function toggleRole(id: string) {
-    setRoleIds((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]));
-  }
-
   function setOverride(appId: string, value: AppOverride) {
     setOverrides((prev) => ({ ...prev, [appId]: value }));
   }
@@ -123,27 +120,11 @@ export function MemberAccessEditor({
         <p className="mb-2 text-xs text-muted-foreground">
           Base ERP role: <span className="capitalize">{memberRole}</span>. Assign department roles, then fine-tune apps below.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {departmentRoles.map((role) => {
-            const active = roleIds.includes(role.id);
-            return (
-              <button
-                key={role.id}
-                type="button"
-                onClick={() => toggleRole(role.id)}
-                className={
-                  "rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
-                  (active ? "border-primary bg-primary/10" : "hover:bg-muted/50")
-                }
-              >
-                <span className="font-medium">{role.name}</span>
-                {role.description && (
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{role.description}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <DepartmentRolePicker
+          departmentRoles={departmentRoles}
+          selectedIds={roleIds}
+          onChange={setRoleIds}
+        />
       </div>
 
       <div>

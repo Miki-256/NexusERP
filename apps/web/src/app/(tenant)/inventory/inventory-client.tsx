@@ -10,6 +10,8 @@ import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { FormCard } from "@/components/layout/form-card";
 import { TabBar } from "@/components/layout/tab-bar";
+import { StatusBadge } from "@/components/layout/status-badge";
+import { TablePagination, TableToolbar } from "@/components/layout/table-toolbar";
 import {
   DataTable,
   DataTableBody,
@@ -19,12 +21,15 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { parsePaginatedRpc } from "@/lib/hr/mutations";
+import type { InventoryLevelPageRow, StockMovementRow, StorageLocationRow, WarehouseRow } from "@/lib/scm/types";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
-import { AlertTriangle, ArrowRightLeft, Boxes } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Boxes, History, MapPin, Warehouse } from "lucide-react";
+import { InventoryAnalyticsPanel } from "@/components/scm/inventory-analytics-panel";
+import { InventoryOperationsPanel } from "@/components/scm/inventory-operations-panel";
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
-import type { InventoryRow } from "./page";
 
-type Tab = "stock" | "transfers" | "alerts";
+type Tab = "stock" | "movements" | "transfers" | "warehouses" | "operations" | "analytics" | "alerts";
 
 type LowStockItem = {
   store_id: string;
@@ -41,24 +46,45 @@ type VariantOption = {
   label: string;
 };
 
+function productLabel(row: InventoryLevelPageRow) {
+  return row.variant_name === "Default"
+    ? row.product_name
+    : `${row.product_name} (${row.variant_name})`;
+}
+
 export function InventoryClient({
   organizationId,
   stores,
-  initialInventory,
+  storeId: initialStoreId,
+  inventory: initialInventory,
+  inventoryTotal,
+  page,
+  pageSize,
+  search,
   canManage,
+  currency,
 }: {
   organizationId: string;
   stores: { id: string; name: string }[];
-  initialInventory: InventoryRow[];
+  storeId: string;
+  inventory: InventoryLevelPageRow[];
+  inventoryTotal: number;
+  page: number;
+  pageSize: number;
+  search: string;
   canManage: boolean;
+  currency: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("stock");
-  const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
-  const [inventory, setInventory] = useState(initialInventory);
+  const [storeId, setStoreId] = useState(initialStoreId);
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
   const [lowStockLoaded, setLowStockLoaded] = useState(false);
+  const [movements, setMovements] = useState<StockMovementRow[]>([]);
+  const [movementsTotal, setMovementsTotal] = useState(0);
+  const [movementsLoaded, setMovementsLoaded] = useState(false);
+  const [movementPage, setMovementPage] = useState(1);
   const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
   const [variantsLoaded, setVariantsLoaded] = useState(false);
   const [adjustVariant, setAdjustVariant] = useState("");
@@ -70,14 +96,47 @@ export function InventoryClient({
   const [transferQty, setTransferQty] = useState("");
   const [transferNote, setTransferNote] = useState("");
   const [loading, setLoading] = useState(false);
+  const [searchInput, setSearchInput] = useState(search);
+  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
+  const [warehousesLoaded, setWarehousesLoaded] = useState(false);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
+  const [locations, setLocations] = useState<StorageLocationRow[]>([]);
+  const [locationCode, setLocationCode] = useState("");
+  const [locationName, setLocationName] = useState("");
+  const [locationType, setLocationType] = useState("bin");
 
-  async function loadInventory(sid: string) {
+  function navigateStock(next: { store?: string; page?: number; q?: string }) {
+    const params = new URLSearchParams();
+    const sid = next.store ?? storeId;
+    const pg = next.page ?? page;
+    const q = next.q !== undefined ? next.q : search;
+    if (sid) params.set("store", sid);
+    if (pg > 1) params.set("page", String(pg));
+    if (q) params.set("q", q);
+    router.push(`/inventory?${params.toString()}`);
+  }
+
+  function submitSearch() {
+    navigateStock({ q: searchInput.trim(), page: 1 });
+  }
+
+  async function loadMovements(pg = movementPage) {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("inventory_levels")
-      .select("id, quantity, variant_id, product_variants(id, name, barcode, products(name, sell_price, reorder_point))")
-      .eq("store_id", sid);
-    setInventory((data as unknown as InventoryRow[]) ?? []);
+    const { data, error } = await supabase.rpc("list_stock_movements", {
+      p_org_id: organizationId,
+      p_store_id: storeId || null,
+      p_limit: 30,
+      p_offset: (pg - 1) * 30,
+    });
+    if (error) {
+      toast({ title: "Could not load movements", description: error.message, variant: "destructive" });
+      return;
+    }
+    const parsed = parsePaginatedRpc<StockMovementRow>(data);
+    setMovements(parsed.items);
+    setMovementsTotal(parsed.total_count);
+    setMovementsLoaded(true);
+    setMovementPage(pg);
   }
 
   async function loadVariants() {
@@ -103,6 +162,60 @@ export function InventoryClient({
     setVariantsLoaded(true);
   }
 
+  async function loadWarehouses() {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("list_warehouses", { p_org_id: organizationId });
+    if (error) {
+      toast({ title: "Could not load warehouses", description: error.message, variant: "destructive" });
+      return;
+    }
+    const rows = (data ?? []) as WarehouseRow[];
+    setWarehouses(rows);
+    setWarehousesLoaded(true);
+    if (!selectedWarehouseId && rows[0]) setSelectedWarehouseId(rows[0].id);
+    if (rows[0]) void loadLocations(rows[0].id);
+  }
+
+  async function loadLocations(warehouseId: string) {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("list_storage_locations", {
+      p_warehouse_id: warehouseId,
+      p_parent_id: null,
+    });
+    if (error) {
+      toast({ title: "Could not load locations", description: error.message, variant: "destructive" });
+      return;
+    }
+    setLocations((data ?? []) as StorageLocationRow[]);
+  }
+
+  async function handleAddLocation(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canManage || !selectedWarehouseId || !locationCode.trim() || !locationName.trim()) return;
+    setLoading(true);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("upsert_storage_location", {
+      p_warehouse_id: selectedWarehouseId,
+      p_code: locationCode.trim(),
+      p_name: locationName.trim(),
+      p_location_type: locationType,
+    });
+    setLoading(false);
+    if (error) {
+      toast({ title: "Could not add location", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Location saved", description: `${locationCode} added.` });
+    setLocationCode("");
+    setLocationName("");
+    void loadLocations(selectedWarehouseId);
+    void loadWarehouses();
+  }
+
+  function storeNameForWarehouse(wh: WarehouseRow) {
+    return stores.find((s) => s.id === wh.store_id)?.name ?? "—";
+  }
+
   async function loadLowStock(sid?: string) {
     const supabase = createClient();
     const { data, error } = await supabase.rpc("list_low_stock_items", {
@@ -119,8 +232,11 @@ export function InventoryClient({
 
   async function handleTabChange(next: Tab) {
     setTab(next);
-    if (next === "alerts" && !lowStockLoaded) void loadLowStock();
-    if (next === "transfers" && !variantsLoaded) void loadVariants();
+    if (next === "alerts" && !lowStockLoaded) void loadLowStock(storeId);
+    if (next === "transfers") void loadVariants();
+    if (next === "movements" && !movementsLoaded) void loadMovements(1);
+    if (next === "warehouses" && !warehousesLoaded) void loadWarehouses();
+    if (next === "operations") void loadVariants();
   }
 
   async function handleAdjust(e: React.FormEvent) {
@@ -140,8 +256,7 @@ export function InventoryClient({
     setDelta("");
     setReason("");
     setAdjustVariant("");
-    await loadInventory(storeId);
-    await loadLowStock();
+    setMovementsLoaded(false);
     router.refresh();
   }
 
@@ -165,8 +280,7 @@ export function InventoryClient({
     toast({ title: "Stock transferred", description: "Inventory moved between stores." });
     setTransferQty("");
     setTransferNote("");
-    if (storeId === fromStoreId || storeId === toStoreId) await loadInventory(storeId);
-    await loadLowStock();
+    setMovementsLoaded(false);
     router.refresh();
   }
 
@@ -174,30 +288,38 @@ export function InventoryClient({
     <div className={PAGE_SHELL}>
       <PageHeader
         title="Inventory"
-        description="Stock levels, transfers, and low-stock alerts"
+        description={`${inventoryTotal} SKU${inventoryTotal === 1 ? "" : "s"} at selected store`}
         action={
-          tab === "stock" ? (
-            <select
-              className={SELECT_CLS + " w-auto min-w-[180px]"}
-              value={storeId}
-              onChange={async (e) => {
-                setStoreId(e.target.value);
-                await loadInventory(e.target.value);
-              }}
-            >
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          ) : undefined
+          <select
+            className={SELECT_CLS + " w-auto min-w-[180px]"}
+            value={storeId}
+            onChange={(e) => {
+              setStoreId(e.target.value);
+              setMovementsLoaded(false);
+              navigateStock({ store: e.target.value, page: 1 });
+            }}
+          >
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
         }
       />
 
       <TabBar
         tabs={[
           { key: "stock", label: "Stock levels" },
+          { key: "movements", label: "Movements" },
+          { key: "warehouses", label: "Warehouses" },
+          { key: "operations", label: "Operations" },
+          { key: "analytics", label: "Analytics" },
           { key: "transfers", label: "Transfers" },
-          { key: "alerts", label: lowStockLoaded ? `Low stock${lowStock.length ? ` (${lowStock.length})` : ""}` : "Low stock" },
+          {
+            key: "alerts",
+            label: lowStockLoaded
+              ? `Low stock${lowStock.length ? ` (${lowStock.length})` : ""}`
+              : "Low stock",
+          },
         ]}
         value={tab}
         onChange={(k) => void handleTabChange(k as Tab)}
@@ -211,8 +333,8 @@ export function InventoryClient({
               <Label>Product</Label>
               <select className={SELECT_CLS} value={adjustVariant} onChange={(e) => setAdjustVariant(e.target.value)} required>
                 <option value="">Select…</option>
-                {inventory.map((row) => (
-                  <option key={row.variant_id} value={row.variant_id}>{row.product_variants.products.name}</option>
+                {initialInventory.map((row) => (
+                  <option key={row.variant_id} value={row.variant_id}>{productLabel(row)}</option>
                 ))}
               </select>
             </div>
@@ -269,29 +391,32 @@ export function InventoryClient({
 
       {tab === "stock" && (
         <>
+          <TableToolbar
+            search={searchInput}
+            onSearchChange={setSearchInput}
+            onSearchSubmit={submitSearch}
+            placeholder="Search products, SKU, barcode…"
+            className="mb-4"
+          />
           <div className="space-y-3 lg:hidden">
-            {inventory.length === 0 ? (
+            {initialInventory.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">No inventory at this store.</p>
             ) : (
-              inventory.map((row) => {
-                const reorder = row.product_variants.products.reorder_point ?? 0;
-                const low = reorder > 0 && row.quantity <= reorder;
-                const label =
-                  row.product_variants.products.name +
-                  (row.product_variants.name !== "Default" ? ` (${row.product_variants.name})` : "");
+              initialInventory.map((row) => {
+                const low = row.reorder_point > 0 && row.quantity <= row.reorder_point;
                 return (
                   <MobileRecordCard key={row.id}>
                     <div className="mb-3 flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <Boxes className="h-4 w-4" />
                       </div>
-                      <p className="min-w-0 flex-1 font-semibold leading-snug">{label}</p>
+                      <p className="min-w-0 flex-1 font-semibold leading-snug">{productLabel(row)}</p>
                     </div>
                     <div className="space-y-1.5">
                       <MobileRecordCardRow label="Quantity">
                         <span className={low ? "text-amber-700" : undefined}>{row.quantity}</span>
                       </MobileRecordCardRow>
-                      <MobileRecordCardRow label="Reorder at">{reorder > 0 ? reorder : "—"}</MobileRecordCardRow>
+                      <MobileRecordCardRow label="Reorder at">{row.reorder_point > 0 ? row.reorder_point : "—"}</MobileRecordCardRow>
                     </div>
                   </MobileRecordCard>
                 );
@@ -300,47 +425,248 @@ export function InventoryClient({
           </div>
 
           <div className="hidden lg:block">
-        <DataTable>
-          <table className="w-full">
-            <DataTableHeader>
-              <DataTableHead>Product</DataTableHead>
-              <DataTableHead align="right">Quantity</DataTableHead>
-              <DataTableHead align="right">Reorder at</DataTableHead>
-            </DataTableHeader>
-            <DataTableBody>
-              {inventory.length === 0 ? (
-                <DataTableEmpty colSpan={3} message="No inventory at this store." />
-              ) : (
-                inventory.map((row) => {
-                  const reorder = row.product_variants.products.reorder_point ?? 0;
-                  const low = reorder > 0 && row.quantity <= reorder;
-                  return (
-                    <DataTableRow key={row.id}>
-                      <DataTableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                            <Boxes className="h-4 w-4" />
-                          </div>
-                          <span className="font-medium">
-                            {row.product_variants.products.name}
-                            {row.product_variants.name !== "Default" && ` (${row.product_variants.name})`}
-                          </span>
-                        </div>
-                      </DataTableCell>
-                      <DataTableCell align="right" className={`font-mono text-base font-semibold ${low ? "text-amber-700" : ""}`}>
-                        {row.quantity}
-                      </DataTableCell>
-                      <DataTableCell align="right" className="text-muted-foreground">
-                        {reorder > 0 ? reorder : "—"}
-                      </DataTableCell>
-                    </DataTableRow>
-                  );
-                })
-              )}
-            </DataTableBody>
-          </table>
-        </DataTable>
+            <DataTable>
+              <table className="w-full">
+                <DataTableHeader>
+                  <DataTableHead>Product</DataTableHead>
+                  <DataTableHead align="right">Quantity</DataTableHead>
+                  <DataTableHead align="right">Reorder at</DataTableHead>
+                </DataTableHeader>
+                <DataTableBody>
+                  {initialInventory.length === 0 ? (
+                    <DataTableEmpty colSpan={3} message="No inventory at this store." />
+                  ) : (
+                    initialInventory.map((row) => {
+                      const low = row.reorder_point > 0 && row.quantity <= row.reorder_point;
+                      return (
+                        <DataTableRow key={row.id}>
+                          <DataTableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Boxes className="h-4 w-4" />
+                              </div>
+                              <span className="font-medium">{productLabel(row)}</span>
+                            </div>
+                          </DataTableCell>
+                          <DataTableCell align="right" className={`font-mono text-base font-semibold ${low ? "text-amber-700" : ""}`}>
+                            {row.quantity}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="text-muted-foreground">
+                            {row.reorder_point > 0 ? row.reorder_point : "—"}
+                          </DataTableCell>
+                        </DataTableRow>
+                      );
+                    })
+                  )}
+                </DataTableBody>
+              </table>
+            </DataTable>
           </div>
+          <TablePagination
+            page={page}
+            totalPages={Math.max(1, Math.ceil(inventoryTotal / pageSize))}
+            total={inventoryTotal}
+            onPageChange={(p) => navigateStock({ page: p })}
+          />
+        </>
+      )}
+
+      {tab === "warehouses" && (
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {warehouses.length} warehouse{warehouses.length === 1 ? "" : "s"} linked to stores
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void loadWarehouses()}>
+              <Warehouse className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
+          <DataTable>
+            <table className="w-full">
+              <DataTableHeader>
+                <DataTableHead>Code</DataTableHead>
+                <DataTableHead>Name</DataTableHead>
+                <DataTableHead>Store</DataTableHead>
+                <DataTableHead>Type</DataTableHead>
+                <DataTableHead align="right">Locations</DataTableHead>
+              </DataTableHeader>
+              <DataTableBody>
+                {warehouses.length === 0 ? (
+                  <DataTableEmpty colSpan={5} message="No warehouses yet. They are created automatically per store." />
+                ) : (
+                  warehouses.map((wh) => (
+                    <DataTableRow
+                      key={wh.id}
+                      selected={selectedWarehouseId === wh.id}
+                    >
+                      <DataTableCell>
+                        <button
+                          type="button"
+                          className="text-left font-mono text-sm hover:underline"
+                          onClick={() => {
+                            setSelectedWarehouseId(wh.id);
+                            void loadLocations(wh.id);
+                          }}
+                        >
+                          {wh.code}
+                        </button>
+                      </DataTableCell>
+                      <DataTableCell className="font-medium">{wh.name}</DataTableCell>
+                      <DataTableCell>{storeNameForWarehouse(wh)}</DataTableCell>
+                      <DataTableCell><StatusBadge status={wh.warehouse_type} /></DataTableCell>
+                      <DataTableCell align="right">{wh.location_count}</DataTableCell>
+                    </DataTableRow>
+                  ))
+                )}
+              </DataTableBody>
+            </table>
+          </DataTable>
+
+          {selectedWarehouseId && (
+            <div className="mt-6">
+              <FormCard title="Storage locations">
+                {canManage && (
+                  <form onSubmit={handleAddLocation} className="mb-4 grid gap-4 sm:grid-cols-4">
+                    <div className="space-y-2">
+                      <Label>Code</Label>
+                      <Input value={locationCode} onChange={(e) => setLocationCode(e.target.value)} placeholder="BIN-A1" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Name</Label>
+                      <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="Aisle A bin 1" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Type</Label>
+                      <select className={SELECT_CLS} value={locationType} onChange={(e) => setLocationType(e.target.value)}>
+                        <option value="zone">Zone</option>
+                        <option value="aisle">Aisle</option>
+                        <option value="rack">Rack</option>
+                        <option value="shelf">Shelf</option>
+                        <option value="bin">Bin</option>
+                        <option value="staging">Staging</option>
+                        <option value="dock">Dock</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button type="submit" disabled={loading}>
+                        <MapPin className="mr-2 h-4 w-4" />
+                        {loading ? "Saving…" : "Add location"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+                <DataTable>
+                  <table className="w-full">
+                    <DataTableHeader>
+                      <DataTableHead>Code</DataTableHead>
+                      <DataTableHead>Name</DataTableHead>
+                      <DataTableHead>Type</DataTableHead>
+                      <DataTableHead>Pick</DataTableHead>
+                      <DataTableHead>Receive</DataTableHead>
+                    </DataTableHeader>
+                    <DataTableBody>
+                      {locations.length === 0 ? (
+                        <DataTableEmpty colSpan={5} message="No locations. A default zone is created per warehouse." />
+                      ) : (
+                        locations.map((loc) => (
+                          <DataTableRow key={loc.id}>
+                            <DataTableCell className="font-mono text-sm">{loc.code}</DataTableCell>
+                            <DataTableCell>{loc.name}</DataTableCell>
+                            <DataTableCell><StatusBadge status={loc.location_type} /></DataTableCell>
+                            <DataTableCell>{loc.is_pickable ? "Yes" : "No"}</DataTableCell>
+                            <DataTableCell>{loc.is_receivable ? "Yes" : "No"}</DataTableCell>
+                          </DataTableRow>
+                        ))
+                      )}
+                    </DataTableBody>
+                  </table>
+                </DataTable>
+              </FormCard>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "analytics" && (
+        <InventoryAnalyticsPanel
+          organizationId={organizationId}
+          storeId={storeId}
+          currency={currency}
+          canManage={canManage}
+        />
+      )}
+
+      {tab === "operations" && (
+        <InventoryOperationsPanel
+          organizationId={organizationId}
+          storeId={storeId}
+          stores={stores}
+          variantOptions={variantOptions.length ? variantOptions : initialInventory.map((row) => ({
+            variant_id: row.variant_id,
+            label: productLabel(row),
+          }))}
+          canManage={canManage}
+        />
+      )}
+
+      {tab === "movements" && (
+        <>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {movementsTotal} movement{movementsTotal === 1 ? "" : "s"}
+              {storeId ? " at selected store" : ""}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void loadMovements(movementPage)}>
+              <History className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
+          <DataTable>
+            <table className="w-full">
+              <DataTableHeader>
+                <DataTableHead>When</DataTableHead>
+                <DataTableHead>Type</DataTableHead>
+                <DataTableHead>Product</DataTableHead>
+                <DataTableHead align="right">Delta</DataTableHead>
+                <DataTableHead align="right">After</DataTableHead>
+              </DataTableHeader>
+              <DataTableBody>
+                {movements.length === 0 ? (
+                  <DataTableEmpty colSpan={5} message="No stock movements yet." />
+                ) : (
+                  movements.flatMap((m) =>
+                    (m.lines ?? []).map((line) => (
+                      <DataTableRow key={`${m.id}-${line.id}`}>
+                        <DataTableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(m.created_at).toLocaleString()}
+                        </DataTableCell>
+                        <DataTableCell>
+                          <StatusBadge status={m.movement_type} />
+                        </DataTableCell>
+                        <DataTableCell>
+                          <div className="font-medium">{line.product_name}</div>
+                          <div className="text-xs text-muted-foreground">{line.store_name}</div>
+                        </DataTableCell>
+                        <DataTableCell align="right" className={`font-mono ${line.quantity_delta < 0 ? "text-red-600" : "text-green-700"}`}>
+                          {line.quantity_delta > 0 ? "+" : ""}{line.quantity_delta}
+                        </DataTableCell>
+                        <DataTableCell align="right" className="font-mono">{line.quantity_after}</DataTableCell>
+                      </DataTableRow>
+                    ))
+                  )
+                )}
+              </DataTableBody>
+            </table>
+          </DataTable>
+          {movementsTotal > 30 && (
+            <TablePagination
+              page={movementPage}
+              totalPages={Math.max(1, Math.ceil(movementsTotal / 30))}
+              total={movementsTotal}
+              onPageChange={(p) => void loadMovements(p)}
+            />
+          )}
         </>
       )}
 
@@ -372,38 +698,38 @@ export function InventoryClient({
           </div>
 
           <div className="hidden lg:block">
-        <DataTable>
-          <table className="w-full">
-            <DataTableHeader>
-              <DataTableHead>Store</DataTableHead>
-              <DataTableHead>Product</DataTableHead>
-              <DataTableHead align="right">On hand</DataTableHead>
-              <DataTableHead align="right">Reorder point</DataTableHead>
-            </DataTableHeader>
-            <DataTableBody>
-              {lowStock.length === 0 ? (
-                <DataTableEmpty colSpan={4} message="No low-stock items. Set reorder points on products to enable alerts." />
-              ) : (
-                lowStock.map((item) => (
-                  <DataTableRow key={`${item.store_id}-${item.variant_id}`}>
-                    <DataTableCell>{item.store_name}</DataTableCell>
-                    <DataTableCell>
-                      <span className="inline-flex items-center gap-2 font-medium">
-                        <AlertTriangle className="h-4 w-4 text-amber-600" />
-                        {item.product_name}
-                        {item.variant_name !== "Default" && ` (${item.variant_name})`}
-                      </span>
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono font-semibold text-amber-700">
-                      {item.quantity}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="text-muted-foreground">{item.reorder_point}</DataTableCell>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </table>
-        </DataTable>
+            <DataTable>
+              <table className="w-full">
+                <DataTableHeader>
+                  <DataTableHead>Store</DataTableHead>
+                  <DataTableHead>Product</DataTableHead>
+                  <DataTableHead align="right">On hand</DataTableHead>
+                  <DataTableHead align="right">Reorder point</DataTableHead>
+                </DataTableHeader>
+                <DataTableBody>
+                  {lowStock.length === 0 ? (
+                    <DataTableEmpty colSpan={4} message="No low-stock items. Set reorder points on products to enable alerts." />
+                  ) : (
+                    lowStock.map((item) => (
+                      <DataTableRow key={`${item.store_id}-${item.variant_id}`}>
+                        <DataTableCell>{item.store_name}</DataTableCell>
+                        <DataTableCell>
+                          <span className="inline-flex items-center gap-2 font-medium">
+                            <AlertTriangle className="h-4 w-4 text-amber-600" />
+                            {item.product_name}
+                            {item.variant_name !== "Default" && ` (${item.variant_name})`}
+                          </span>
+                        </DataTableCell>
+                        <DataTableCell align="right" className="font-mono font-semibold text-amber-700">
+                          {item.quantity}
+                        </DataTableCell>
+                        <DataTableCell align="right" className="text-muted-foreground">{item.reorder_point}</DataTableCell>
+                      </DataTableRow>
+                    ))
+                  )}
+                </DataTableBody>
+              </table>
+            </DataTable>
           </div>
         </>
       )}

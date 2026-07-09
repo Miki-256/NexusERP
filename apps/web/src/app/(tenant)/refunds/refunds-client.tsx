@@ -13,6 +13,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency } from "@/lib/utils";
 import { PAGE_SHELL } from "@/lib/ui-classes";
 
@@ -91,6 +93,33 @@ export function RefundsClient({
 
       <DateRangeToolbar from={from} to={to} className="mb-6" />
 
+      <ResponsiveTableLayout
+        mobile={
+          combined.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No voided or returned sales in this period.</p>
+          ) : (
+            combined.map((row) => (
+              <MobileRecordCard key={row.key}>
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <Link href={`/sales/${row.sale_id}`} className="font-semibold text-primary hover:underline">
+                    {row.receipt_no}
+                  </Link>
+                  <StatusBadge status={row.status} />
+                </div>
+                <div className="space-y-1.5">
+                  <MobileRecordCardRow label="Type">{row.kind}</MobileRecordCardRow>
+                  <MobileRecordCardRow label="Store">{row.store_name ?? "—"}</MobileRecordCardRow>
+                  <MobileRecordCardRow label="Date">{new Date(row.created_at).toLocaleDateString()}</MobileRecordCardRow>
+                  <MobileRecordCardRow label="Amount">{money(row.total)}</MobileRecordCardRow>
+                  {row.reason && (
+                    <p className="pt-1 text-xs text-muted-foreground">{row.reason}</p>
+                  )}
+                </div>
+              </MobileRecordCard>
+            ))
+          )
+        }
+      >
       <DataTable>
         <table className="w-full">
           <DataTableHeader>
@@ -131,6 +160,7 @@ export function RefundsClient({
           </DataTableBody>
         </table>
       </DataTable>
+      </ResponsiveTableLayout>
     </div>
   );
 }

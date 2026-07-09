@@ -197,8 +197,20 @@ body:has(.pos-route) {
   border-radius: 8px;
 }
 
-.pos-product-card-compact:hover:not(:disabled) {
-  transform: translateY(-2px);
+.pos-product-card-mobile-compact {
+  border-radius: 12px;
+}
+
+.pos-product-card-mobile-compact .pos-product-image {
+  border-radius: 8px;
+}
+
+.pos-product-card-mobile {
+  border-radius: 14px;
+}
+
+.pos-product-card-mobile .pos-product-image {
+  border-radius: 12px;
 }
 
 .pos-product-image {
@@ -230,20 +242,14 @@ body:has(.pos-route) {
 .pos-category-pill {
   cursor: pointer;
   min-height: 44px;
+  scroll-snap-align: start;
   transition: all 0.2s ease;
 }
 
-.pos-category-pill:hover:not(.active) {
+.pos-category-pill:hover:not(.active):not([aria-selected="true"]) {
   border-color: hsl(var(--pos-primary) / 0.35);
   background: hsl(var(--pos-primary) / 0.04);
   color: hsl(var(--pos-navy));
-}
-
-.pos-category-pill.active {
-  background: hsl(var(--pos-navy));
-  color: white;
-  border-color: hsl(var(--pos-navy));
-  box-shadow: 0 4px 12px hsl(var(--pos-navy) / 0.25);
 }
 
 /* Cart */
@@ -359,6 +365,87 @@ body:has(.pos-route) {
 
 .pos-scroll-hide::-webkit-scrollbar { display: none; }
 .pos-scroll-hide { scrollbar-width: none; }
+
+/* Horizontal category strip — thin scrollbar + fade edges (replaces hidden scrollbar) */
+.pos-horizontal-scroll-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.pos-horizontal-scroll {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--pos-primary) / 0.35) transparent;
+  cursor: grab;
+  touch-action: pan-x;
+}
+
+.pos-horizontal-scroll--dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
+  user-select: none;
+}
+
+.pos-horizontal-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+
+.pos-horizontal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pos-horizontal-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--pos-primary) / 0.35);
+  border-radius: 999px;
+}
+
+.pos-horizontal-scroll:focus-visible {
+  outline: 2px solid hsl(var(--pos-primary));
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+.pos-horizontal-scroll-fade-left,
+.pos-horizontal-scroll-fade-right {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 6px;
+  width: 2rem;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.pos-horizontal-scroll-fade-left {
+  left: 0;
+  background: linear-gradient(to right, hsl(var(--pos-bg)) 0%, transparent 100%);
+}
+
+.pos-horizontal-scroll-fade-right {
+  right: 0;
+  background: linear-gradient(to left, hsl(var(--pos-bg)) 0%, transparent 100%);
+}
+
+.pos-horizontal-scroll-fade-left.is-visible,
+.pos-horizontal-scroll-fade-right.is-visible {
+  opacity: 1;
+}
+
+.pos-category-pill[aria-selected="true"],
+.pos-category-pill.active {
+  background: hsl(var(--pos-navy));
+  color: white;
+  border-color: hsl(var(--pos-navy));
+  box-shadow: 0 4px 12px hsl(var(--pos-navy) / 0.25);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .pos-product-card,

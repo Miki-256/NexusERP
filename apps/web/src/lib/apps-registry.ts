@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Wallet,
   Package,
+  PackageSearch,
   Warehouse,
   Truck,
   Factory,
@@ -26,6 +27,7 @@ import {
   ShieldCheck,
   Clock,
   Tag,
+  Radio,
 } from "lucide-react";
 
 export type AppDef = {
@@ -55,6 +57,7 @@ export const ERP_APPS: AppDef[] = [
   // Inventory
   { id: "products", name: "Products", description: "Catalog & variants", href: "/products", icon: Package, color: "bg-cyan-600", category: "inventory", live: true },
   { id: "inventory", name: "Inventory", description: "Stock by store", href: "/inventory", icon: Warehouse, color: "bg-teal-600", category: "inventory", live: true },
+  { id: "fulfillment", name: "Fulfillment", description: "Pick, pack & ship", href: "/fulfillment", icon: PackageSearch, color: "bg-teal-700", category: "inventory", live: true },
   { id: "purchasing", name: "Purchase", description: "POs & vendor bills", href: "/purchasing", icon: Truck, color: "bg-lime-700", category: "inventory", live: true },
   { id: "manufacturing", name: "Manufacturing", description: "BOM & production", href: "/manufacturing", icon: Factory, color: "bg-stone-600", category: "inventory", live: true, managerOnly: true },
   { id: "promotions", name: "Promotions", description: "Discounts & codes", href: "/promotions", icon: Tag, color: "bg-yellow-600", category: "inventory", live: true, managerOnly: true },
@@ -62,11 +65,12 @@ export const ERP_APPS: AppDef[] = [
   { id: "accounting", name: "Accounting", description: "Ledger & statements", href: "/financials", icon: Landmark, color: "bg-blue-800", category: "finance", live: true },
   { id: "expenses", name: "Expenses", description: "Operating costs", href: "/expenses", icon: Wallet, color: "bg-rose-600", category: "finance", live: true },
   { id: "reports", name: "Reporting", description: "Shifts & audit", href: "/reports", icon: BarChart3, color: "bg-purple-600", category: "finance", live: true },
+  { id: "communications", name: "Communications", description: "Alerts & messaging", href: "/communications", icon: Radio, color: "bg-indigo-700", category: "finance", live: true, managerOnly: true },
   { id: "documents", name: "Documents", description: "Files & links", href: "/documents", icon: FileStack, color: "bg-gray-600", category: "finance", live: true },
   // HR
   { id: "hr", name: "Employees", description: "HR & payroll", href: "/hr", icon: BadgeDollarSign, color: "bg-pink-600", category: "hr", live: true, managerOnly: true },
   { id: "recruitment", name: "Recruitment", description: "Jobs & applicants", href: "/recruitment", icon: Briefcase, color: "bg-fuchsia-600", category: "hr", live: true, managerOnly: true },
-  { id: "timeoff", name: "Time Off", description: "Leave requests", href: "/time-off", icon: CalendarOff, color: "bg-red-600", category: "hr", live: true },
+  { id: "timeoff", name: "Time Off", description: "Leave, attendance & shifts", href: "/time-off", icon: CalendarOff, color: "bg-red-600", category: "hr", live: true },
   // Services
   { id: "projects", name: "Project", description: "Tasks & delivery", href: "/projects", icon: FolderKanban, color: "bg-green-700", category: "services", live: true },
   { id: "helpdesk", name: "Helpdesk", description: "Support tickets", href: "/helpdesk", icon: LifeBuoy, color: "bg-cyan-700", category: "services", live: true },

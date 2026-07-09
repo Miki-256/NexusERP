@@ -26,8 +26,10 @@ CREATE INDEX IF NOT EXISTS idx_jel_department ON journal_entry_lines(organizatio
 ALTER TABLE analytic_departments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS analytic_departments_select ON analytic_departments;
 DROP POLICY IF EXISTS analytic_departments_write ON analytic_departments;
+DROP POLICY IF EXISTS analytic_departments_select ON analytic_departments;
 CREATE POLICY analytic_departments_select ON analytic_departments FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS analytic_departments_write ON analytic_departments;
 CREATE POLICY analytic_departments_write ON analytic_departments FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
@@ -75,14 +77,18 @@ DROP POLICY IF EXISTS budgets_select ON budgets;
 DROP POLICY IF EXISTS budgets_write ON budgets;
 DROP POLICY IF EXISTS budget_lines_select ON budget_lines;
 DROP POLICY IF EXISTS budget_lines_write ON budget_lines;
+DROP POLICY IF EXISTS budgets_select ON budgets;
 CREATE POLICY budgets_select ON budgets FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS budgets_write ON budgets;
 CREATE POLICY budgets_write ON budgets FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS budget_lines_select ON budget_lines;
 CREATE POLICY budget_lines_select ON budget_lines FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS budget_lines_write ON budget_lines;
 CREATE POLICY budget_lines_write ON budget_lines FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));

@@ -47,14 +47,18 @@ CREATE INDEX IF NOT EXISTS idx_cn_lines_note ON customer_credit_note_lines(credi
 ALTER TABLE customer_credit_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_credit_note_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS cn_select ON customer_credit_notes;
 CREATE POLICY cn_select ON customer_credit_notes FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS cn_write ON customer_credit_notes;
 CREATE POLICY cn_write ON customer_credit_notes FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS cnl_select ON customer_credit_note_lines;
 CREATE POLICY cnl_select ON customer_credit_note_lines FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS cnl_write ON customer_credit_note_lines;
 CREATE POLICY cnl_write ON customer_credit_note_lines FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));

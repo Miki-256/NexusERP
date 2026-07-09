@@ -16,6 +16,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOfflineOptional } from "@/components/offline/offline-provider";
 import { cartLinesToRpc, type CompleteSalePayload, type RpcPayment } from "@/lib/offline/types";
+import { lookupGiftCard } from "@/lib/pos/gift-card";
+import {
+  loyaltyPointsFromAmount,
+  loyaltyValueFromPoints,
+} from "@/lib/pos/loyalty";
 import { isBrowserOnline } from "@/lib/offline/network";
 import { queueOfflineSale, submitCompleteSale } from "@/lib/offline/sale-api";
 import { parsePlanLimitError, planLimitToastDescription } from "@/lib/plan-errors";
@@ -24,6 +29,7 @@ import {
   Smartphone,
   Building2,
   Gift,
+  Ticket,
   X,
   Plus,
   CheckCircle2,
@@ -34,6 +40,7 @@ import {
   Receipt,
   Heart,
 } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 const PROVIDERS = [
   { value: "telebirr", label: "Telebirr" },
@@ -44,7 +51,7 @@ const PROVIDERS = [
 ] as const;
 
 type PaymentRow = {
-  method: "cash" | "mobile_money" | "bank_transfer" | "store_credit" | "on_account";
+  method: "cash" | "mobile_money" | "bank_transfer" | "store_credit" | "on_account" | "gift_card" | "loyalty";
   amount: number;
   cashTendered?: number;
   changeGiven?: number;
@@ -65,7 +72,44 @@ const CUSTOMER_METHODS = [
   { id: "on_account" as const, label: "Pay Later", icon: Clock, desc: "Buy now, pay later" },
 ] as const;
 
-type PaymentMethodId = (typeof STANDARD_METHODS)[number]["id"] | (typeof CUSTOMER_METHODS)[number]["id"];
+const ALT_METHODS = [
+  { id: "gift_card" as const, label: "Gift Card", icon: Ticket, desc: "Card code" },
+  { id: "loyalty" as const, label: "Loyalty", icon: Heart, desc: "Redeem points" },
+] as const;
+
+type PaymentMethodId =
+  | (typeof STANDARD_METHODS)[number]["id"]
+  | (typeof CUSTOMER_METHODS)[number]["id"]
+  | (typeof ALT_METHODS)[number]["id"];
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function methodSupportsOverpayTip(method: PaymentMethodId): boolean {
+  return method === "cash" || method === "mobile_money" || method === "bank_transfer";
+}
+
+/** Tip from explicit presets plus any payment above the merchandise total. */
+function resolveSaleTip(
+  orderTotal: number,
+  explicitTip: number,
+  paymentsSum: number,
+  tipsEnabled: boolean
+): number {
+  if (!tipsEnabled) return 0;
+  const fromPayments = Math.max(0, roundMoney(paymentsSum - orderTotal));
+  return Math.max(explicitTip, fromPayments);
+}
+
+function minimumPaymentRequired(
+  orderTotal: number,
+  explicitTip: number,
+  tipsEnabled: boolean
+): number {
+  const due = orderTotal + (tipsEnabled ? explicitTip : 0);
+  return roundMoney(due);
+}
 
 export function PaymentModal({
   total,
@@ -91,6 +135,10 @@ export function PaymentModal({
   customerReceivableBalance = 0,
   tipsEnabled = false,
   tipPresets = [10, 15, 20],
+  loyaltyEnabled = false,
+  customerLoyaltyPoints = 0,
+  loyaltySpendPerPoint = 0.1,
+  loyaltyMinRedeemPoints = 100,
   onClose,
   onComplete,
   posSessionToken,
@@ -120,6 +168,10 @@ export function PaymentModal({
   customerReceivableBalance?: number;
   tipsEnabled?: boolean;
   tipPresets?: number[];
+  loyaltyEnabled?: boolean;
+  customerLoyaltyPoints?: number;
+  loyaltySpendPerPoint?: number;
+  loyaltyMinRedeemPoints?: number;
   onClose: () => void;
   onComplete: (result: {
     receipt_no: string;
@@ -160,6 +212,8 @@ export function PaymentModal({
   const [customTipInput, setCustomTipInput] = useState("");
   const [activeTipPct, setActiveTipPct] = useState<number | null>(null);
   const [changeGivenInput, setChangeGivenInput] = useState("");
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("");
+  const [giftCardHint, setGiftCardHint] = useState<string | null>(null);
   const offline = useOfflineOptional();
   const checkoutOffline = offline ? !offline.online : !isBrowserOnline();
 
@@ -178,6 +232,18 @@ export function PaymentModal({
   }, [tipsEnabled, cashReceivedNum, cashChangeNum, changeGivenInput, total]);
 
   const payTotal = total + tipAmount;
+  const amountReceivedNum = parseFloat(amount);
+
+  const tipFromOverpayPreview = useMemo(() => {
+    if (!tipsEnabled || !methodSupportsOverpayTip(method) || method === "cash") return 0;
+    if (!Number.isFinite(amountReceivedNum) || amountReceivedNum <= total) return 0;
+    return roundMoney(amountReceivedNum - total);
+  }, [tipsEnabled, method, amountReceivedNum, total]);
+
+  const displayTip = tipsEnabled
+    ? Math.max(tipAmount, method === "cash" ? autoTipFromCash : tipFromOverpayPreview)
+    : 0;
+  const displayPayTotal = total + displayTip;
 
   const lineDiscountTotal = useMemo(
     () => lines.reduce((s, l) => s + l.discountAmount, 0),
@@ -207,8 +273,8 @@ export function PaymentModal({
       tax,
       discount: orderDiscountTotal,
       promoDiscount,
-      tipAmount,
-      total: payTotal,
+      tipAmount: displayTip,
+      total: displayPayTotal,
       updatedAt: Date.now(),
     });
   }
@@ -228,12 +294,18 @@ export function PaymentModal({
   useEffect(() => {
     pushDisplay("checkout");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tipAmount, payTotal]);
+  }, [tipAmount, payTotal, displayTip, displayPayTotal]);
 
   useEffect(() => {
     if (loading) pushDisplay("paying");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
+
+  function fillExactDue() {
+    const due = remaining || payTotal;
+    setAmount(String(due));
+    setError(null);
+  }
 
   function applyTipPercent(pct: number) {
     const next = Math.round(total * (pct / 100) * 100) / 100;
@@ -283,7 +355,7 @@ export function PaymentModal({
     if (tipsEnabled && payments.length === 0) {
       if (changeGivenInput.trim() === "" || !Number.isFinite(change)) return null;
       if (received < change + total - 0.01) return null;
-      const tip = Math.max(0, Math.round((received - change - total) * 100) / 100);
+      const tip = Math.max(0, roundMoney(received - change - total));
       const saleTotal = total + tip;
       return {
         method: "cash",
@@ -302,6 +374,40 @@ export function PaymentModal({
       changeGiven: Math.max(0, tendered - due),
     };
   }
+
+  function buildMobilePaymentFromInputs(): PaymentRow | null {
+    const received = parseFloat(amount);
+    if (!Number.isFinite(received) || received <= 0) return null;
+    if (!reference.trim()) return null;
+
+    const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+    if (received < minPay - 0.01) return null;
+
+    return {
+      method: "mobile_money",
+      amount: received,
+      provider,
+      reference: reference.trim(),
+      phone: phone || undefined,
+    };
+  }
+
+  function buildBankPaymentFromInputs(): PaymentRow | null {
+    const received = parseFloat(amount);
+    if (!Number.isFinite(received) || received <= 0) return null;
+    if (!reference.trim()) return null;
+
+    const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+    if (received < minPay - 0.01) return null;
+
+    return {
+      method: "bank_transfer",
+      amount: received,
+      reference: reference.trim(),
+      bankName: bankName || undefined,
+    };
+  }
+
   const paid = payments.reduce((s, p) => s + p.amount, 0);
   const remaining = Math.max(0, payTotal - paid);
   const totalChange = payments.reduce((s, p) => s + (p.changeGiven ?? 0), 0);
@@ -330,7 +436,7 @@ export function PaymentModal({
     }
   }
 
-  function addPayment() {
+  async function addPayment() {
     const amt = parseFloat(amount) || remaining;
     if (amt <= 0) return;
 
@@ -372,6 +478,63 @@ export function PaymentModal({
         return;
       }
       setPayments([...payments, { method: "on_account", amount: amt }]);
+    } else if (method === "gift_card") {
+      if (checkoutOffline) {
+        setError("Gift cards require an internet connection");
+        return;
+      }
+      const code = reference.trim();
+      if (!code) {
+        setError("Enter gift card code");
+        return;
+      }
+      const lookup = await lookupGiftCard(organizationId, code);
+      if (!lookup.valid) {
+        setError(lookup.message ?? "Invalid gift card");
+        return;
+      }
+      const usedGift = payments
+        .filter((p) => p.method === "gift_card" && p.reference === lookup.code)
+        .reduce((s, p) => s + p.amount, 0);
+      const avail = Math.max(0, (lookup.balance ?? 0) - usedGift);
+      if (amt > avail + 0.01) {
+        setError(`Only ${avail.toFixed(2)} available on this card`);
+        return;
+      }
+      setPayments([
+        ...payments,
+        { method: "gift_card", amount: Math.min(amt, avail), reference: lookup.code ?? code.toUpperCase() },
+      ]);
+    } else if (method === "loyalty") {
+      if (!customerId) {
+        setError("Select a customer before redeeming loyalty points");
+        return;
+      }
+      if (!loyaltyEnabled) {
+        setError("Loyalty program is not enabled for this store");
+        return;
+      }
+      if (checkoutOffline) {
+        setError("Loyalty redemption requires an internet connection");
+        return;
+      }
+      const pts =
+        parseInt(loyaltyPointsInput, 10) ||
+        loyaltyPointsFromAmount(amt, loyaltySpendPerPoint);
+      const loyaltyUsed = payments
+        .filter((p) => p.method === "loyalty")
+        .reduce((s, p) => s + (parseInt(p.reference ?? "0", 10) || 0), 0);
+      const availPts = customerLoyaltyPoints - loyaltyUsed;
+      if (pts < loyaltyMinRedeemPoints) {
+        setError(`Minimum redemption is ${loyaltyMinRedeemPoints} points`);
+        return;
+      }
+      if (pts > availPts) {
+        setError(`Only ${availPts} points available`);
+        return;
+      }
+      const loyaltyAmt = loyaltyValueFromPoints(pts, loyaltySpendPerPoint);
+      setPayments([...payments, { method: "loyalty", amount: loyaltyAmt, reference: String(pts) }]);
     } else if (method === "cash") {
       const row = buildCashPaymentFromInputs();
       if (!row) {
@@ -388,35 +551,84 @@ export function PaymentModal({
         setError("Transaction reference is required");
         return;
       }
-      setPayments([
-        ...payments,
-        {
-          method: "mobile_money",
-          amount: amt,
-          provider,
-          reference: reference.trim(),
-          phone: phone || undefined,
-        },
-      ]);
+      const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+      if (tipsEnabled && payments.length === 0 && amt >= minPay - 0.01) {
+        setPayments([
+          ...payments,
+          {
+            method: "mobile_money",
+            amount: amt,
+            provider,
+            reference: reference.trim(),
+            phone: phone || undefined,
+          },
+        ]);
+      } else if (amt > remaining + 0.01) {
+        setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
+        return;
+      } else if (amt < minPay - 0.01) {
+        setError(
+          tipsEnabled && tipAmount > 0
+            ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
+            : `Minimum payment is ${formatCurrency(minPay, currency)}`
+        );
+        return;
+      } else {
+        setPayments([
+          ...payments,
+          {
+            method: "mobile_money",
+            amount: amt,
+            provider,
+            reference: reference.trim(),
+            phone: phone || undefined,
+          },
+        ]);
+      }
     } else {
       if (!reference.trim()) {
         setError("Transfer reference is required");
         return;
       }
-      setPayments([
-        ...payments,
-        {
-          method: "bank_transfer",
-          amount: amt,
-          reference: reference.trim(),
-          bankName: bankName || undefined,
-        },
-      ]);
+      const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+      if (tipsEnabled && payments.length === 0 && amt >= minPay - 0.01) {
+        setPayments([
+          ...payments,
+          {
+            method: "bank_transfer",
+            amount: amt,
+            reference: reference.trim(),
+            bankName: bankName || undefined,
+          },
+        ]);
+      } else if (amt > remaining + 0.01) {
+        setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
+        return;
+      } else if (amt < minPay - 0.01) {
+        setError(
+          tipsEnabled && tipAmount > 0
+            ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
+            : `Minimum payment is ${formatCurrency(minPay, currency)}`
+        );
+        return;
+      } else {
+        setPayments([
+          ...payments,
+          {
+            method: "bank_transfer",
+            amount: amt,
+            reference: reference.trim(),
+            bankName: bankName || undefined,
+          },
+        ]);
+      }
     }
     setAmount("");
     setCashTendered("");
     setChangeGivenInput("");
     setReference("");
+    setLoyaltyPointsInput("");
+    setGiftCardHint(null);
     setError(null);
   }
 
@@ -435,25 +647,47 @@ export function PaymentModal({
         return;
       }
       finalPayments = [cashRow];
-      saleTip = Math.max(0, Math.round((cashRow.amount - total) * 100) / 100);
-    } else if (Math.abs(paid - payTotal) > 0.01 && payments.length === 0) {
+    } else if (payments.length === 0 && method === "mobile_money") {
+      const row = buildMobilePaymentFromInputs();
+      if (!row) {
+        const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+        setError(
+          !reference.trim()
+            ? "Transaction reference is required"
+            : tipsEnabled && tipAmount > 0
+              ? `Enter amount received (min ${formatCurrency(minPay, currency)}) and transaction ID`
+              : `Enter amount received (min ${formatCurrency(minPay, currency)}) and transaction ID`
+        );
+        return;
+      }
+      finalPayments = [row];
+    } else if (payments.length === 0 && method === "bank_transfer") {
+      const row = buildBankPaymentFromInputs();
+      if (!row) {
+        const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+        setError(
+          !reference.trim()
+            ? "Transfer reference is required"
+            : `Enter amount received (min ${formatCurrency(minPay, currency)}) and reference`
+        );
+        return;
+      }
+      finalPayments = [row];
+    } else if (payments.length === 0) {
       setError("Add payments that match the total");
       return;
-    } else if (payments.length === 0) {
-      finalPayments = [
-        {
-          method: "cash" as const,
-          amount: payTotal,
-          cashTendered: parseFloat(cashTendered) || payTotal,
-          changeGiven: Math.max(0, (parseFloat(cashTendered) || payTotal) - payTotal),
-        },
-      ];
     }
 
-    const saleTotal = total + saleTip;
     const paymentsSum = finalPayments.reduce((s, p) => s + p.amount, 0);
-    if (Math.abs(paymentsSum - saleTotal) > 0.01) {
-      setError(`Payment total ${paymentsSum} must equal ${saleTotal}`);
+    saleTip = resolveSaleTip(total, tipAmount, paymentsSum, tipsEnabled);
+    const saleTotal = total + saleTip;
+
+    if (paymentsSum < saleTotal - 0.01) {
+      setError(`Payment total ${formatCurrency(paymentsSum, currency)} is less than ${formatCurrency(saleTotal, currency)} due`);
+      return;
+    }
+    if (paymentsSum > saleTotal + 0.01) {
+      setError(`Payment total ${formatCurrency(paymentsSum, currency)} exceeds ${formatCurrency(saleTotal, currency)} due`);
       return;
     }
 
@@ -475,6 +709,12 @@ export function PaymentModal({
       }
       if (p.method === "on_account") {
         return { method: "on_account", amount: p.amount };
+      }
+      if (p.method === "gift_card") {
+        return { method: "gift_card", amount: p.amount, reference: p.reference };
+      }
+      if (p.method === "loyalty") {
+        return { method: "loyalty", amount: p.amount, reference: p.reference };
       }
       if (p.method === "mobile_money") {
         return {
@@ -575,13 +815,23 @@ export function PaymentModal({
     }
   }
 
+  const panelRef = usePosModal(onClose);
+
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
-      <div className="pos-modal-panel flex max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-checkout-title"
+        className="pos-modal-panel flex max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+      >
         {/* Header */}
         <div className="pos-header flex items-center justify-between px-6 py-5">
           <div>
-            <h2 className="pos-heading text-xl font-bold text-white">Checkout</h2>
+            <h2 id="pos-checkout-title" className="pos-heading text-xl font-bold text-white">
+              Checkout
+            </h2>
             {customerName && (
               <p className="text-xs text-white/70">Customer: {customerName}</p>
             )}
@@ -595,9 +845,10 @@ export function PaymentModal({
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-xl p-2.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            className="cursor-pointer rounded-xl p-2.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close checkout"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
@@ -607,16 +858,17 @@ export function PaymentModal({
             <button
               type="button"
               onClick={() => setShowOrderSummary((v) => !v)}
-              className="flex w-full cursor-pointer items-center justify-between px-3 py-2.5 text-left hover:bg-slate-50"
+              aria-expanded={showOrderSummary}
+              className="flex w-full cursor-pointer items-center justify-between px-3 py-2.5 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
             >
               <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-                <Receipt className="h-3.5 w-3.5" />
+                <Receipt className="h-3.5 w-3.5" aria-hidden />
                 Order ({lines.length} item{lines.length === 1 ? "" : "s"})
               </span>
               {showOrderSummary ? (
-                <ChevronUp className="h-4 w-4 text-slate-400" />
+                <ChevronUp className="h-4 w-4 text-slate-400" aria-hidden />
               ) : (
-                <ChevronDown className="h-4 w-4 text-slate-400" />
+                <ChevronDown className="h-4 w-4 text-slate-400" aria-hidden />
               )}
             </button>
             {showOrderSummary && (
@@ -667,11 +919,11 @@ export function PaymentModal({
             )}
           </div>
 
-          {tipsEnabled && method !== "cash" && (
+          {tipsEnabled && method !== "cash" && !["store_credit", "on_account", "gift_card", "loyalty"].includes(method) && (
             <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
-                  <Heart className="h-3.5 w-3.5" />
+                  <Heart className="h-3.5 w-3.5" aria-hidden />
                   Add tip
                 </span>
                 {tipAmount > 0 && (
@@ -684,6 +936,11 @@ export function PaymentModal({
                   </button>
                 )}
               </div>
+              <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+                {methodSupportsOverpayTip(method)
+                  ? "Choose a preset, enter a custom tip, or pay more than the amount due — the surplus is recorded as tip."
+                  : "Choose a preset or enter a custom tip amount."}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {tipPresets.map((pct) => (
                   <button
@@ -726,7 +983,7 @@ export function PaymentModal({
               {tipsEnabled && method === "cash" ? "Order total" : "Amount due"}
             </p>
             <p className="pos-heading mt-1 text-3xl font-bold tabular-nums text-pos-primary">
-              {formatCurrency(tipsEnabled && method === "cash" ? total : payTotal, currency)}
+              {formatCurrency(tipsEnabled && method === "cash" ? total : displayPayTotal, currency)}
             </p>
             {tipsEnabled && method === "cash" && autoTipFromCash > 0 && (
               <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
@@ -734,11 +991,19 @@ export function PaymentModal({
                 {formatCurrency(total + autoTipFromCash, currency)}
               </p>
             )}
-            {tipAmount > 0 && !(tipsEnabled && method === "cash") && (
+            {tipsEnabled && method !== "cash" && displayTip > 0 && (
               <p className="mt-1 text-xs text-slate-600">
-                Order {formatCurrency(total, currency)} + tip {formatCurrency(tipAmount, currency)}
+                Order {formatCurrency(total, currency)} + tip {formatCurrency(displayTip, currency)}
               </p>
             )}
+            {tipsEnabled &&
+              methodSupportsOverpayTip(method) &&
+              method !== "cash" &&
+              tipFromOverpayPreview > tipAmount && (
+                <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                  Tip from overpayment: {formatCurrency(tipFromOverpayPreview, currency)}
+                </p>
+              )}
             {remaining > 0.01 && payments.length > 0 && (
               <p className="mt-1 text-xs font-medium text-amber-600">
                 Remaining: {formatCurrency(remaining, currency)}
@@ -775,6 +1040,49 @@ export function PaymentModal({
                 >
                   <Icon className={cn("pos-payment-icon h-6 w-6 text-slate-400", method === m.id && "text-pos-primary")} />
                   <span className="text-[11px] font-bold text-slate-800">{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Gift card &amp; loyalty
+          </p>
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            {ALT_METHODS.map((m) => {
+              const Icon = m.icon;
+              const giftDisabled = m.id === "gift_card" && checkoutOffline;
+              const loyaltyDisabled =
+                m.id === "loyalty" &&
+                (!loyaltyEnabled || !customerId || customerLoyaltyPoints < loyaltyMinRedeemPoints || checkoutOffline);
+              const disabled = giftDisabled || loyaltyDisabled;
+              let subtitle: string = m.desc;
+              if (m.id === "loyalty" && loyaltyEnabled && customerId) {
+                subtitle = `${customerLoyaltyPoints} pts`;
+              } else if (m.id === "loyalty" && !loyaltyEnabled) {
+                subtitle = "Not enabled";
+              } else if (m.id === "loyalty" && !customerId) {
+                subtitle = "Needs customer";
+              }
+
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    setMethod(m.id);
+                    setError(null);
+                  }}
+                  className={cn(
+                    "pos-payment-card flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl border-2 border-slate-200 bg-white p-2 text-center cursor-pointer",
+                    method === m.id && "active",
+                    disabled && "cursor-not-allowed opacity-40"
+                  )}
+                >
+                  <Icon className={cn("pos-payment-icon h-6 w-6 text-slate-400", method === m.id && "text-pos-primary")} />
+                  <span className="text-[11px] font-bold text-slate-800">{m.label}</span>
+                  <span className="text-[10px] text-slate-400">{subtitle}</span>
                 </button>
               );
             })}
@@ -857,17 +1165,47 @@ export function PaymentModal({
           )}
 
           {/* Payment details — primary path */}
-          <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Amount</Label>
-              <Input
-                type="number"
-                placeholder={String(remaining || payTotal)}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="h-11"
-              />
-            </div>
+          <div className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+            {method !== "cash" && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">
+                    {tipsEnabled && methodSupportsOverpayTip(method)
+                      ? "Amount received"
+                      : "Amount"}
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs font-semibold"
+                    onClick={fillExactDue}
+                  >
+                    Exact due
+                  </Button>
+                </div>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={String(remaining || payTotal)}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="h-11"
+                  aria-label={
+                    tipsEnabled && methodSupportsOverpayTip(method)
+                      ? "Amount received from customer"
+                      : "Payment amount"
+                  }
+                />
+                {tipsEnabled && methodSupportsOverpayTip(method) && (
+                  <p className="text-[11px] leading-relaxed text-slate-500">
+                    Enter what the customer paid. Any amount above the order
+                    {tipAmount > 0 ? " plus selected tip" : ""} is recorded as tip.
+                  </p>
+                )}
+              </div>
+            )}
             {method === "store_credit" && (
               <p className="text-xs text-slate-600">
                 Applies credit from {customerName ?? "selected customer"}. Balance:{" "}
@@ -884,6 +1222,54 @@ export function PaymentModal({
                   <> Credit available: {formatCurrency(customerCreditAvailable, currency)}.</>
                 )}
               </p>
+            )}
+            {method === "gift_card" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Gift card code</Label>
+                <Input
+                  placeholder="GC-XXXXXXXXXXXX"
+                  value={reference}
+                  onChange={(e) => {
+                    setReference(e.target.value.toUpperCase());
+                    setGiftCardHint(null);
+                  }}
+                  onBlur={async () => {
+                    if (!reference.trim() || checkoutOffline) return;
+                    const lookup = await lookupGiftCard(organizationId, reference);
+                    if (lookup.valid && lookup.balance != null) {
+                      setGiftCardHint(`Balance: ${formatCurrency(lookup.balance, currency)}`);
+                    } else {
+                      setGiftCardHint(lookup.message ?? null);
+                    }
+                  }}
+                  className="h-10 font-mono uppercase"
+                />
+                {giftCardHint && (
+                  <p className={cn("text-xs", giftCardHint.startsWith("Balance") ? "text-emerald-700" : "text-red-600")}>
+                    {giftCardHint}
+                  </p>
+                )}
+              </div>
+            )}
+            {method === "loyalty" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Points to redeem</Label>
+                <Input
+                  type="number"
+                  min={loyaltyMinRedeemPoints}
+                  placeholder={String(loyaltyMinRedeemPoints)}
+                  value={loyaltyPointsInput}
+                  onChange={(e) => setLoyaltyPointsInput(e.target.value)}
+                  className="h-10"
+                />
+                <p className="text-xs text-slate-600">
+                  {customerLoyaltyPoints} points available · min {loyaltyMinRedeemPoints} ·{" "}
+                  {formatCurrency(loyaltySpendPerPoint, currency)} per point
+                  {loyaltyPointsInput && (
+                    <> → {formatCurrency(loyaltyValueFromPoints(parseInt(loyaltyPointsInput, 10) || 0, loyaltySpendPerPoint), currency)}</>
+                  )}
+                </p>
+              </div>
             )}
             {method === "cash" && tipsEnabled && payments.length === 0 && (
               <div className="space-y-3 rounded-lg border border-amber-200/80 bg-amber-50/60 p-3">
@@ -1016,16 +1402,30 @@ export function PaymentModal({
                 Add payment line
               </Button>
             )}
-            {!showSplitPay && method !== "cash" && (
-              <Button
-                type="button"
-                className="pos-checkout-btn h-11 w-full font-bold text-white"
-                disabled={loading}
-                onClick={addPayment}
-              >
-                Add {formatCurrency(parseFloat(amount) || remaining || payTotal, currency)} payment
-              </Button>
-            )}
+            {!showSplitPay &&
+              (method === "mobile_money" || method === "bank_transfer") && (
+                <Button
+                  type="button"
+                  className="pos-checkout-btn h-11 w-full font-bold text-white"
+                  disabled={loading}
+                  onClick={() => void completeSale()}
+                >
+                  Complete sale · {formatCurrency(displayPayTotal, currency)}
+                </Button>
+              )}
+            {!showSplitPay &&
+              method !== "cash" &&
+              method !== "mobile_money" &&
+              method !== "bank_transfer" && (
+                <Button
+                  type="button"
+                  className="pos-checkout-btn h-11 w-full font-bold text-white"
+                  disabled={loading}
+                  onClick={addPayment}
+                >
+                  Add {formatCurrency(parseFloat(amount) || remaining || payTotal, currency)} payment
+                </Button>
+              )}
           </div>
 
           {payments.length > 0 && (

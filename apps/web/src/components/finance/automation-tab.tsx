@@ -36,6 +36,7 @@ export type InvoiceReminderRow = {
   id: string;
   invoice_no: string;
   customer_name: string | null;
+  customer_email?: string | null;
   due_date: string;
   total: number;
   days_overdue: number;
@@ -125,16 +126,21 @@ export function AutomationTab({
     router.refresh();
   }
 
-  async function logReminder(invoiceId: string) {
+  async function sendReminder(invoiceId: string) {
     setBusy(invoiceId);
     const supabase = createClient();
-    const { error } = await supabase.rpc("log_invoice_reminder", { p_invoice_id: invoiceId });
+    const { error } = await supabase.rpc("enqueue_invoice_reminder_notification", {
+      p_invoice_id: invoiceId,
+    });
     setBusy("");
     if (error) {
       toast({ title: "Failed", description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Reminder logged" });
+    toast({
+      title: "Reminder queued",
+      description: "Email will be sent when the notification worker runs (if email is enabled).",
+    });
     const { data } = await supabase.rpc("list_invoices_needing_reminder", { p_org_id: orgId });
     setReminders((data as InvoiceReminderRow[]) ?? []);
     router.refresh();
@@ -239,13 +245,25 @@ export function AutomationTab({
                 reminders.map((r) => (
                   <DataTableRow key={r.id}>
                     <DataTableCell className="font-mono text-xs">{r.invoice_no}</DataTableCell>
-                    <DataTableCell>{r.customer_name ?? "—"}</DataTableCell>
+                    <DataTableCell>
+                      {r.customer_name ?? "—"}
+                      {r.customer_email ? (
+                        <p className="text-xs text-muted-foreground">{r.customer_email}</p>
+                      ) : (
+                        <p className="text-xs text-amber-600">No email on file</p>
+                      )}
+                    </DataTableCell>
                     <DataTableCell>{r.due_date} ({r.days_overdue}d)</DataTableCell>
                     <DataTableCell align="right" className="font-mono">{money(Number(r.total))}</DataTableCell>
                     {canManage && (
                       <DataTableCell align="right">
-                        <Button size="sm" variant="outline" disabled={!!busy} onClick={() => logReminder(r.id)}>
-                          Log reminder
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!!busy || !r.customer_email}
+                          onClick={() => sendReminder(r.id)}
+                        >
+                          Send reminder
                         </Button>
                       </DataTableCell>
                     )}

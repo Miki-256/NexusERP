@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { enqueueSale } from "./queue";
 import { notifyOfflineChange } from "./events";
 import { isBrowserOnline, isNetworkError, withTimeout } from "./network";
+import { triggerNotificationProcess } from "@/lib/notifications/trigger-process";
 import type { CompleteSalePayload } from "./types";
 
 export type CompleteSaleResult = {
@@ -127,6 +128,9 @@ export async function submitCompleteSale(
     const enriched = await enrichSaleResult(
       data as { sale_id: string; receipt_no?: string; total?: number; duplicate?: boolean }
     );
+    if (!enriched.duplicate) {
+      triggerNotificationProcess();
+    }
     return { ok: true, data: enriched };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

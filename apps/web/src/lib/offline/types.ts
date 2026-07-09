@@ -1,7 +1,7 @@
 import type { CartLine } from "@/stores/cart-store";
 
 export type RpcPayment = {
-  method: "cash" | "mobile_money" | "bank_transfer" | "store_credit" | "on_account";
+  method: "cash" | "mobile_money" | "bank_transfer" | "store_credit" | "on_account" | "gift_card" | "loyalty";
   amount: number;
   cashTendered?: number;
   changeGiven?: number;

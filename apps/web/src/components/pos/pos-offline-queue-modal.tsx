@@ -11,6 +11,7 @@ import {
 import type { QueuedSale } from "@/lib/offline/types";
 import { formatCurrency } from "@/lib/utils";
 import { CloudOff, RefreshCw, Trash2, X } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 export function PosOfflineQueueModal({
   currency,
@@ -60,24 +61,42 @@ export function PosOfflineQueueModal({
 
   const failed = items.filter((i) => i.status === "failed");
   const pending = items.filter((i) => i.status === "pending" || i.status === "syncing");
+  const panelRef = usePosModal(onClose);
 
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="pos-modal-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-offline-queue-title"
+        className="pos-modal-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+      >
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
-            <h2 className="pos-heading text-lg font-bold text-white">Offline sync queue</h2>
+            <h2 id="pos-offline-queue-title" className="pos-heading text-lg font-bold text-white">
+              Offline sync queue
+            </h2>
             <p className="text-xs text-white/70">
               {pending.length} pending · {failed.length} failed
             </p>
           </div>
-          <button type="button" onClick={onClose} className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10">
-            <X className="h-5 w-5" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close offline sync queue"
+          >
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading && <p className="text-sm text-slate-500">Loading queue…</p>}
+        <div className="flex-1 overflow-y-auto p-4" aria-live="polite">
+          {loading && (
+            <p className="text-sm text-slate-500" role="status" aria-busy="true">
+              Loading queue…
+            </p>
+          )}
           {!loading && items.length === 0 && (
             <p className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
               No offline sales waiting to sync.

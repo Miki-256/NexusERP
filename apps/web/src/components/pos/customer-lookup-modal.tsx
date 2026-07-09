@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, User, X, Gift, Clock } from "lucide-react";
+import { Search, User, X, Gift, Clock, Heart } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 export type PosCustomer = {
   id: string;
@@ -17,6 +18,7 @@ export type PosCustomer = {
   creditLimit: number | null;
   onAccountEnabled: boolean;
   creditAvailable: number | null;
+  loyaltyPoints: number;
 };
 
 export function CustomerLookupModal({
@@ -61,32 +63,54 @@ export function CustomerLookupModal({
     return () => clearTimeout(t);
   }, [query, search]);
 
+  const panelRef = usePosModal(onClose);
+
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="pos-modal-panel flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-customer-lookup-title"
+        className="pos-modal-panel flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+      >
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
-            <h2 className="pos-heading text-lg font-bold text-white">Find customer</h2>
+            <h2 id="pos-customer-lookup-title" className="pos-heading text-lg font-bold text-white">
+              Find customer
+            </h2>
             <p className="text-xs text-white/70">Search by name, phone, or email</p>
           </div>
-          <button type="button" onClick={onClose} className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10">
-            <X className="h-5 w-5" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close customer lookup"
+          >
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
         <div className="border-b border-slate-100 p-4">
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
-            <Search className="h-4 w-4 text-slate-400" />
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+            <span className="sr-only">Search customers</span>
+            <Search className="h-4 w-4 text-slate-400" aria-hidden />
             <Input
               autoFocus
+              id="pos-customer-search"
               placeholder="Start typing…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="border-0 bg-transparent shadow-none focus-visible:ring-0"
+              aria-busy={loading}
             />
-          </div>
+          </label>
         </div>
-        <ul className="flex-1 overflow-y-auto p-2">
-          {loading && <li className="p-4 text-center text-sm text-slate-500">Searching…</li>}
+        <ul className="flex-1 overflow-y-auto p-2" aria-live="polite">
+          {loading && (
+            <li className="p-4 text-center text-sm text-slate-500" role="status">
+              Searching…
+            </li>
+          )}
           {error && <li className="p-4 text-sm text-red-600">{error}</li>}
           {!loading && !error && results.length === 0 && (
             <li className="p-8 text-center text-sm text-slate-500">No customers found</li>
@@ -110,6 +134,12 @@ export function CustomerLookupModal({
                     <span className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
                       <Gift className="h-3 w-3" />
                       {formatCurrency(c.creditBalance, currency)}
+                    </span>
+                  )}
+                  {c.loyaltyPoints > 0 && (
+                    <span className="flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                      <Heart className="h-3 w-3" />
+                      {c.loyaltyPoints} pts
                     </span>
                   )}
                   {c.onAccountEnabled && (

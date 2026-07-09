@@ -1,40 +1,60 @@
 import { requireAppAccess } from "@/lib/require-app-access";
 import { createClient } from "@/lib/supabase/server";
+import { parsePaginatedRpc } from "@/lib/hr/mutations";
+import { INVENTORY_PAGE_SIZE, type InventoryLevelPageRow } from "@/lib/scm/types";
 import { InventoryClient } from "./inventory-client";
 
-export default async function InventoryPage() {
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string; store?: string }>;
+}) {
+  const params = await searchParams;
   const ctx = await requireAppAccess("inventory");
+  const orgId = ctx.organization.id;
 
   const supabase = await createClient();
   const { data: stores } = await supabase
     .from("stores")
     .select("id, name")
-    .eq("organization_id", ctx.organization.id)
+    .eq("organization_id", orgId)
     .eq("is_active", true);
 
-  const storeId = stores?.[0]?.id;
-  let inventory: unknown[] = [];
+  const storeList = stores ?? [];
+  const storeId =
+    storeList.find((s) => s.id === params.store)?.id ?? storeList[0]?.id ?? "";
+  const page = Math.max(1, Number(params.page) || 1);
+  const search = params.q?.trim() || "";
 
+  let inventoryParsed = { items: [] as InventoryLevelPageRow[], total_count: 0 };
   if (storeId) {
-    const { data } = await supabase
-      .from("inventory_levels")
-      .select(
-        "id, quantity, variant_id, product_variants(id, name, barcode, products(name, sell_price, reorder_point))"
-      )
-      .eq("store_id", storeId);
-    inventory = (data as unknown as InventoryRow[]) ?? [];
+    const { data } = await supabase.rpc("list_inventory_levels_page", {
+      p_org_id: orgId,
+      p_store_id: storeId,
+      p_search: search || null,
+      p_limit: INVENTORY_PAGE_SIZE,
+      p_offset: (page - 1) * INVENTORY_PAGE_SIZE,
+    });
+    inventoryParsed = parsePaginatedRpc<InventoryLevelPageRow>(data);
   }
 
   return (
     <InventoryClient
-      organizationId={ctx.organization.id}
-      stores={stores ?? []}
-      initialInventory={inventory as InventoryRow[]}
+      organizationId={orgId}
+      stores={storeList}
+      storeId={storeId}
+      inventory={inventoryParsed.items}
+      inventoryTotal={inventoryParsed.total_count}
+      page={page}
+      pageSize={INVENTORY_PAGE_SIZE}
+      search={search}
       canManage={ctx.canManageApp("inventory")}
+      currency={ctx.organization.currency ?? "USD"}
     />
   );
 }
 
+/** @deprecated Use InventoryLevelPageRow from @/lib/scm/types */
 export type InventoryRow = {
   id: string;
   quantity: number;

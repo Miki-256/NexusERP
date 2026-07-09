@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { storePosSession, type PosStaffSession } from "@/lib/pos-session";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Store, Delete, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -99,7 +99,7 @@ export function StaffLogin({
             Ask your manager to add POS staff in Team settings.
           </p>
           <Button asChild variant="outline" className="mt-6">
-            <Link href="/login">Manager login</Link>
+            <Link href="/dashboard">Manager login</Link>
           </Button>
         </div>
       </main>
@@ -122,8 +122,8 @@ export function StaffLogin({
           </div>
         </div>
         <Button asChild variant="ghost" size="sm" className="text-white/80 hover:bg-white/10 hover:text-white">
-          <Link href="/login">
-            <LogOut className="mr-1.5 h-4 w-4" />
+          <Link href="/dashboard" aria-label="Manager login">
+            <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
             Manager
           </Link>
         </Button>
@@ -139,11 +139,13 @@ export function StaffLogin({
           </div>
 
           {!selected ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3" role="listbox" aria-label="Select staff member">
               {staff.map((s) => (
                 <button
                   key={s.id}
                   type="button"
+                  role="option"
+                  aria-label={`Sign in as ${s.display_name}, ${s.role}`}
                   onClick={() => {
                     setSelected(s);
                     setPin("");
@@ -185,8 +187,7 @@ export function StaffLogin({
                 ))}
               </div>
 
-              <Input
-                type="password"
+              <PasswordInput
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={pin}
@@ -194,28 +195,32 @@ export function StaffLogin({
                 className="mb-5 rounded-xl text-center text-2xl tracking-[0.5em] text-slate-900"
                 placeholder="••••"
                 autoFocus
+                aria-label="PIN entry"
+                toggleLabel="Show PIN"
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
 
-              <div className="mb-5 grid grid-cols-3 gap-2">
+              <div className="mb-5 grid grid-cols-3 gap-2" role="group" aria-label="PIN keypad">
                 {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"].map((key) =>
                   key === "" ? (
-                    <div key="spacer" />
+                    <div key="spacer" aria-hidden />
                   ) : key === "del" ? (
                     <button
                       key="del"
                       type="button"
                       onClick={backspace}
-                      className="pos-pin-key flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
+                      aria-label="Delete last digit"
+                      className="pos-pin-key flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
                     >
-                      <Delete className="h-5 w-5" />
+                      <Delete className="h-5 w-5" aria-hidden />
                     </button>
                   ) : (
                     <button
                       key={key}
                       type="button"
                       onClick={() => appendDigit(key)}
-                      className="pos-pin-key rounded-xl border border-slate-200 bg-white text-xl font-bold text-slate-900"
+                      aria-label={`Digit ${key}`}
+                      className="pos-pin-key min-h-11 rounded-xl border border-slate-200 bg-white text-xl font-bold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
                     >
                       {key}
                     </button>
@@ -223,11 +228,16 @@ export function StaffLogin({
                 )}
               </div>
 
-              {error && <p className="mb-4 text-center text-sm font-medium text-red-600">{error}</p>}
+              {error && (
+                <p className="mb-4 text-center text-sm font-medium text-red-600" role="alert">
+                  {error}
+                </p>
+              )}
 
               <Button
                 className="h-14 w-full cursor-pointer rounded-xl bg-pos-primary text-base font-bold text-white hover:bg-pos-primary-dark"
                 disabled={loading || pin.length < 4}
+                aria-busy={loading}
                 onClick={submit}
               >
                 {loading ? "Signing in…" : "Enter"}

@@ -37,6 +37,7 @@
     --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
     --shadow-md: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.04);
     --shadow-lg: 0 4px 6px -1px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.04);
+    --mobile-nav-height: 3.25rem;
   }
 
   .dark {
@@ -116,6 +117,25 @@
       min-height: 44px;
       min-width: 44px;
     }
+  }
+
+  /* Tenant shell — reserve space for fixed bottom nav + home indicator */
+  .pb-mobile-nav {
+    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+  }
+
+  @media (min-width: 1024px) {
+    .pb-mobile-nav {
+      padding-bottom: 0;
+    }
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .enterprise-panel-header {

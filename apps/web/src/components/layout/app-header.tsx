@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Bell,
   Check,
   ChevronDown,
   Menu,
@@ -30,6 +29,7 @@ import { useTheme } from "@/components/theme/theme-provider";
 import { useShell } from "@/components/layout/shell-context";
 import { CommandPalette, useCommandPalette } from "@/components/layout/command-palette";
 import { OrgSwitcher } from "@/components/layout/org-switcher";
+import { NotificationInbox } from "@/components/notifications/notification-inbox";
 import { createClient } from "@/lib/supabase/client";
 import type { WorkspaceSummary } from "@/lib/active-org";
 import { cn } from "@/lib/utils";
@@ -71,7 +71,7 @@ export function AppHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="shrink-0 lg:hidden"
+          className="touch-target shrink-0 lg:hidden"
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
         >
@@ -152,9 +152,7 @@ export function AppHeader({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="ghost" size="icon" aria-label="Notifications">
-            <Bell className="h-4 w-4" />
-          </Button>
+          <NotificationInbox organizationId={activeOrganizationId} />
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>

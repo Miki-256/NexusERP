@@ -24,6 +24,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { groupByField } from "@/lib/finance-aggregates";
 import { ChartCard, FinanceBarChart, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts";
@@ -31,9 +33,10 @@ import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Building2, FileText, Package, Truck } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
+import { PurchasingScmPanel } from "@/components/scm/purchasing-scm-panel";
 import type { VendorRow, PORow, BillRow, VariantOption } from "./page";
 
-type Tab = "orders" | "vendors" | "bills";
+type Tab = "orders" | "planning" | "vendors" | "bills";
 type DraftLine = { variantId: string; productName: string; quantity: string; unitCost: string };
 
 export function PurchasingClient({
@@ -281,6 +284,7 @@ export function PurchasingClient({
           <TabBar
             tabs={[
               { key: "orders" as const, label: "Purchase Orders" },
+              ...(canManage ? [{ key: "planning" as const, label: "MRP & requisitions" }] : []),
               { key: "vendors" as const, label: "Vendors" },
               { key: "bills" as const, label: "Vendor Bills" },
             ]}
@@ -327,6 +331,10 @@ export function PurchasingClient({
           )}
         </ChartCard>
       </div>
+
+      {tab === "planning" && canManage && (
+        <PurchasingScmPanel organizationId={organizationId} stores={stores} canManage={canManage} />
+      )}
 
       {tab === "orders" && (
         <>
@@ -459,6 +467,39 @@ export function PurchasingClient({
               />
             }
           >
+          <ResponsiveTableLayout
+            mobile={
+              purchaseOrders.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No purchase orders yet.</p>
+              ) : (
+                purchaseOrders.map((po) => (
+                  <MobileRecordCard key={po.id}>
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">{relationName(po.vendors) || "Vendor"}</p>
+                        <p className="text-xs text-muted-foreground">{po.order_date}</p>
+                      </div>
+                      <StatusBadge status={po.status} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <MobileRecordCardRow label="Store">{relationName(po.stores) || "—"}</MobileRecordCardRow>
+                      <MobileRecordCardRow label="Total">{money(po.total)}</MobileRecordCardRow>
+                    </div>
+                    {canManage && po.status === "ordered" && (
+                      <Button
+                        size="sm"
+                        className="mt-3 w-full"
+                        disabled={busy === po.id}
+                        onClick={() => receivePO(po.id)}
+                      >
+                        {busy === po.id ? "…" : "Receive"}
+                      </Button>
+                    )}
+                  </MobileRecordCard>
+                ))
+              )
+            }
+          >
           <DataTable>
             <table className="w-full">
               <DataTableHeader>
@@ -493,6 +534,7 @@ export function PurchasingClient({
               </DataTableBody>
             </table>
           </DataTable>
+          </ResponsiveTableLayout>
           </ReportSection>
         </>
       )}

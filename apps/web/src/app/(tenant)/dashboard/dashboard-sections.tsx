@@ -1,4 +1,5 @@
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import type { ErpAppId } from "@/lib/app-permissions";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { pctChange } from "@/lib/finance-dates";
@@ -13,12 +14,10 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
-import { MetricBarChart, ActivityTimeline } from "@/components/charts/metric-bar-chart";
-import { SalesTrendChart } from "@/components/charts/sales-trend-chart";
-import { DashboardFinancialCharts } from "@/components/charts/dashboard-financial-charts";
 import { ReportSection, StatementTable } from "@/components/finance/report-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -34,6 +33,30 @@ import {
   Wallet,
 } from "lucide-react";
 import type { DashboardBundle } from "./dashboard-bundle";
+
+function ChartSkeleton({ className }: { className?: string }) {
+  return <Skeleton className={className ?? "h-80 rounded-lg"} />;
+}
+
+const SalesTrendChart = dynamic(
+  () => import("@/components/charts/sales-trend-chart").then((m) => m.SalesTrendChart),
+  { loading: () => <ChartSkeleton /> }
+);
+
+const DashboardFinancialCharts = dynamic(
+  () => import("@/components/charts/dashboard-financial-charts").then((m) => m.DashboardFinancialCharts),
+  { loading: () => <ChartSkeleton className="h-64 rounded-lg" /> }
+);
+
+const MetricBarChart = dynamic(
+  () => import("@/components/charts/metric-bar-chart").then((m) => m.MetricBarChart),
+  { loading: () => <ChartSkeleton className="h-40 rounded-lg" /> }
+);
+
+const ActivityTimeline = dynamic(
+  () => import("@/components/charts/metric-bar-chart").then((m) => m.ActivityTimeline),
+  { loading: () => <ChartSkeleton className="h-48 rounded-lg" /> }
+);
 
 export function DashboardKpis({
   bundle,

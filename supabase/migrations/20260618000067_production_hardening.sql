@@ -8,6 +8,7 @@ DROP POLICY IF EXISTS payments_all ON public.payments;
 DROP POLICY IF EXISTS payments_select ON public.payments;
 DROP POLICY IF EXISTS payments_write ON public.payments;
 
+DROP POLICY IF EXISTS payments_select ON public.payments;
 CREATE POLICY payments_select ON public.payments FOR SELECT
   USING (public.user_has_org_access(organization_id));
 
@@ -20,12 +21,14 @@ DROP POLICY IF EXISTS inventory_insert ON public.inventory_levels;
 DROP POLICY IF EXISTS inventory_update ON public.inventory_levels;
 DROP POLICY IF EXISTS inventory_delete ON public.inventory_levels;
 
+DROP POLICY IF EXISTS inventory_insert ON public.inventory_levels;
 CREATE POLICY inventory_insert ON public.inventory_levels FOR INSERT
   WITH CHECK (
     public.user_has_org_access(organization_id)
     AND public.user_can_manage(organization_id)
   );
 
+DROP POLICY IF EXISTS inventory_update ON public.inventory_levels;
 CREATE POLICY inventory_update ON public.inventory_levels FOR UPDATE
   USING (
     public.user_has_org_access(organization_id)
@@ -36,6 +39,7 @@ CREATE POLICY inventory_update ON public.inventory_levels FOR UPDATE
     AND public.user_can_manage(organization_id)
   );
 
+DROP POLICY IF EXISTS inventory_delete ON public.inventory_levels;
 CREATE POLICY inventory_delete ON public.inventory_levels FOR DELETE
   USING (
     public.user_has_org_access(organization_id)

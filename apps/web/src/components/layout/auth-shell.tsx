@@ -17,7 +17,7 @@ export function AuthShell({
   busyMessage?: string;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <main className="safe-area-top safe-area-bottom flex min-h-[100dvh] items-center justify-center bg-muted/30 p-4 sm:p-6">
       <div className="w-full max-w-[400px] animate-fade-in">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-5 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-foreground text-sm font-bold text-background">

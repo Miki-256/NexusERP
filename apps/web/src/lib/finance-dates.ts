@@ -72,3 +72,66 @@ export function priorBalanceSheetDate(asOf: string, periodFrom: string): string 
   const prior = priorPeriod(periodFrom, asOf);
   return prior.to;
 }
+
+/** Calendar date YYYY-MM-DD for `date` in an IANA timezone (e.g. Africa/Addis_Ababa). */
+export function calendarDateInTimeZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(date);
+}
+
+/**
+ * UTC instants for [start, end] of a calendar day in `timeZone`.
+ * Use for timestamptz DB filters (gte from, lte to).
+ */
+export function utcDayRangeForCalendarDate(
+  ymd: string,
+  timeZone: string
+): { from: string; to: string } {
+  const start = zonedLocalToUtc(ymd, 0, 0, 0, 0, timeZone);
+  const end = zonedLocalToUtc(ymd, 23, 59, 59, 999, timeZone);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+/** Map local wall-clock in `timeZone` to the corresponding UTC instant. */
+function zonedLocalToUtc(
+  ymd: string,
+  hour: number,
+  minute: number,
+  second: number,
+  ms: number,
+  timeZone: string
+): Date {
+  const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
+  let guess = Date.UTC(y, m - 1, d, hour, minute, second, ms);
+
+  for (let i = 0; i < 4; i++) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(guess));
+
+    const pick = (type: string) =>
+      parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+
+    const actual = Date.UTC(
+      pick("year"),
+      pick("month") - 1,
+      pick("day"),
+      pick("hour"),
+      pick("minute"),
+      pick("second"),
+      0
+    );
+    const target = Date.UTC(y, m - 1, d, hour, minute, second, ms);
+    const delta = target - actual;
+    if (delta === 0) break;
+    guess += delta;
+  }
+
+  return new Date(guess);
+}

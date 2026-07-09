@@ -27,8 +27,10 @@ ALTER TABLE customer_credit_note_lines
   ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(14,2) NOT NULL DEFAULT 0;
 
 ALTER TABLE tax_codes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tax_codes_select ON tax_codes;
 CREATE POLICY tax_codes_select ON tax_codes FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS tax_codes_write ON tax_codes;
 CREATE POLICY tax_codes_write ON tax_codes FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
@@ -84,20 +86,26 @@ ALTER TABLE bank_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_statements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bank_statement_lines ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS bank_accounts_select ON bank_accounts;
 CREATE POLICY bank_accounts_select ON bank_accounts FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS bank_accounts_write ON bank_accounts;
 CREATE POLICY bank_accounts_write ON bank_accounts FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS bank_statements_select ON bank_statements;
 CREATE POLICY bank_statements_select ON bank_statements FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS bank_statements_write ON bank_statements;
 CREATE POLICY bank_statements_write ON bank_statements FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS bank_stmt_lines_select ON bank_statement_lines;
 CREATE POLICY bank_stmt_lines_select ON bank_statement_lines FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS bank_stmt_lines_write ON bank_statement_lines;
 CREATE POLICY bank_stmt_lines_write ON bank_statement_lines FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));

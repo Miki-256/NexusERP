@@ -1,9 +1,18 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { POST_AUTH_BOOTSTRAP_PATH } from "@/lib/post-auth-path";
+import { ACTIVE_ORG_COOKIE } from "@/lib/active-org";
+import { resolveBootstrapDestination } from "@/lib/workspace-bootstrap";
 import { LoginForm } from "./login-form";
 import { AuthPageSkeleton } from "@/components/ui/loading";
+
+const ORG_COOKIE_OPTIONS = {
+  path: "/",
+  maxAge: 60 * 60 * 24 * 365,
+  httpOnly: true,
+  sameSite: "lax" as const,
+};
 
 export default async function LoginPage({
   searchParams,
@@ -25,7 +34,13 @@ export default async function LoginPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (user) {
-    redirect(POST_AUTH_BOOTSTRAP_PATH);
+    const cookieStore = await cookies();
+    const activeOrgId = cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null;
+    const destination = await resolveBootstrapDestination(supabase, activeOrgId);
+    if (destination.orgCookie) {
+      cookieStore.set(ACTIVE_ORG_COOKIE, destination.orgCookie, ORG_COOKIE_OPTIONS);
+    }
+    redirect(destination.path);
   }
 
   const params = await searchParams;

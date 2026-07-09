@@ -15,19 +15,20 @@ const PRIMARY_LINKS = [
 
 export function MobileBottomNav({ accessibleAppIds }: { accessibleAppIds: string[] }) {
   const pathname = usePathname();
-  const { setMobileOpen } = useShell();
+  const { setMobileOpen, mobileOpen } = useShell();
   const allowed = new Set(accessibleAppIds);
 
   const links = PRIMARY_LINKS.filter((l) => allowed.has(l.appId));
 
-  if (links.length === 0) return null;
+  if (links.length === 0 || mobileOpen) return null;
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur-md lg:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       aria-label="Primary navigation"
     >
-      <div className="mx-auto flex max-w-lg items-stretch justify-around">
+      <div className="mx-auto flex max-w-lg items-stretch justify-around" style={{ minHeight: "var(--mobile-nav-height)" }}>
         {links.map(({ href, label, icon: Icon, match }) => {
           const active = match(pathname);
           return (
@@ -35,22 +36,22 @@ export function MobileBottomNav({ accessibleAppIds }: { accessibleAppIds: string
               key={href}
               href={href}
               className={cn(
-                "flex min-h-[52px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium transition-colors",
+                "touch-target flex min-h-[var(--mobile-nav-height)] min-w-[4rem] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-medium transition-colors active:scale-95",
                 active ? "text-primary" : "text-muted-foreground"
               )}
             >
-              <Icon className={cn("h-5 w-5", active && "stroke-[2.5]")} />
-              <span>{label}</span>
+              <Icon className={cn("h-5 w-5 shrink-0", active && "stroke-[2.5]")} />
+              <span className="truncate">{label}</span>
             </Link>
           );
         })}
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="flex min-h-[52px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium text-muted-foreground"
+          className="touch-target flex min-h-[var(--mobile-nav-height)] min-w-[4rem] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-medium text-muted-foreground active:scale-95"
           aria-label="Open full menu"
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-5 w-5 shrink-0" />
           <span>Menu</span>
         </button>
       </div>

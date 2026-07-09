@@ -18,6 +18,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { PAGE_SHELL } from "@/lib/ui-classes";
 import { Pencil, Plus, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
@@ -137,6 +139,42 @@ export function DocumentsClient({
         </FormCard>
       )}
 
+      <ResponsiveTableLayout
+        mobile={
+          documents.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No documents.</p>
+          ) : (
+            documents.map((d) => (
+              <MobileRecordCard key={d.id}>
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <p className="font-semibold">{d.name}</p>
+                  {d.url ? (
+                    <a href={d.url} target="_blank" rel="noreferrer" className="shrink-0 text-sm text-primary hover:underline">
+                      Open
+                    </a>
+                  ) : null}
+                </div>
+                <div className="space-y-1.5">
+                  <MobileRecordCardRow label="Added">{new Date(d.created_at).toLocaleDateString()}</MobileRecordCardRow>
+                  {Array.isArray(d.tags) && d.tags.length > 0 && (
+                    <MobileRecordCardRow label="Tags">{d.tags.join(", ")}</MobileRecordCardRow>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => openEdit(d)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                  <ConfirmDeleteButton
+                    message="Remove this document link permanently?"
+                    onConfirm={() => deleteDoc(d.id, d.name)}
+                  />
+                </div>
+              </MobileRecordCard>
+            ))
+          )
+        }
+      >
       <DataTable>
         <table className="w-full">
           <DataTableHeader>
@@ -186,6 +224,7 @@ export function DocumentsClient({
           </DataTableBody>
         </table>
       </DataTable>
+      </ResponsiveTableLayout>
     </div>
   );
 }

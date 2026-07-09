@@ -10,6 +10,7 @@ import { isBrowserOnline } from "@/lib/offline/network";
 import { ZReportPrint, type ZReportData } from "./z-report-print";
 import { downloadShiftCsv } from "@/lib/pos/shift-export";
 import { X, Printer, Download } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 type ShiftSummary = {
   sessionId: string;
@@ -150,6 +151,8 @@ export function CloseShiftModal({
     onClosed();
   }
 
+  const panelRef = usePosModal(onClose, !printReport);
+
   if (printReport) {
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto bg-white p-6">
@@ -159,20 +162,37 @@ export function CloseShiftModal({
   }
 
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="pos-modal-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-close-shift-title"
+        className="pos-modal-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+      >
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
-            <h2 className="pos-heading text-lg font-bold text-white">Close shift · Z-report</h2>
+            <h2 id="pos-close-shift-title" className="pos-heading text-lg font-bold text-white">
+              Close shift · Z-report
+            </h2>
             <p className="text-xs text-white/70">{registerName} · {storeName}</p>
           </div>
-          <button type="button" onClick={onClose} className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10">
-            <X className="h-5 w-5" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close close shift dialog"
+          >
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {loading && <p className="text-sm text-slate-500">Loading shift summary…</p>}
+          {loading && (
+            <p className="text-sm text-slate-500" role="status" aria-busy="true">
+              Loading shift summary…
+            </p>
+          )}
           {error && !summary && <p className="text-sm text-red-600">{error}</p>}
 
           {summary && (

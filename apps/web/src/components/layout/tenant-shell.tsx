@@ -30,7 +30,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
       )}
       <div
         className={cn(
-          "relative mx-auto max-w-[1400px] p-3 pb-20 transition-all duration-300 ease-out sm:p-5 sm:pb-5 lg:p-7",
+          "relative mx-auto max-w-[1400px] p-3 pb-mobile-nav transition-all duration-300 ease-out sm:p-5 lg:p-7",
           isNavigating && "scale-[0.998] opacity-60"
         )}
       >

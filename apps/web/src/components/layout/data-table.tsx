@@ -17,10 +17,11 @@ export function DataTable({
   toolbar?: React.ReactNode;
 }) {
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
-      {toolbar && <div className="border-b border-border bg-muted/40 px-4 py-3">{toolbar}</div>}
-      <div className="overflow-x-auto scrollbar-thin">
-          <div className="relative min-w-0 flex-1">{children}</div>
+    <div className={cn("group/table overflow-hidden rounded-lg border border-border bg-card", className)}>
+      {toolbar && <div className="border-b border-border bg-muted/40 px-3 py-3 sm:px-4">{toolbar}</div>}
+      <div className="relative overflow-x-auto overscroll-x-contain scrollbar-thin [-webkit-overflow-scrolling:touch]">
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-6 bg-gradient-to-l from-card/90 to-transparent lg:hidden" aria-hidden />
+        <div className="relative min-w-0 flex-1">{children}</div>
       </div>
     </div>
   );

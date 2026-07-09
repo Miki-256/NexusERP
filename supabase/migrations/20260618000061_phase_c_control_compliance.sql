@@ -48,14 +48,18 @@ CREATE INDEX IF NOT EXISTS idx_fiscal_periods_org ON fiscal_periods(organization
 ALTER TABLE fiscal_years ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fiscal_periods ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS fiscal_years_select ON fiscal_years;
 CREATE POLICY fiscal_years_select ON fiscal_years FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS fiscal_years_write ON fiscal_years;
 CREATE POLICY fiscal_years_write ON fiscal_years FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));
 
+DROP POLICY IF EXISTS fiscal_periods_select ON fiscal_periods;
 CREATE POLICY fiscal_periods_select ON fiscal_periods FOR SELECT
   USING (organization_id IN (SELECT public.user_organization_ids()));
+DROP POLICY IF EXISTS fiscal_periods_write ON fiscal_periods;
 CREATE POLICY fiscal_periods_write ON fiscal_periods FOR ALL
   USING (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id))
   WITH CHECK (organization_id IN (SELECT public.user_organization_ids()) AND public.user_can_manage(organization_id));

@@ -223,6 +223,7 @@ export interface Database {
           email: string;
           role: "owner" | "manager" | "cashier";
           store_ids: string[] | null;
+          department_role_ids: string[];
           invited_by: string;
           accepted_at: string | null;
           created_at: string;
@@ -563,6 +564,291 @@ export interface Database {
         };
         Returns: undefined;
       };
+      list_stock_movements: {
+        Args: {
+          p_org_id: string;
+          p_store_id?: string | null;
+          p_variant_id?: string | null;
+          p_movement_type?: string | null;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      list_inventory_levels_page: {
+        Args: {
+          p_org_id: string;
+          p_store_id: string;
+          p_search?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      list_warehouses: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      list_storage_locations: {
+        Args: { p_warehouse_id: string; p_parent_id?: string | null };
+        Returns: Json;
+      };
+      upsert_storage_location: {
+        Args: {
+          p_warehouse_id: string;
+          p_code: string;
+          p_name: string;
+          p_location_type?: string;
+          p_parent_id?: string | null;
+          p_is_pickable?: boolean;
+          p_is_receivable?: boolean;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      get_product_detail: {
+        Args: { p_product_id: string };
+        Returns: Json;
+      };
+      update_product_extended: {
+        Args: { p_product_id: string; p_fields: Json };
+        Returns: undefined;
+      };
+      update_org_inventory_settings: {
+        Args: { p_org_id: string; p_costing_method: string };
+        Returns: undefined;
+      };
+      upsert_product_variant: {
+        Args: {
+          p_product_id: string;
+          p_name: string;
+          p_sku?: string | null;
+          p_barcode?: string | null;
+          p_sell_price?: number | null;
+          p_cost_price?: number | null;
+          p_variant_id?: string | null;
+        };
+        Returns: string;
+      };
+      upsert_product_barcode: {
+        Args: {
+          p_variant_id: string;
+          p_barcode: string;
+          p_barcode_type?: string;
+          p_is_primary?: boolean;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      list_inventory_lots: {
+        Args: {
+          p_org_id: string;
+          p_store_id?: string | null;
+          p_variant_id?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      set_product_lot_tracking: {
+        Args: { p_product_id: string; p_track_lots: boolean };
+        Returns: undefined;
+      };
+      place_quality_hold: {
+        Args: {
+          p_org_id: string;
+          p_store_id: string;
+          p_variant_id: string;
+          p_reason: string;
+          p_lot_id?: string | null;
+        };
+        Returns: string;
+      };
+      release_quality_hold: { Args: { p_hold_id: string }; Returns: undefined };
+      list_quality_holds: {
+        Args: { p_org_id: string; p_store_id?: string | null; p_active_only?: boolean };
+        Returns: Json;
+      };
+      create_cycle_count_session: {
+        Args: { p_org_id: string; p_store_id: string; p_name: string; p_notes?: string | null };
+        Returns: string;
+      };
+      record_cycle_count_line: {
+        Args: {
+          p_session_id: string;
+          p_variant_id: string;
+          p_counted_qty: number;
+          p_notes?: string | null;
+        };
+        Returns: undefined;
+      };
+      finalize_cycle_count: { Args: { p_session_id: string }; Returns: Json };
+      list_cycle_count_sessions: {
+        Args: { p_org_id: string; p_store_id?: string | null; p_limit?: number };
+        Returns: Json;
+      };
+      get_cycle_count_session: { Args: { p_session_id: string }; Returns: Json };
+      run_mrp: { Args: { p_org_id: string; p_store_id?: string | null }; Returns: Json };
+      list_mrp_suggestions: {
+        Args: {
+          p_org_id: string;
+          p_store_id?: string | null;
+          p_include_dismissed?: boolean;
+        };
+        Returns: Json;
+      };
+      dismiss_mrp_suggestion: { Args: { p_suggestion_id: string }; Returns: undefined };
+      create_purchase_requisition: {
+        Args: {
+          p_org_id: string;
+          p_store_id: string;
+          p_title: string;
+          p_lines: Json;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      create_requisition_from_mrp: {
+        Args: { p_org_id: string; p_store_id: string; p_suggestion_ids: string[] };
+        Returns: string;
+      };
+      convert_requisition_to_po: { Args: { p_requisition_id: string }; Returns: string };
+      list_purchase_requisitions: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      list_location_balances: {
+        Args: {
+          p_org_id: string;
+          p_store_id?: string | null;
+          p_location_id?: string | null;
+          p_variant_id?: string | null;
+          p_limit?: number;
+        };
+        Returns: Json;
+      };
+      putaway_stock: {
+        Args: {
+          p_org_id: string;
+          p_store_id: string;
+          p_variant_id: string;
+          p_from_location_id: string;
+          p_to_location_id: string;
+          p_quantity: number;
+          p_lot_id?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      sync_default_location_balances: {
+        Args: { p_org_id: string; p_store_id: string };
+        Returns: number;
+      };
+      create_fulfillment_order: {
+        Args: {
+          p_org_id: string;
+          p_store_id: string;
+          p_lines: Json;
+          p_ship_to_name?: string | null;
+          p_ship_to_phone?: string | null;
+          p_ship_to_address?: string | null;
+          p_priority?: string;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      release_fulfillment_order: { Args: { p_order_id: string }; Returns: undefined };
+      pick_fulfillment_line: {
+        Args: { p_line_id: string; p_location_id: string; p_quantity: number };
+        Returns: undefined;
+      };
+      complete_fulfillment_pick: { Args: { p_order_id: string }; Returns: undefined };
+      pack_fulfillment_order: { Args: { p_order_id: string }; Returns: undefined };
+      ship_fulfillment_order: {
+        Args: {
+          p_order_id: string;
+          p_carrier?: string | null;
+          p_tracking_number?: string | null;
+          p_weight_kg?: number | null;
+        };
+        Returns: string;
+      };
+      list_fulfillment_orders: {
+        Args: {
+          p_org_id: string;
+          p_store_id?: string | null;
+          p_status?: string | null;
+          p_limit?: number;
+        };
+        Returns: Json;
+      };
+      get_fulfillment_order: { Args: { p_order_id: string }; Returns: Json };
+      resolve_location_by_barcode: {
+        Args: { p_org_id: string; p_barcode: string };
+        Returns: Json;
+      };
+      scm_dashboard_stats: {
+        Args: { p_org_id: string; p_store_id?: string | null };
+        Returns: Json;
+      };
+      inventory_abc_analysis: {
+        Args: { p_org_id: string; p_store_id?: string | null; p_days?: number };
+        Returns: Json;
+      };
+      inventory_valuation_report: {
+        Args: { p_org_id: string; p_store_id?: string | null };
+        Returns: Json;
+      };
+      inventory_aging_report: {
+        Args: { p_org_id: string; p_store_id?: string | null; p_limit?: number };
+        Returns: Json;
+      };
+      inventory_movement_summary: {
+        Args: { p_org_id: string; p_from: string; p_to: string; p_store_id?: string | null };
+        Returns: Json;
+      };
+      capture_inventory_snapshot: {
+        Args: { p_org_id: string; p_store_id?: string | null; p_snapshot_date?: string };
+        Returns: number;
+      };
+      run_inventory_forecast: {
+        Args: {
+          p_org_id: string;
+          p_store_id?: string | null;
+          p_horizon_days?: number;
+          p_history_days?: number;
+        };
+        Returns: Json;
+      };
+      list_inventory_forecast: {
+        Args: { p_org_id: string; p_run_id?: string | null; p_limit?: number };
+        Returns: Json;
+      };
+      upsert_ecommerce_channel: {
+        Args: {
+          p_org_id: string;
+          p_name: string;
+          p_channel_type?: string;
+          p_store_id?: string | null;
+          p_config?: Json;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      list_ecommerce_channels: { Args: { p_org_id: string }; Returns: Json };
+      upsert_ecommerce_product_mapping: {
+        Args: {
+          p_channel_id: string;
+          p_variant_id: string;
+          p_external_sku?: string | null;
+          p_external_id?: string | null;
+          p_sync_inventory?: boolean;
+        };
+        Returns: string;
+      };
+      sync_ecommerce_inventory: { Args: { p_channel_id: string }; Returns: Json };
       dashboard_stats: {
         Args: { p_organization_id: string; p_store_id?: string | null };
         Returns: Json;
@@ -746,6 +1032,357 @@ export interface Database {
         Args: { p_org_id: string };
         Returns: number;
       };
+      get_organization_team_members: {
+        Args: { p_org_id: string };
+        Returns: {
+          id: string;
+          user_id: string;
+          email: string;
+          display_name: string;
+          role: "owner" | "manager" | "cashier";
+          is_active: boolean;
+          created_at: string;
+        }[];
+      };
+      update_organization_member: {
+        Args: {
+          p_member_id: string;
+          p_role?: "owner" | "manager" | "cashier";
+          p_is_active?: boolean;
+        };
+        Returns: undefined;
+      };
+      user_can_manage_hr: {
+        Args: { p_org_id: string };
+        Returns: boolean;
+      };
+      my_employee_id: {
+        Args: { p_org_id: string };
+        Returns: string | null;
+      };
+      list_hr_employees: {
+        Args: {
+          p_org_id: string;
+          p_search?: string | null;
+          p_status?: "active" | "on_leave" | "terminated" | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: { items: Json; total_count: number };
+      };
+      list_timeoff_employees: {
+        Args: { p_org_id: string };
+        Returns: { id: string; name: string }[];
+      };
+      list_leave_requests: {
+        Args: {
+          p_org_id: string;
+          p_status?: "pending" | "approved" | "rejected" | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: { items: Json; total_count: number };
+      };
+      list_job_positions: {
+        Args: {
+          p_org_id: string;
+          p_search?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: { items: Json; total_count: number };
+      };
+      list_job_applicants: {
+        Args: {
+          p_org_id: string;
+          p_status?: "new" | "interview" | "offer" | "hired" | "refused" | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: { items: Json; total_count: number };
+      };
+      submit_leave_request: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_start_date: string;
+          p_end_date: string;
+          p_reason?: string | null;
+          p_leave_type_id?: string | null;
+        };
+        Returns: string;
+      };
+      review_leave_request: {
+        Args: {
+          p_request_id: string;
+          p_status: "pending" | "approved" | "rejected";
+        };
+        Returns: undefined;
+      };
+      link_employee_to_user: {
+        Args: { p_employee_id: string; p_user_id: string | null };
+        Returns: undefined;
+      };
+      list_org_units: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_org_unit: {
+        Args: {
+          p_org_id: string;
+          p_id?: string | null;
+          p_parent_id?: string | null;
+          p_unit_type?: "company" | "business_unit" | "division" | "region" | "branch" | "department" | "team";
+          p_code?: string | null;
+          p_name?: string | null;
+          p_description?: string | null;
+          p_manager_employee_id?: string | null;
+          p_sort_order?: number;
+        };
+        Returns: string;
+      };
+      get_org_chart: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      ensure_default_hr_org: {
+        Args: { p_org_id: string };
+        Returns: undefined;
+      };
+      sync_analytic_departments_to_org: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      get_employee_360: {
+        Args: { p_employee_id: string };
+        Returns: Json;
+      };
+      save_employee_360: {
+        Args: {
+          p_employee_id: string;
+          p_employee?: Json;
+          p_profile?: Json;
+          p_dependents?: Json | null;
+        };
+        Returns: undefined;
+      };
+      upsert_employee_document: {
+        Args: {
+          p_employee_id: string;
+          p_name: string;
+          p_document_type?: string;
+          p_url?: string | null;
+          p_mime_type?: string | null;
+          p_expires_at?: string | null;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      approve_workflow_step: {
+        Args: {
+          p_entity_type: string;
+          p_entity_id: string;
+          p_approved: boolean;
+          p_notes?: string | null;
+        };
+        Returns: Json;
+      };
+      get_leave_workflow_status: {
+        Args: { p_leave_id: string };
+        Returns: Json;
+      };
+      list_job_requisitions: {
+        Args: {
+          p_org_id: string;
+          p_status?: "draft" | "pending_approval" | "approved" | "rejected" | "posted" | "cancelled" | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      upsert_job_requisition: {
+        Args: {
+          p_org_id: string;
+          p_id?: string | null;
+          p_title?: string | null;
+          p_department?: string | null;
+          p_org_unit_id?: string | null;
+          p_headcount?: number;
+          p_employment_type?: "full_time" | "part_time" | "contract";
+          p_justification?: string | null;
+        };
+        Returns: string;
+      };
+      submit_job_requisition: {
+        Args: { p_requisition_id: string };
+        Returns: string;
+      };
+      publish_job_requisition: {
+        Args: { p_requisition_id: string };
+        Returns: string;
+      };
+      get_applicant_pipeline: {
+        Args: { p_applicant_id: string };
+        Returns: Json;
+      };
+      schedule_applicant_interview: {
+        Args: {
+          p_applicant_id: string;
+          p_scheduled_at: string;
+          p_duration_minutes?: number;
+          p_interviewer_employee_id?: string | null;
+          p_location_or_link?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      save_interview_scorecard: {
+        Args: {
+          p_interview_id: string;
+          p_status?: "scheduled" | "completed" | "cancelled" | "no_show";
+          p_scorecard?: Json;
+          p_notes?: string | null;
+        };
+        Returns: undefined;
+      };
+      upsert_job_offer: {
+        Args: {
+          p_applicant_id: string;
+          p_salary: number;
+          p_start_date: string;
+          p_employment_type?: "full_time" | "part_time" | "contract";
+          p_offer_letter_url?: string | null;
+          p_notes?: string | null;
+          p_status?: "draft" | "sent" | "accepted" | "declined" | "withdrawn";
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      hire_applicant: {
+        Args: {
+          p_applicant_id: string;
+          p_base_salary?: number | null;
+          p_hire_date?: string | null;
+          p_org_unit_id?: string | null;
+          p_send_erp_invite?: boolean;
+          p_invite_role?: "owner" | "manager" | "cashier";
+          p_department_role_ids?: string[];
+        };
+        Returns: Json;
+      };
+      list_onboarding_tasks: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_status?: "pending" | "in_progress" | "completed" | "skipped" | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      update_onboarding_task: {
+        Args: {
+          p_task_id: string;
+          p_status?: "pending" | "in_progress" | "completed" | "skipped";
+          p_notes?: string | null;
+        };
+        Returns: undefined;
+      };
+      list_leave_types: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      get_employee_leave_balances: {
+        Args: { p_org_id: string; p_employee_id?: string | null; p_year?: number | null };
+        Returns: Json;
+      };
+      sync_leave_balances_for_org: {
+        Args: { p_org_id: string; p_year?: number | null };
+        Returns: number;
+      };
+      list_holiday_dates: {
+        Args: { p_org_id: string; p_year?: number | null };
+        Returns: Json;
+      };
+      upsert_holiday_date: {
+        Args: {
+          p_org_id: string;
+          p_name: string;
+          p_holiday_date: string;
+          p_is_recurring?: boolean;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      list_work_shifts: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_work_shift: {
+        Args: {
+          p_org_id: string;
+          p_name: string;
+          p_start_time: string;
+          p_end_time: string;
+          p_break_minutes?: number;
+          p_grace_minutes_late?: number;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      list_shift_assignments: {
+        Args: {
+          p_org_id: string;
+          p_from_date?: string | null;
+          p_to_date?: string | null;
+          p_employee_id?: string | null;
+        };
+        Returns: Json;
+      };
+      assign_employee_shift: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_shift_id: string;
+          p_assignment_date: string;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      get_my_attendance_status: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      clock_in: {
+        Args: {
+          p_org_id: string;
+          p_method?: "web" | "qr" | "gps" | "manual";
+          p_lat?: number | null;
+          p_lng?: number | null;
+          p_store_id?: string | null;
+        };
+        Returns: string;
+      };
+      clock_out: {
+        Args: {
+          p_org_id: string;
+          p_method?: "web" | "qr" | "gps" | "manual";
+          p_lat?: number | null;
+          p_lng?: number | null;
+        };
+        Returns: string;
+      };
+      list_attendance_records: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_from_date?: string | null;
+          p_to_date?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
       create_purchase_order: {
         Args: {
           p_org_id: string;
@@ -758,7 +1395,7 @@ export interface Database {
         Returns: string;
       };
       receive_purchase_order: {
-        Args: { p_po_id: string };
+        Args: { p_po_id: string; p_receipt_lines?: Json | null };
         Returns: string;
       };
       pay_vendor_bill: {
@@ -793,15 +1430,432 @@ export interface Database {
           p_period_start: string;
           p_period_end: string;
           p_payment_method: "cash" | "mobile_money" | "bank_transfer";
-          p_lines: {
-            employeeId: string;
-            gross: number;
-            allowances: number;
-            deductions: number;
-            tax: number;
-          }[];
+          p_lines?: Json | null;
         };
         Returns: string;
+      };
+      calculate_payroll_preview: {
+        Args: { p_org_id: string; p_employee_ids?: string[] | null };
+        Returns: Json;
+      };
+      list_pay_components: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      create_payroll_draft: {
+        Args: {
+          p_org_id: string;
+          p_period_start: string;
+          p_period_end: string;
+          p_payment_method?: "cash" | "mobile_money" | "bank_transfer";
+          p_employee_ids?: string[] | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      submit_payroll_run: {
+        Args: { p_run_id: string };
+        Returns: string;
+      };
+      approve_payroll_run: {
+        Args: { p_run_id: string };
+        Returns: undefined;
+      };
+      post_payroll_run: {
+        Args: { p_run_id: string };
+        Returns: string;
+      };
+      cancel_payroll_run: {
+        Args: { p_run_id: string };
+        Returns: undefined;
+      };
+      get_payroll_run_detail: {
+        Args: { p_run_id: string };
+        Returns: Json;
+      };
+      list_my_payslips: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      export_payroll_bank_file: {
+        Args: { p_run_id: string };
+        Returns: string;
+      };
+      list_skills: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_skill: {
+        Args: {
+          p_org_id: string;
+          p_code: string;
+          p_name: string;
+          p_category?: string | null;
+          p_skill_id?: string | null;
+        };
+        Returns: string;
+      };
+      list_employee_skills: {
+        Args: { p_org_id: string; p_employee_id: string };
+        Returns: Json;
+      };
+      set_employee_skill: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_skill_id: string;
+          p_proficiency?: "beginner" | "intermediate" | "advanced" | "expert";
+          p_years_experience?: number | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      list_performance_goals: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_status?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      create_performance_goal: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_title: string;
+          p_description?: string | null;
+          p_target_date?: string | null;
+          p_weight?: number;
+          p_cycle_id?: string | null;
+        };
+        Returns: string;
+      };
+      update_goal_progress: {
+        Args: { p_goal_id: string; p_progress_pct: number; p_status?: string | null };
+        Returns: undefined;
+      };
+      list_my_goals: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      list_review_cycles: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      create_review_cycle: {
+        Args: {
+          p_org_id: string;
+          p_name: string;
+          p_period_start: string;
+          p_period_end: string;
+        };
+        Returns: string;
+      };
+      activate_review_cycle: {
+        Args: { p_cycle_id: string };
+        Returns: number;
+      };
+      list_performance_reviews: {
+        Args: {
+          p_org_id: string;
+          p_cycle_id?: string | null;
+          p_status?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      get_performance_review: {
+        Args: { p_review_id: string };
+        Returns: Json;
+      };
+      list_my_performance_reviews: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      save_performance_review_self: {
+        Args: {
+          p_review_id: string;
+          p_self_comments?: string | null;
+          p_ratings?: Json | null;
+        };
+        Returns: undefined;
+      };
+      save_performance_review_manager: {
+        Args: {
+          p_review_id: string;
+          p_manager_comments?: string | null;
+          p_overall_rating?: number | null;
+          p_ratings?: Json | null;
+        };
+        Returns: undefined;
+      };
+      submit_performance_review: {
+        Args: { p_review_id: string; p_as_manager?: boolean };
+        Returns: string;
+      };
+      approve_performance_review: {
+        Args: { p_review_id: string };
+        Returns: undefined;
+      };
+      list_training_courses: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_training_course: {
+        Args: {
+          p_org_id: string;
+          p_code: string;
+          p_name: string;
+          p_provider?: string | null;
+          p_duration_hours?: number | null;
+          p_mandatory?: boolean;
+          p_course_id?: string | null;
+        };
+        Returns: string;
+      };
+      list_employee_training: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      record_employee_training: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_course_id: string;
+          p_status?: "planned" | "in_progress" | "completed" | "cancelled";
+          p_started_at?: string | null;
+          p_completed_at?: string | null;
+          p_score?: number | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      list_my_training: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      list_benefit_plans: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      list_benefit_enrollments: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_status?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      enroll_employee_benefit: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_plan_id: string;
+          p_coverage_level?: string | null;
+          p_effective_date?: string | null;
+          p_status?: "pending" | "active" | "waived" | "terminated";
+        };
+        Returns: string;
+      };
+      update_benefit_enrollment: {
+        Args: {
+          p_enrollment_id: string;
+          p_status: "pending" | "active" | "waived" | "terminated";
+          p_end_date?: string | null;
+        };
+        Returns: undefined;
+      };
+      list_my_benefits: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      list_hr_policies: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      list_pending_policies: {
+        Args: { p_org_id: string; p_employee_id?: string | null };
+        Returns: Json;
+      };
+      acknowledge_hr_policy: {
+        Args: { p_policy_id: string };
+        Returns: string;
+      };
+      list_policy_acknowledgements: {
+        Args: {
+          p_org_id: string;
+          p_policy_id?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      list_expiring_compliance_items: {
+        Args: { p_org_id: string; p_days_ahead?: number };
+        Returns: Json;
+      };
+      scan_hr_compliance_alerts: {
+        Args: { p_org_id: string; p_days_ahead?: number };
+        Returns: number;
+      };
+      get_hr_workforce_dashboard: {
+        Args: { p_org_id: string; p_from?: string | null; p_to?: string | null };
+        Returns: Json;
+      };
+      start_employee_offboarding: {
+        Args: { p_employee_id: string; p_last_working_date?: string | null; p_notes?: string | null };
+        Returns: Json;
+      };
+      list_offboarding_tasks: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_status?: "pending" | "in_progress" | "completed" | "skipped" | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      update_offboarding_task: {
+        Args: {
+          p_task_id: string;
+          p_status?: "pending" | "in_progress" | "completed" | "skipped" | null;
+          p_notes?: string | null;
+        };
+        Returns: undefined;
+      };
+      finalize_employee_offboarding: {
+        Args: { p_employee_id: string };
+        Returns: undefined;
+      };
+      list_my_offboarding_tasks: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      schedule_probation_review: {
+        Args: { p_employee_id: string; p_probation_end_date: string };
+        Returns: string;
+      };
+      list_probation_reviews: {
+        Args: {
+          p_org_id: string;
+          p_status?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      complete_probation_review: {
+        Args: {
+          p_review_id: string;
+          p_outcome: "pending" | "passed" | "extended" | "failed";
+          p_notes?: string | null;
+          p_extended_until?: string | null;
+        };
+        Returns: undefined;
+      };
+      create_employment_contract: {
+        Args: {
+          p_org_id: string;
+          p_employee_id: string;
+          p_title?: string | null;
+          p_start_date?: string | null;
+          p_end_date?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      renew_employment_contract: {
+        Args: { p_contract_id: string; p_new_end_date: string; p_notes?: string | null };
+        Returns: string;
+      };
+      list_employment_contracts: {
+        Args: {
+          p_org_id: string;
+          p_employee_id?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      list_contracts_due_for_renewal: {
+        Args: { p_org_id: string; p_days_ahead?: number };
+        Returns: Json;
+      };
+      scan_lifecycle_alerts: {
+        Args: { p_org_id: string; p_days_ahead?: number };
+        Returns: number;
+      };
+      list_hr_payroll_gl_mappings: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_hr_payroll_gl_mapping: {
+        Args: {
+          p_org_id: string;
+          p_mapping_key: string;
+          p_gl_account_code: string;
+          p_description?: string | null;
+        };
+        Returns: string;
+      };
+      export_hr_employees_csv: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      export_hr_leave_csv: {
+        Args: { p_org_id: string; p_from?: string | null; p_to?: string | null };
+        Returns: Json;
+      };
+      export_hr_payroll_csv: {
+        Args: { p_org_id: string; p_from?: string | null; p_to?: string | null };
+        Returns: Json;
+      };
+      export_hr_attendance_csv: {
+        Args: { p_org_id: string; p_from?: string | null; p_to?: string | null };
+        Returns: Json;
+      };
+      list_hr_webhook_endpoints: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_hr_webhook_endpoint: {
+        Args: {
+          p_org_id: string;
+          p_name: string;
+          p_url: string;
+          p_events?: string[] | null;
+          p_secret?: string | null;
+          p_is_active?: boolean | null;
+          p_id?: string | null;
+        };
+        Returns: string;
+      };
+      delete_hr_webhook_endpoint: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      list_hr_webhook_deliveries: {
+        Args: { p_org_id: string; p_limit?: number; p_offset?: number };
+        Returns: Json;
+      };
+      claim_hr_webhook_batch: {
+        Args: { p_limit?: number };
+        Returns: Json;
+      };
+      mark_hr_webhook_delivery: {
+        Args: { p_queue_id: string; p_success: boolean; p_error?: string | null };
+        Returns: undefined;
       };
       balance_sheet: {
         Args: { p_org_id: string; p_to?: string };

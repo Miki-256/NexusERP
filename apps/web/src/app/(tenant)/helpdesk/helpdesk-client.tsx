@@ -19,6 +19,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { relationName } from "@/lib/utils";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Pencil, Plus, X } from "lucide-react";
@@ -159,6 +161,42 @@ export function HelpdeskClient({
         </FormCard>
       )}
 
+      <ResponsiveTableLayout
+        mobile={
+          tickets.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No tickets.</p>
+          ) : (
+            tickets.map((t) => (
+              <MobileRecordCard key={t.id}>
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <p className="font-semibold">{t.subject}</p>
+                  <StatusBadge status={t.status} />
+                </div>
+                <div className="space-y-1.5">
+                  <MobileRecordCardRow label="Customer">
+                    {relationName(t.customers as { name: string } | { name: string }[] | null) || "—"}
+                  </MobileRecordCardRow>
+                  <MobileRecordCardRow label="Priority">
+                    <StatusBadge status={t.priority} />
+                  </MobileRecordCardRow>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => openEdit(t)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                  <ConfirmDeleteButton
+                    message="Delete this ticket permanently?"
+                    onConfirm={() => deleteTicket(t.id, t.subject)}
+                  />
+                  {t.status === "new" && <Button size="sm" variant="outline" onClick={() => advanceStatus(t.id, "in_progress")}>Start</Button>}
+                  {t.status === "in_progress" && <Button size="sm" onClick={() => advanceStatus(t.id, "resolved")}>Resolve</Button>}
+                </div>
+              </MobileRecordCard>
+            ))
+          )
+        }
+      >
       <DataTable>
         <table className="w-full">
           <DataTableHeader>
@@ -194,6 +232,7 @@ export function HelpdeskClient({
           </DataTableBody>
         </table>
       </DataTable>
+      </ResponsiveTableLayout>
     </div>
   );
 }

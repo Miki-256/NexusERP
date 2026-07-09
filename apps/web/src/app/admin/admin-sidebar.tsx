@@ -85,7 +85,7 @@ export function AdminMobileNav({ role }: { role: PlatformAdminRole }) {
             key={href}
             href={href}
             className={cn(
-              "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium",
+              "touch-target shrink-0 rounded-md px-3 py-2 text-xs font-medium",
               active ? "bg-primary/10 text-primary" : "text-muted-foreground"
             )}
           >

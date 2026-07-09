@@ -13,7 +13,6 @@ import {
   Pause,
   Play,
   ShoppingCart,
-  User,
   Clock,
   Hash,
   Search,
@@ -185,17 +184,17 @@ export function CartPanel({
 
   return (
     <aside
+      aria-label="Shopping cart"
       className={cn(
         "flex min-h-0 w-full flex-1 flex-col bg-white shadow-[-8px_0_32px_rgb(15_23_42/0.06)] lg:h-full lg:w-[var(--pos-cart-width)] lg:max-w-[var(--pos-cart-width)] lg:flex-none lg:shrink-0",
         className
       )}
     >
-      {/* Cart header — compact so line items get more room */}
-      <div className="pos-cart-header shrink-0 px-4 py-3">
+      <div className="pos-cart-header flex shrink-0 flex-col gap-2.5 px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
-              <ShoppingCart className="h-4 w-4 text-white" />
+              <ShoppingCart className="h-4 w-4 text-white" aria-hidden />
               {lines.length > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-pos-primary px-0.5 text-[9px] font-bold text-white">
                   {lines.reduce((s, l) => s + l.quantity, 0)}
@@ -205,10 +204,12 @@ export function CartPanel({
             <div className="min-w-0">
               <p className="pos-heading truncate text-sm font-semibold text-white">Current sale</p>
               <p className="flex items-center gap-1.5 text-[11px] text-white/70">
-                <Hash className="h-3 w-3 shrink-0" />
+                <Hash className="h-3 w-3 shrink-0" aria-hidden />
                 {orderNumber}
-                <span className="text-white/30">·</span>
-                <Clock className="h-3 w-3 shrink-0" />
+                <span className="text-white/30" aria-hidden>
+                  ·
+                </span>
+                <Clock className="h-3 w-3 shrink-0" aria-hidden />
                 {now}
               </p>
             </div>
@@ -218,10 +219,10 @@ export function CartPanel({
               <button
                 type="button"
                 onClick={onCloseMobile}
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-white/20 text-white/80 hover:bg-white/10 lg:hidden"
+                className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg border border-white/20 text-white/80 hover:bg-white/10 lg:hidden"
                 aria-label="Close cart"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" aria-hidden />
               </button>
             )}
             <Button
@@ -230,8 +231,9 @@ export function CartPanel({
               className="h-9 w-9 cursor-pointer text-white hover:bg-white/15 hover:text-white"
               onClick={onHold}
               title="Hold sale"
+              aria-label="Hold current sale"
             >
-              <Pause className="h-4 w-4" />
+              <Pause className="h-4 w-4" aria-hidden />
             </Button>
             {heldCount > 0 && (
               <Button
@@ -239,16 +241,16 @@ export function CartPanel({
                 size="sm"
                 className="h-9 cursor-pointer gap-1 border-white/25 bg-white/10 px-2 text-xs text-white hover:bg-white/20 hover:text-white"
                 onClick={onRecallHeld}
+                aria-label={`Recall held sale, ${heldCount} held`}
               >
-                <Play className="h-3.5 w-3.5" />
+                <Play className="h-3.5 w-3.5" aria-hidden />
                 {heldCount}
               </Button>
             )}
           </div>
         </div>
 
-        {/* Customer — single compact row */}
-        <div className="mt-2.5 space-y-1.5">
+        <div className="flex flex-col gap-1.5">
           <div className="flex gap-1.5">
             <Button
               type="button"
@@ -257,7 +259,7 @@ export function CartPanel({
               className="h-8 min-w-0 flex-1 cursor-pointer gap-1.5 truncate border-white/25 bg-white/10 px-2 text-xs text-white hover:bg-white/20"
               onClick={onCustomerLookup}
             >
-              <Search className="h-3.5 w-3.5 shrink-0" />
+              <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span className="truncate">{customerName || "Find customer (F5)"}</span>
             </Button>
             {customerName && (
@@ -266,8 +268,9 @@ export function CartPanel({
                 onClick={onClearCustomer}
                 className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/20 text-white/70 hover:bg-white/10"
                 title="Clear customer"
+                aria-label="Clear customer"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             )}
           </div>
@@ -275,12 +278,14 @@ export function CartPanel({
             <div className="flex gap-1.5">
               <Input
                 placeholder="Walk-in name"
+                aria-label="Walk-in customer name"
                 value={customerName}
                 onChange={(e) => onCustomerName(e.target.value)}
                 className="h-8 flex-1 rounded-lg border-white/20 bg-white/10 text-xs text-white placeholder:text-white/50"
               />
               <Input
                 placeholder="Phone"
+                aria-label="Walk-in customer phone"
                 value={customerPhone}
                 onChange={(e) => onCustomerPhone(e.target.value)}
                 className="h-8 w-[5.5rem] rounded-lg border-white/20 bg-white/10 text-xs text-white placeholder:text-white/50"
@@ -289,13 +294,13 @@ export function CartPanel({
           )}
           {customerCreditBalance != null && customerCreditBalance > 0 && (
             <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-200">
-              <Gift className="h-3 w-3" />
+              <Gift className="h-3 w-3" aria-hidden />
               Credit: {formatCurrency(customerCreditBalance, currency)}
             </p>
           )}
           {customerOnAccountEnabled ? (
             <p className="flex items-center gap-1 text-[11px] font-medium text-amber-200">
-              <Clock className="h-3 w-3" />
+              <Clock className="h-3 w-3" aria-hidden />
               {customerReceivableBalance != null && customerReceivableBalance > 0
                 ? `Owes ${formatCurrency(customerReceivableBalance, currency)}`
                 : customerCreditAvailable != null
@@ -308,13 +313,12 @@ export function CartPanel({
         </div>
       </div>
 
-      {/* Line items — flex-1 scroll area */}
-      <ul className="min-h-0 flex-1 overflow-y-auto bg-slate-50/50 p-3">
+      <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-slate-50/50 p-3">
         {lines.length === 0 ? (
-          <li className="flex h-full min-h-[120px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-white text-center">
-            <ShoppingCart className="mb-2 h-10 w-10 text-slate-200" />
+          <li className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-white text-center">
+            <ShoppingCart className="h-10 w-10 text-slate-200" aria-hidden />
             <p className="pos-heading text-sm font-semibold text-slate-500">Cart is empty</p>
-            <p className="mt-0.5 text-xs text-slate-400">Tap products to add items</p>
+            <p className="text-xs text-slate-400">Tap products to add items</p>
           </li>
         ) : (
           lines.map((line) => {
@@ -324,13 +328,13 @@ export function CartPanel({
             return (
               <li
                 key={line.variantId}
-                className="pos-cart-item mb-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm"
+                className="pos-cart-item flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <p className="truncate text-sm font-bold text-slate-900">{line.productName}</p>
                     {stockWarn && (
-                      <p className="mt-0.5 text-[11px] font-semibold text-amber-700">{stockWarn}</p>
+                      <p className="text-[11px] font-semibold text-amber-700">{stockWarn}</p>
                     )}
                     {line.variantName && line.variantName !== "Default" && (
                       <p className="truncate text-[11px] font-medium text-slate-500">{line.variantName}</p>
@@ -344,24 +348,26 @@ export function CartPanel({
                   </p>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                     <button
                       type="button"
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center text-slate-600 transition-colors hover:bg-white"
+                      className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center text-slate-600 transition-colors hover:bg-white"
                       onClick={() => onUpdateQty(line.variantId, line.quantity - 1)}
+                      aria-label="Decrease quantity"
                     >
-                      <Minus className="h-3.5 w-3.5" />
+                      <Minus className="h-4 w-4" aria-hidden />
                     </button>
-                    <span className="min-w-[2rem] text-center font-mono text-sm font-bold">
+                    <span className="min-w-[2.5rem] text-center font-mono text-sm font-bold">
                       {line.quantity}
                     </span>
                     <button
                       type="button"
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center text-slate-600 transition-colors hover:bg-white"
+                      className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center text-slate-600 transition-colors hover:bg-white"
                       onClick={() => onUpdateQty(line.variantId, line.quantity + 1)}
+                      aria-label="Increase quantity"
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="h-4 w-4" aria-hidden />
                     </button>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -371,6 +377,7 @@ export function CartPanel({
                       max={lineGross(line)}
                       step="0.01"
                       placeholder="Disc."
+                      aria-label={`Line discount for ${line.productName}`}
                       title={`Line discount (max ${formatCurrency(lineGross(line), currency)})`}
                       className="h-9 w-14 rounded-lg text-xs"
                       value={line.discountAmount || ""}
@@ -383,10 +390,11 @@ export function CartPanel({
                     />
                     <button
                       type="button"
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50"
+                      className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50"
                       onClick={() => onRemove(line.variantId)}
+                      aria-label="Remove item"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
                   </div>
                 </div>
@@ -396,36 +404,34 @@ export function CartPanel({
         )}
       </ul>
 
-      {/* Summary + checkout — compact footer */}
-      <div className="shrink-0 border-t border-slate-200 bg-white p-3">
-        <div className="flex items-center justify-between text-sm">
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-medium text-slate-600">
-            <span>
-              Subtotal{" "}
-              <span className="tabular-nums text-slate-900">{formatCurrency(subtotal, currency)}</span>
-            </span>
-            <span>
-              Tax{" "}
-              <span className="tabular-nums text-slate-900">{formatCurrency(tax, currency)}</span>
-            </span>
-            {(cartDiscount > 0 || promoDiscount > 0) && (
-              <span className="text-emerald-700">
-                Disc{" "}
-                <span className="tabular-nums">
-                  −{formatCurrency(cartDiscount + promoDiscount, currency)}
-                </span>
+      <div className="flex shrink-0 flex-col gap-2.5 border-t border-slate-200 bg-white p-3">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-medium text-slate-600">
+          <span>
+            Subtotal{" "}
+            <span className="tabular-nums text-slate-900">{formatCurrency(subtotal, currency)}</span>
+          </span>
+          <span>
+            Tax <span className="tabular-nums text-slate-900">{formatCurrency(tax, currency)}</span>
+          </span>
+          {(cartDiscount > 0 || promoDiscount > 0) && (
+            <span className="text-emerald-700">
+              Disc{" "}
+              <span className="tabular-nums">
+                −{formatCurrency(cartDiscount + promoDiscount, currency)}
               </span>
-            )}
-          </div>
+            </span>
+          )}
         </div>
 
         <button
           type="button"
           onClick={() => setShowAdjustments((v) => !v)}
-          className="mt-2 flex w-full cursor-pointer items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-100"
+          aria-expanded={showAdjustments}
+          aria-controls="cart-adjustments-panel"
+          className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
         >
           <span className="flex items-center gap-1.5">
-            <Tag className="h-3.5 w-3.5" />
+            <Tag className="h-3.5 w-3.5" aria-hidden />
             Discounts & promo
             {hasAdjustments && (
               <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
@@ -434,14 +440,17 @@ export function CartPanel({
             )}
           </span>
           {showAdjustments ? (
-            <ChevronUp className="h-4 w-4 shrink-0" />
+            <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />
           ) : (
-            <ChevronDown className="h-4 w-4 shrink-0" />
+            <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
           )}
         </button>
 
         {showAdjustments && (
-          <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 text-sm">
+          <div
+            id="cart-adjustments-panel"
+            className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 text-sm"
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-slate-600">Order discount</span>
               <div className="flex items-center gap-1.5">
@@ -449,6 +458,8 @@ export function CartPanel({
                   <button
                     type="button"
                     onClick={() => switchOrderDiscountMode("percent")}
+                    aria-pressed={orderDiscountMode === "percent"}
+                    aria-label="Order discount as percentage"
                     className={cn(
                       "cursor-pointer rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
                       orderDiscountMode === "percent"
@@ -461,6 +472,8 @@ export function CartPanel({
                   <button
                     type="button"
                     onClick={() => switchOrderDiscountMode("amount")}
+                    aria-pressed={orderDiscountMode === "amount"}
+                    aria-label={`Order discount as ${currency} amount`}
                     className={cn(
                       "cursor-pointer rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
                       orderDiscountMode === "amount"
@@ -477,6 +490,11 @@ export function CartPanel({
                   max={orderDiscountMode === "percent" ? 100 : undefined}
                   step={orderDiscountMode === "percent" ? 0.5 : 0.01}
                   placeholder={orderDiscountMode === "percent" ? "0" : "0.00"}
+                  aria-label={
+                    orderDiscountMode === "percent"
+                      ? "Order discount percentage"
+                      : "Order discount amount"
+                  }
                   className="h-8 w-20 rounded-lg text-right text-xs"
                   value={orderDiscountInput}
                   onChange={(e) => applyOrderDiscount(e.target.value, orderDiscountMode)}
@@ -489,7 +507,7 @@ export function CartPanel({
               </p>
             )}
             {onApplyPromo && (
-              <div className="space-y-1.5 border-t border-slate-200 pt-2">
+              <div className="flex flex-col gap-1.5 border-t border-slate-200 pt-2">
                 {promoCode ? (
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -509,7 +527,7 @@ export function CartPanel({
                           className="cursor-pointer rounded p-0.5 text-slate-400 hover:text-slate-600"
                           aria-label="Remove promotion"
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <X className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       )}
                     </div>
@@ -518,6 +536,7 @@ export function CartPanel({
                   <div className="flex gap-1.5">
                     <Input
                       placeholder="Promo code"
+                      aria-label="Promotion code"
                       value={promoInput}
                       onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                       className="h-8 flex-1 rounded-lg text-xs uppercase"
@@ -529,13 +548,18 @@ export function CartPanel({
                       size="sm"
                       className="h-8 shrink-0 cursor-pointer px-2.5 text-xs"
                       disabled={promoBusy || !promoInput.trim() || lines.length === 0}
+                      aria-busy={promoBusy}
                       onClick={() => onApplyPromo(promoInput.trim())}
                     >
                       {promoBusy ? "…" : "Apply"}
                     </Button>
                   </div>
                 )}
-                {promoError && <p className="text-[11px] text-red-600">{promoError}</p>}
+                {promoError && (
+                  <p className="text-[11px] text-red-600" role="alert">
+                    {promoError}
+                  </p>
+                )}
               </div>
             )}
             {lines.length > 0 && (
@@ -552,7 +576,7 @@ export function CartPanel({
           </div>
         )}
 
-        <div className="mt-2.5 flex items-baseline justify-between rounded-xl bg-pos-primary-soft-8 px-3 py-2">
+        <div className="flex items-baseline justify-between rounded-xl bg-pos-primary-soft-8 px-3 py-2">
           <span className="text-xs font-semibold text-slate-600">Total due</span>
           <span className="pos-heading text-2xl font-bold tabular-nums tracking-tight text-pos-primary">
             {formatCurrency(total, currency)}
@@ -564,7 +588,7 @@ export function CartPanel({
           disabled={lines.length === 0}
           onClick={onCheckout}
           className={cn(
-            "pos-checkout-btn mt-2.5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-bold text-white",
+            "pos-checkout-btn touch-target flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-xl text-base font-bold text-white",
             "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           )}
         >

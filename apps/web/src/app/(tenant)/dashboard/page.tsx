@@ -1,11 +1,12 @@
 import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { getMemberPermissions } from "@/lib/org-context";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AppsLauncher } from "@/components/layout/apps-launcher";
+import { DashboardPageSkeleton } from "@/components/ui/loading";
 import { ShoppingCart, FileSpreadsheet } from "lucide-react";
 import type { ErpAppId } from "@/lib/app-permissions";
 import {
@@ -17,7 +18,12 @@ import {
 } from "./dashboard-sections";
 import { loadDashboardBundle } from "./dashboard-bundle";
 
-function DashboardSkeleton() {
+const AppsLauncher = dynamic(
+  () => import("@/components/layout/apps-launcher").then((m) => m.AppsLauncher),
+  { loading: () => <Skeleton className="h-48 rounded-lg" /> }
+);
+
+function DashboardDataSkeleton() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -70,7 +76,7 @@ async function DashboardBody({
   );
 }
 
-export default async function DashboardPage() {
+async function DashboardPageContent() {
   const ctx = await getMemberPermissions();
   if (!ctx) redirect("/onboarding");
 
@@ -107,7 +113,7 @@ export default async function DashboardPage() {
         }
       />
 
-      <Suspense fallback={<DashboardSkeleton />}>
+      <Suspense fallback={<DashboardDataSkeleton />}>
         <DashboardBody
           orgId={orgId}
           currency={currency}
@@ -120,5 +126,13 @@ export default async function DashboardPage() {
         <AppsLauncher accessibleAppIds={Array.from(ctx.accessibleApps)} compact />
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardPageSkeleton />}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

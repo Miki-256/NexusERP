@@ -21,6 +21,17 @@ export type ProductFormValues = {
   storeId: string;
   initialQty: string;
   isActive: boolean;
+  trackLots: boolean;
+  lifecycleStatus: string;
+  description: string;
+  baseUomCode: string;
+  weightKg: string;
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+  hsCode: string;
+  countryOfOrigin: string;
+  shelfLifeDays: string;
 };
 
 const emptyValues: ProductFormValues = {
@@ -34,6 +45,17 @@ const emptyValues: ProductFormValues = {
   storeId: "",
   initialQty: "0",
   isActive: true,
+  trackLots: false,
+  lifecycleStatus: "active",
+  description: "",
+  baseUomCode: "ea",
+  weightKg: "",
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
+  hsCode: "",
+  countryOfOrigin: "",
+  shelfLifeDays: "",
 };
 
 function mergeValues(
@@ -56,6 +78,7 @@ export function ProductForm({
   stores,
   showStockFields,
   showActiveToggle,
+  showExtendedFields,
   initialValues,
   existingImageUrl,
   onSubmit,
@@ -70,6 +93,7 @@ export function ProductForm({
   stores: { id: string; name: string }[];
   showStockFields?: boolean;
   showActiveToggle?: boolean;
+  showExtendedFields?: boolean;
   initialValues?: Partial<ProductFormValues>;
   existingImageUrl?: string | null;
   onSubmit: (values: ProductFormValues, imageFile: File | null, removeImage: boolean) => void;
@@ -255,6 +279,75 @@ export function ProductForm({
               <Label htmlFor={`product-active-${formKey}`} className="cursor-pointer font-normal">
                 Active (visible in POS)
               </Label>
+            </div>
+          )}
+
+          {showExtendedFields && (
+            <div className="rounded-lg border p-4 sm:col-span-2 space-y-4">
+              <p className="text-sm font-semibold">Product master data</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Lifecycle</Label>
+                  <select
+                    className={SELECT_CLS}
+                    value={values.lifecycleStatus}
+                    onChange={(e) => setField("lifecycleStatus", e.target.value)}
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                    <option value="discontinued">Discontinued</option>
+                    <option value="obsolete">Obsolete</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Base UOM</Label>
+                  <Input value={values.baseUomCode} onChange={(e) => setField("baseUomCode", e.target.value)} placeholder="ea" />
+                </div>
+                <div className="flex items-center gap-2 sm:col-span-2">
+                  <input
+                    id={`track-lots-${formKey}`}
+                    type="checkbox"
+                    checked={values.trackLots}
+                    onChange={(e) => setField("trackLots", e.target.checked)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <Label htmlFor={`track-lots-${formKey}`} className="cursor-pointer font-normal">
+                    Track lots / batches (auto-create on PO receipt)
+                  </Label>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Description</Label>
+                  <Input value={values.description} onChange={(e) => setField("description", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Weight (kg)</Label>
+                  <Input type="number" step="0.0001" min="0" value={values.weightKg} onChange={(e) => setField("weightKg", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Shelf life (days)</Label>
+                  <Input type="number" min="0" value={values.shelfLifeDays} onChange={(e) => setField("shelfLifeDays", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Length (cm)</Label>
+                  <Input type="number" step="0.01" min="0" value={values.lengthCm} onChange={(e) => setField("lengthCm", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Width (cm)</Label>
+                  <Input type="number" step="0.01" min="0" value={values.widthCm} onChange={(e) => setField("widthCm", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Height (cm)</Label>
+                  <Input type="number" step="0.01" min="0" value={values.heightCm} onChange={(e) => setField("heightCm", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>HS code</Label>
+                  <Input value={values.hsCode} onChange={(e) => setField("hsCode", e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Country of origin</Label>
+                  <Input value={values.countryOfOrigin} onChange={(e) => setField("countryOfOrigin", e.target.value)} />
+                </div>
+              </div>
             </div>
           )}
 

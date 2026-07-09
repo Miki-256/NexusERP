@@ -31,6 +31,7 @@ import {
   DoorClosed,
   Wrench,
 } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 export function PosToolsMenu({
   registerId,
@@ -63,14 +64,11 @@ export function PosToolsMenu({
   const [autoReturn, setAutoReturn] = useState(() => getPosAutoReturn(registerId));
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const panelRef = usePosModal(onClose, mounted);
 
   useEffect(() => {
     setMounted(true);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    return () => setMounted(false);
   }, []);
 
   function saveEscPos() {
@@ -107,6 +105,7 @@ export function PosToolsMenu({
     >
       <div className="flex min-h-full items-end justify-center sm:items-center sm:p-4">
         <div
+          ref={panelRef}
           className="pos-modal-panel w-full max-w-md rounded-t-2xl bg-white text-slate-900 shadow-2xl sm:rounded-2xl"
           role="dialog"
           aria-modal="true"

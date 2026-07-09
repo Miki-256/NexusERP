@@ -272,30 +272,33 @@ export function Sidebar({
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-[60] lg:hidden">
           <button
             type="button"
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           />
-          <aside className="absolute left-0 top-0 flex h-full w-72 flex-col bg-sidebar text-sidebar-foreground shadow-elevated-lg animate-slide-in-from-left">
-            <div className="flex items-center justify-end border-b border-sidebar-border p-2">
+          <aside className="absolute left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-[min(18rem,85vw)] flex-col bg-sidebar text-sidebar-foreground shadow-elevated-lg animate-slide-in-from-left safe-area-top">
+            <div className="flex shrink-0 items-center justify-end border-b border-sidebar-border p-2">
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-2 text-sidebar-muted hover:bg-white/5 hover:text-white"
+                className="touch-target rounded-lg p-2 text-sidebar-muted hover:bg-white/5 hover:text-white"
+                aria-label="Close menu"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <SidebarInner
-              orgName={orgName}
-              userId={userId}
-              navApps={navApps}
-              collapsed={false}
-              onNavigate={() => setMobileOpen(false)}
-            />
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom,0px)]">
+              <SidebarInner
+                orgName={orgName}
+                userId={userId}
+                navApps={navApps}
+                collapsed={false}
+                onNavigate={() => setMobileOpen(false)}
+              />
+            </div>
           </aside>
         </div>
       )}

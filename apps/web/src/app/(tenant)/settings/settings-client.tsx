@@ -26,6 +26,10 @@ type Org = {
   pos_mobile_pending_webhook: boolean;
   pos_tips_enabled: boolean;
   pos_tip_presets: number[] | string;
+  pos_loyalty_enabled: boolean;
+  pos_loyalty_points_per: number;
+  pos_loyalty_spend_per_point: number;
+  pos_loyalty_min_redeem_points: number;
   je_requires_approval: boolean;
   address: string | null;
   tax_id: string | null;
@@ -59,6 +63,14 @@ export function SettingsClient({
   const [tipsEnabled, setTipsEnabled] = useState(organization.pos_tips_enabled ?? false);
   const [tipPresetsInput, setTipPresetsInput] = useState(
     formatTipPresetsInput(organization.pos_tip_presets)
+  );
+  const [loyaltyEnabled, setLoyaltyEnabled] = useState(organization.pos_loyalty_enabled ?? false);
+  const [loyaltyPointsPer, setLoyaltyPointsPer] = useState(String(organization.pos_loyalty_points_per ?? 1));
+  const [loyaltySpendPerPoint, setLoyaltySpendPerPoint] = useState(
+    String(organization.pos_loyalty_spend_per_point ?? 0.1)
+  );
+  const [loyaltyMinRedeem, setLoyaltyMinRedeem] = useState(
+    String(organization.pos_loyalty_min_redeem_points ?? 100)
   );
   const [loading, setLoading] = useState(false);
 
@@ -122,6 +134,10 @@ export function SettingsClient({
       pos_mobile_pending_webhook: mobilePendingWebhook,
       pos_tips_enabled: tipsEnabled,
       pos_tip_presets: parseTipPresetsInput(tipPresetsInput),
+      pos_loyalty_enabled: loyaltyEnabled,
+      pos_loyalty_points_per: parseFloat(loyaltyPointsPer) || 1,
+      pos_loyalty_spend_per_point: parseFloat(loyaltySpendPerPoint) || 0.1,
+      pos_loyalty_min_redeem_points: parseInt(loyaltyMinRedeem, 10) || 100,
     }).eq("id", organization.id);
     setLoading(false);
     if (error) return toast({ title: "Save failed", description: error.message, variant: "destructive" });
@@ -285,6 +301,58 @@ export function SettingsClient({
               <p className="text-xs text-muted-foreground">
                 Comma-separated percentages shown as quick-select buttons at checkout.
               </p>
+            </div>
+          )}
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={loyaltyEnabled}
+              onChange={(e) => setLoyaltyEnabled(e.target.checked)}
+              disabled={!isOwner}
+              className="mt-0.5 rounded border-input"
+            />
+            <span>
+              <span className="font-medium">Loyalty program at POS</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Customers earn points on merchandise purchases and can redeem them as payment at checkout.
+              </span>
+            </span>
+          </label>
+          {loyaltyEnabled && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Points per {currency} spent</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={loyaltyPointsPer}
+                  onChange={(e) => setLoyaltyPointsPer(e.target.value)}
+                  disabled={!isOwner}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{currency} value per point</Label>
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={loyaltySpendPerPoint}
+                  onChange={(e) => setLoyaltySpendPerPoint(e.target.value)}
+                  disabled={!isOwner}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Minimum redeem (points)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={loyaltyMinRedeem}
+                  onChange={(e) => setLoyaltyMinRedeem(e.target.value)}
+                  disabled={!isOwner}
+                />
+              </div>
             </div>
           )}
           {isOwner && (

@@ -27,7 +27,8 @@ export default async function SettingsPage() {
     .select(
       `id, name, currency, tax_rate, tax_inclusive, receipt_prefix, receipt_footer,
        address, tax_id, pos_max_cashier_discount_pct, pos_auto_post_sales,
-       pos_mobile_pending_webhook, pos_tips_enabled, pos_tip_presets, je_requires_approval`
+       pos_mobile_pending_webhook, pos_tips_enabled, pos_tip_presets, je_requires_approval,
+       pos_loyalty_enabled, pos_loyalty_points_per, pos_loyalty_spend_per_point, pos_loyalty_min_redeem_points`
     )
     .eq("id", ctx.organization.id)
     .single();
@@ -48,6 +49,10 @@ export default async function SettingsPage() {
     pos_tips_enabled: org?.pos_tips_enabled ?? false,
     pos_tip_presets: parseTipPresets(org?.pos_tip_presets),
     je_requires_approval: org?.je_requires_approval ?? false,
+    pos_loyalty_enabled: org?.pos_loyalty_enabled ?? false,
+    pos_loyalty_points_per: Number(org?.pos_loyalty_points_per ?? 1),
+    pos_loyalty_spend_per_point: Number(org?.pos_loyalty_spend_per_point ?? 0.1),
+    pos_loyalty_min_redeem_points: org?.pos_loyalty_min_redeem_points ?? 100,
   };
 
   return (

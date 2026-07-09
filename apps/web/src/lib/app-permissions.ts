@@ -26,6 +26,7 @@ export const ALL_ERP_APP_IDS = [
   "stores",
   "team",
   "settings",
+  "communications",
 ] as const;
 
 export type ErpAppId = (typeof ALL_ERP_APP_IDS)[number];
@@ -58,6 +59,7 @@ export const ROUTE_TO_APP_ID: Record<string, ErpAppId> = {
   receivables: "receivables",
   products: "products",
   inventory: "inventory",
+  fulfillment: "inventory",
   purchasing: "purchasing",
   manufacturing: "manufacturing",
   promotions: "promotions",
@@ -70,6 +72,7 @@ export const ROUTE_TO_APP_ID: Record<string, ErpAppId> = {
   "time-off": "timeoff",
   projects: "projects",
   helpdesk: "helpdesk",
+  communications: "communications",
   stores: "stores",
   team: "team",
   settings: "settings",

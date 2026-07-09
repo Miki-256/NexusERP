@@ -21,6 +21,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Clock, History, Users } from "lucide-react";
@@ -239,6 +241,36 @@ export function ReceivablesClient({
       )}
 
       {tab === "balances" && (
+        <ResponsiveTableLayout
+          mobile={
+            receivables.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No outstanding balances.</p>
+            ) : (
+              receivables.map((r) => {
+                const cust = r.customers as { name: string | null; phone: string | null; credit_limit: number | null } | { name: string | null; phone: string | null; credit_limit: number | null }[] | null;
+                const limit = Array.isArray(cust) ? cust[0]?.credit_limit : cust?.credit_limit;
+                return (
+                  <MobileRecordCard key={r.id}>
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                      <p className="font-semibold">
+                        {relationName(cust as { name: string } | { name: string }[] | null) || "—"}
+                      </p>
+                      <p className="font-mono font-semibold text-amber-700">{money(Number(r.balance))}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <MobileRecordCardRow label="Phone">
+                        {Array.isArray(cust) ? cust[0]?.phone : cust?.phone || "—"}
+                      </MobileRecordCardRow>
+                      <MobileRecordCardRow label="Credit limit">
+                        {limit != null ? money(Number(limit)) : "Unlimited"}
+                      </MobileRecordCardRow>
+                    </div>
+                  </MobileRecordCard>
+                );
+              })
+            )
+          }
+        >
         <DataTable
           toolbar={
             <ExportCsvButton
@@ -297,9 +329,40 @@ export function ReceivablesClient({
             </DataTableBody>
           </table>
         </DataTable>
+        </ResponsiveTableLayout>
       )}
 
       {tab === "history" && (
+        <ResponsiveTableLayout
+          mobile={
+            transactions.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No transactions yet.</p>
+            ) : (
+              transactions.map((t) => (
+                <MobileRecordCard key={t.id}>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold">
+                        {relationName(t.customers as { name: string } | { name: string }[] | null) || "—"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {Number(t.amount) > 0 ? "Charge" : t.payment_method ? `Payment (${t.payment_method})` : "Adjustment"}
+                        {t.reason ? ` — ${t.reason}` : ""}
+                      </p>
+                    </div>
+                    <p className={`shrink-0 font-mono font-semibold ${Number(t.amount) > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                      {Number(t.amount) > 0 ? "+" : ""}
+                      {money(Number(t.amount))}
+                    </p>
+                  </div>
+                  <MobileRecordCardRow label="Date">
+                    {new Date(t.created_at).toLocaleString()}
+                  </MobileRecordCardRow>
+                </MobileRecordCard>
+              ))
+            )
+          }
+        >
         <DataTable
           toolbar={
             <ExportCsvButton
@@ -357,6 +420,7 @@ export function ReceivablesClient({
             </DataTableBody>
           </table>
         </DataTable>
+        </ResponsiveTableLayout>
       )}
     </div>
   );

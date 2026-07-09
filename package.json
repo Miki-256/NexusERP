@@ -22,11 +22,19 @@
     "month2:production": "node scripts/month2-production.mjs",
     "cron:process-queue": "bash scripts/cron-process-queue.sh",
     "db:push": "npx supabase@latest db push",
+    "setup:telegram": "node scripts/setup-telegram.mjs",
+    "flush:notifications": "node scripts/flush-notifications.mjs",
+    "repair:notifications": "node scripts/repair-notifications.mjs",
+    "db:notifications": "node scripts/apply-notification-migrations.mjs",
+    "vercel:telegram-env": "node scripts/set-vercel-telegram-env.mjs",
     "db:types": "npx supabase@latest gen types typescript --project-id vshtfxebkqmwhgrczqbb > apps/web/src/types/database.generated.ts",
     "load-test": "node scripts/load-test.mjs",
+    "load-test:notifications": "node scripts/notification-load-test.mjs",
     "load-test:pos:prepare": "node scripts/k6/prepare-pos-load.mjs",
     "load-test:pos": "k6 run scripts/k6/pos-concurrent-sales.js",
     "load-test:pos:node": "node scripts/k6/run-pos-load.mjs",
+    "audit:pos-a11y": "node scripts/pos-a11y-audit.mjs",
+    "audit:pos-a11y:install": "playwright install chromium",
     "deploy:preview": "npx vercel@latest deploy --yes",
     "deploy:live": "node scripts/deploy-live.mjs",
     "deploy:live:raw": "npx --yes vercel@latest deploy --prod --yes",
@@ -43,6 +51,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
+    "axe-core": "^4.12.1",
     "vitest": "^3.2.4"
   }
 }

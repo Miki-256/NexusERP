@@ -17,6 +17,7 @@ import {
 import { ROLE_LABELS, type UserProfile } from "@/lib/admin-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
@@ -211,9 +212,8 @@ export function UserProfileClient({
           <form onSubmit={resetPassword} className="max-w-md space-y-4">
             <div className="space-y-2">
               <Label htmlFor="admin-new-password">New password</Label>
-              <Input
+              <PasswordInput
                 id="admin-new-password"
-                type="password"
                 autoComplete="new-password"
                 minLength={8}
                 value={newPassword}
@@ -223,9 +223,8 @@ export function UserProfileClient({
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-confirm-password">Confirm password</Label>
-              <Input
+              <PasswordInput
                 id="admin-confirm-password"
-                type="password"
                 autoComplete="new-password"
                 minLength={8}
                 value={confirmPassword}

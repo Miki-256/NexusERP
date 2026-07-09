@@ -40,6 +40,10 @@ type RegisterContext = {
   pos_max_cashier_discount_pct?: number;
   pos_tips_enabled?: boolean;
   pos_tip_presets?: number[];
+  pos_loyalty_enabled?: boolean;
+  pos_loyalty_points_per?: number;
+  pos_loyalty_spend_per_point?: number;
+  pos_loyalty_min_redeem_points?: number;
   staff: PosStaffOption[];
 };
 
@@ -58,6 +62,7 @@ export function PosKiosk({ registerId }: { registerId: string }) {
   const [offlineMode, setOfflineMode] = useState(false);
   const [context, setContext] = useState<RegisterContext | null>(null);
   const [catalog, setCatalog] = useState<PosCatalogItem[]>([]);
+  const [catalogTruncated, setCatalogTruncated] = useState(false);
   const [openSession, setOpenSession] = useState<OpenSession>(null);
 
   const [staffSession, setStaffSession] = useState<PosStaffSession | null>(null);
@@ -115,6 +120,11 @@ export function PosKiosk({ registerId }: { registerId: string }) {
     const boot = bootstrap as RegisterContext & {
       staff: { id: string; display_name: string; role: string }[];
       catalog: PosCatalogItem[];
+      catalog_truncated?: boolean;
+      pos_loyalty_enabled?: boolean;
+      pos_loyalty_points_per?: number;
+      pos_loyalty_spend_per_point?: number;
+      pos_loyalty_min_redeem_points?: number;
       open_session: OpenSession;
     };
 
@@ -132,6 +142,10 @@ export function PosKiosk({ registerId }: { registerId: string }) {
       pos_max_cashier_discount_pct: boot.pos_max_cashier_discount_pct,
       pos_tips_enabled: boot.pos_tips_enabled,
       pos_tip_presets: boot.pos_tip_presets,
+      pos_loyalty_enabled: boot.pos_loyalty_enabled,
+      pos_loyalty_points_per: boot.pos_loyalty_points_per,
+      pos_loyalty_spend_per_point: boot.pos_loyalty_spend_per_point,
+      pos_loyalty_min_redeem_points: boot.pos_loyalty_min_redeem_points,
       staff: boot.staff.map((s) => ({
         id: s.id,
         display_name: s.display_name,
@@ -143,6 +157,7 @@ export function PosKiosk({ registerId }: { registerId: string }) {
 
     setContext(nextContext);
     setCatalog(nextCatalog);
+    setCatalogTruncated(Boolean(boot.catalog_truncated));
     setOpenSession(nextSession);
     setLoadState("ready");
 
@@ -297,6 +312,7 @@ export function PosKiosk({ registerId }: { registerId: string }) {
       orgName={context.org_name}
       receiptFooter={context.receipt_footer}
       catalog={catalog}
+      catalogTruncated={catalogTruncated}
       openSession={openSession}
       posStaffSession={staffSession}
       onStaffSignOut={handleSignOut}
@@ -307,6 +323,10 @@ export function PosKiosk({ registerId }: { registerId: string }) {
       maxCashierDiscountPct={context.pos_max_cashier_discount_pct ?? 15}
       tipsEnabled={context.pos_tips_enabled ?? false}
       tipPresets={normalizeTipPresets(context.pos_tip_presets)}
+      loyaltyEnabled={context.pos_loyalty_enabled ?? false}
+      loyaltyPointsPer={context.pos_loyalty_points_per ?? 1}
+      loyaltySpendPerPoint={context.pos_loyalty_spend_per_point ?? 0.1}
+      loyaltyMinRedeemPoints={context.pos_loyalty_min_redeem_points ?? 100}
     />
   );
 }
@@ -362,8 +382,8 @@ export function PosKioskLanding() {
         </form>
         <p className="mt-6 text-center text-xs text-slate-400">
           Managers:{" "}
-          <a href="/login" className="font-semibold text-pos-primary underline-offset-2 hover:underline">
-            sign in to ERP
+          <a href="/dashboard" className="font-semibold text-pos-primary underline-offset-2 hover:underline">
+            open ERP dashboard
           </a>
         </p>
       </div>

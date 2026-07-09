@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
@@ -12,15 +13,15 @@ import { PageHeader } from "@/components/layout/page-header";
 import { FormCard } from "@/components/layout/form-card";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { relationName } from "@/lib/utils";
-import { Copy, Pencil, Shield, AlertTriangle } from "lucide-react";
+import { Copy, Pencil, AlertTriangle } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
 import { parsePlanLimitError, planLimitToastDescription } from "@/lib/plan-errors";
 import { cn } from "@/lib/utils";
-import {
-  MemberAccessEditor,
-  type DepartmentRoleRow,
-} from "./member-access-editor";
+import { ErpMemberRow, type TeamMemberRow } from "./erp-member-row";
+import type { DepartmentRoleRow } from "./member-access-editor";
+import { inviteToRoleLabel } from "./team-role-options";
+import { TeamRoleSelect, teamRoleSelectionFromValue } from "./team-role-select";
 
 type TeamTab = "access" | "pos" | "invites";
 
@@ -65,6 +66,8 @@ function TabButton({
 
 export function TeamClient({
   organizationId,
+  organizationName,
+  inviterName,
   invites,
   members,
   posStaff,
@@ -75,8 +78,16 @@ export function TeamClient({
   permissionsReady,
 }: {
   organizationId: string;
-  invites: { id: string; email: string; role: string; created_at: string }[];
-  members: { id: string; role: string; is_active: boolean; user_id: string }[];
+  organizationName: string;
+  inviterName: string;
+  invites: {
+    id: string;
+    email: string;
+    role: string;
+    created_at: string;
+    department_role_ids?: string[] | null;
+  }[];
+  members: TeamMemberRow[];
   posStaff: PosStaffRow[];
   registers: RegisterRow[];
   departmentRoles: DepartmentRoleRow[];
@@ -88,7 +99,7 @@ export function TeamClient({
   const { toast } = useToast();
   const [tab, setTab] = useState<TeamTab>("access");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"cashier" | "manager">("cashier");
+  const [inviteRoleValue, setInviteRoleValue] = useState("cashier");
   const [loading, setLoading] = useState(false);
   const [initRolesLoading, setInitRolesLoading] = useState(false);
 
@@ -102,7 +113,6 @@ export function TeamClient({
   const [editStaffName, setEditStaffName] = useState("");
   const [editStaffRole, setEditStaffRole] = useState<"cashier" | "manager">("cashier");
   const [editStaffLoading, setEditStaffLoading] = useState(false);
-  const [editingAccessMemberId, setEditingAccessMemberId] = useState<string | null>(null);
 
   const configurableMembers = members.filter((m) => m.role !== "owner");
   const ownerOnly = configurableMembers.length === 0;
@@ -136,12 +146,14 @@ export function TeamClient({
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    const selection = teamRoleSelectionFromValue(inviteRoleValue, departmentRoles);
     const { data: invite, error } = await supabase
       .from("staff_invites")
       .insert({
         organization_id: organizationId,
         email: email.toLowerCase(),
-        role,
+        role: selection.baseRole,
+        department_role_ids: selection.departmentRoleIds,
         invited_by: user!.id,
       })
       .select("id")
@@ -156,12 +168,31 @@ export function TeamClient({
       });
     }
     if (invite?.id) {
-      await copyInviteLink(invite.id, email.toLowerCase());
+      const inviteUrl = `${window.location.origin}/invite?id=${invite.id}`;
+      const { error: notifyError } = await supabase.rpc("enqueue_notification_event", {
+        p_org_id: organizationId,
+        p_event_type: "team.invite_created",
+        p_entity_type: "staff_invite",
+        p_entity_id: invite.id,
+        p_payload: {
+          email: email.toLowerCase(),
+          role: selection.baseRole,
+          department_roles: selection.departmentRoleIds,
+          org_name: organizationName,
+          inviter_name: inviterName,
+          invite_url: inviteUrl,
+        },
+        p_idempotency_key: `invite:${invite.id}`,
+      });
+      if (notifyError) {
+        console.warn("[team] invite notification enqueue failed:", notifyError.message);
+      }
+      await copyInviteLink(invite.id, email.toLowerCase(), notifyError ? undefined : true);
     } else {
       toast({ title: "Invite sent", description: `${email} — copy the link from pending invites.` });
     }
     setEmail("");
-    setTab("access");
+    setInviteRoleValue("cashier");
     router.refresh();
   }
 
@@ -211,12 +242,14 @@ export function TeamClient({
     toast({ title: "Register link copied", description: url });
   }
 
-  async function copyInviteLink(inviteId: string, email: string) {
+  async function copyInviteLink(inviteId: string, email: string, emailQueued?: boolean) {
     const url = `${window.location.origin}/invite?id=${inviteId}`;
     await navigator.clipboard.writeText(url);
     toast({
       title: "Invite link copied",
-      description: `Send to ${email}. They open the link, create a password (or sign in), then join your team.`,
+      description: emailQueued
+        ? `Link copied for ${email}. An invite email will be sent if email is enabled under Communications → Channels.`
+        : `Send to ${email}. They open the link, create a password (or sign in), then join your team.`,
     });
   }
 
@@ -314,9 +347,9 @@ export function TeamClient({
 
           <FormCard title="How it works">
             <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-              <li>Invite a user on the <strong className="text-foreground">Invites & ERP users</strong> tab (Manager or Cashier).</li>
-              <li>After they join, return here and click <strong className="text-foreground">App access</strong> on their row.</li>
-              <li>Pick department roles (HR Manager, Finance Manager, etc.) and optionally override individual apps.</li>
+              <li>Invite a user on the <strong className="text-foreground">Invites & ERP users</strong> tab — pick Cashier, Manager, or a department role from the dropdown.</li>
+              <li>When they accept the invite, department access is applied automatically.</li>
+              <li>Use <strong className="text-foreground">Edit</strong> or <strong className="text-foreground">App access</strong> on any member to change roles later.</li>
             </ol>
             {ownerOnly && (
               <p className="mt-3 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
@@ -346,59 +379,18 @@ export function TeamClient({
           <div className="rounded-xl border bg-card p-5 shadow-sm">
             <h3 className="mb-1 font-semibold">Manage user app access</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              Click <strong>App access</strong> next to a manager or cashier to assign roles and page visibility.
+              Edit base role, activate/deactivate, or fine-tune department roles and app visibility.
             </p>
             <ul className="space-y-2">
               {members.map((m) => (
-                <li key={m.id} className="rounded-lg border px-3 py-3 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <span className="font-mono text-muted-foreground">{m.user_id.slice(0, 8)}…</span>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <Badge variant="default" className="capitalize">{m.role}</Badge>
-                        {!m.is_active && <Badge variant="destructive">Inactive</Badge>}
-                        {(roleIdsByMember[m.id]?.length ?? 0) > 0 && (
-                          <Badge variant="secondary">
-                            {roleIdsByMember[m.id]?.length} dept role
-                            {(roleIdsByMember[m.id]?.length ?? 0) === 1 ? "" : "s"}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    {m.role === "owner" ? (
-                      <Badge variant="outline">Full access (owner)</Badge>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant={editingAccessMemberId === m.id ? "default" : "outline"}
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={!permissionsReady}
-                        onClick={() =>
-                          setEditingAccessMemberId(editingAccessMemberId === m.id ? null : m.id)
-                        }
-                      >
-                        <Shield className="h-3.5 w-3.5" />
-                        App access
-                      </Button>
-                    )}
-                  </div>
-                  {editingAccessMemberId === m.id && m.role !== "owner" && (
-                    <MemberAccessEditor
-                      memberId={m.id}
-                      memberRole={m.role}
-                      memberLabel={m.user_id.slice(0, 8)}
-                      departmentRoles={departmentRoles}
-                      assignedRoleIds={roleIdsByMember[m.id] ?? []}
-                      overrides={overridesByMember[m.id] ?? []}
-                      onClose={() => setEditingAccessMemberId(null)}
-                      onSaved={() => {
-                        setEditingAccessMemberId(null);
-                        router.refresh();
-                      }}
-                    />
-                  )}
-                </li>
+                <ErpMemberRow
+                  key={m.id}
+                  member={m}
+                  departmentRoles={departmentRoles}
+                  assignedRoleIds={roleIdsByMember[m.id] ?? []}
+                  overrides={overridesByMember[m.id] ?? []}
+                  permissionsReady={permissionsReady}
+                />
               ))}
             </ul>
           </div>
@@ -409,8 +401,8 @@ export function TeamClient({
         <div className="space-y-4">
           <FormCard title="Invite ERP user (email login)">
             <p className="mb-4 text-sm text-muted-foreground">
-              After they accept the invite, open <strong>App access</strong> to assign HR, Finance, Inventory, or other
-              department roles.
+              Pick a <strong>role</strong> from the dropdown — general access (Cashier / Manager) or a department
+              (HR, Finance, Inventory, Sales, etc.). App access is applied when they accept the invite.
             </p>
             <form onSubmit={handleInvite} className="flex flex-wrap items-end gap-4">
               <div className="space-y-2">
@@ -423,18 +415,15 @@ export function TeamClient({
                   className="min-w-[240px]"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Base role</Label>
-                <select
-                  className={SELECT_CLS + " min-w-[140px]"}
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as "cashier" | "manager")}
-                >
-                  <option value="cashier">Cashier</option>
-                  <option value="manager">Manager</option>
-                </select>
-              </div>
-              <Button type="submit" disabled={loading}>
+              <TeamRoleSelect
+                label="Role"
+                departmentRoles={departmentRoles}
+                value={inviteRoleValue}
+                onChange={setInviteRoleValue}
+                disabled={!permissionsReady}
+                className="min-w-[220px]"
+              />
+              <Button type="submit" disabled={loading || !permissionsReady}>
                 {loading ? "Sending…" : "Send invite"}
               </Button>
             </form>
@@ -454,7 +443,11 @@ export function TeamClient({
                   >
                     <div className="min-w-0">
                       <span className="font-medium">{i.email}</span>
-                      <Badge variant="secondary" className="ml-2 capitalize">{i.role}</Badge>
+                      <div className="mt-1">
+                        <Badge variant="secondary">
+                          {inviteToRoleLabel(i.role, i.department_role_ids, departmentRoles)}
+                        </Badge>
+                      </div>
                     </div>
                     <Button
                       type="button"
@@ -474,13 +467,20 @@ export function TeamClient({
               </ul>
             </div>
             <div className="rounded-xl border bg-card p-5 shadow-sm md:col-span-2">
-              <h3 className="mb-4 font-semibold">All ERP accounts ({members.length})</h3>
+              <h3 className="mb-1 font-semibold">All ERP accounts ({members.length})</h3>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Edit base role, department access, or deactivate members without leaving this tab.
+              </p>
               <ul className="space-y-2">
                 {members.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                    <span className="font-mono text-muted-foreground">{m.user_id.slice(0, 8)}…</span>
-                    <Badge variant="default" className="capitalize">{m.role}</Badge>
-                  </li>
+                  <ErpMemberRow
+                    key={m.id}
+                    member={m}
+                    departmentRoles={departmentRoles}
+                    assignedRoleIds={roleIdsByMember[m.id] ?? []}
+                    overrides={overridesByMember[m.id] ?? []}
+                    permissionsReady={permissionsReady}
+                  />
                 ))}
               </ul>
             </div>
@@ -508,8 +508,7 @@ export function TeamClient({
               </div>
               <div className="space-y-2">
                 <Label>PIN (4–6 digits)</Label>
-                <Input
-                  type="password"
+                <PasswordInput
                   inputMode="numeric"
                   pattern="\d{4,6}"
                   value={staffPin}
@@ -519,6 +518,7 @@ export function TeamClient({
                   minLength={4}
                   maxLength={6}
                   className="min-w-[120px]"
+                  toggleLabel="Show PIN"
                 />
               </div>
               <div className="space-y-2">
@@ -650,13 +650,13 @@ export function TeamClient({
                     <div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
                       <div className="space-y-1">
                         <Label className="text-xs">New PIN</Label>
-                        <Input
-                          type="password"
+                        <PasswordInput
                           inputMode="numeric"
                           value={newPin}
                           onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
                           className="h-9 w-28"
                           placeholder="••••"
+                          toggleLabel="Show PIN"
                         />
                       </div>
                       <Button size="sm" onClick={() => handleResetPin(s.id)}>

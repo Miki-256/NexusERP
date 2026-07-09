@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isBrowserOnline } from "@/lib/offline/network";
 import { ArrowLeft, Gift, RotateCcw, X } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 type SessionSale = {
   id: string;
@@ -227,12 +228,20 @@ export function RefundModal({
     setReturnQty(next);
   }
 
+  const panelRef = usePosModal(onClose);
+
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="pos-modal-panel flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-refund-title"
+        className="pos-modal-panel flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+      >
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
-            <h2 className="pos-heading text-lg font-bold text-white">
+            <h2 id="pos-refund-title" className="pos-heading text-lg font-bold text-white">
               {selectedSale ? "Process return" : "Void / refund"}
             </h2>
             <p className="text-xs text-white/70">
@@ -242,9 +251,10 @@ export function RefundModal({
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10"
+            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close refund dialog"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
@@ -253,6 +263,7 @@ export function RefundModal({
             <div className="border-b border-slate-100 p-4">
               <Input
                 placeholder="Filter by receipt or customer…"
+                aria-label="Filter sales by receipt or customer"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               />
@@ -261,8 +272,12 @@ export function RefundModal({
               )}
             </div>
 
-            <ul className="flex-1 overflow-y-auto p-2">
-              {loading && <li className="p-4 text-center text-sm text-slate-500">Loading…</li>}
+            <ul className="flex-1 overflow-y-auto p-2" aria-live="polite">
+              {loading && (
+                <li className="p-4 text-center text-sm text-slate-500" role="status" aria-busy="true">
+                  Loading…
+                </li>
+              )}
               {!loading && filtered.length === 0 && (
                 <li className="p-8 text-center text-sm text-slate-500">No sales this shift</li>
               )}
@@ -379,7 +394,8 @@ export function RefundModal({
                   <button
                     type="button"
                     onClick={() => setRefundMethod("cash")}
-                    className={`cursor-pointer rounded-xl border px-3 py-3 text-left text-sm ${
+                    aria-pressed={refundMethod === "cash"}
+                    className={`cursor-pointer rounded-xl border px-3 py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary ${
                       refundMethod === "cash"
                         ? "border-pos-primary bg-pos-primary-soft-8 text-pos-primary"
                         : "border-slate-200 text-slate-700"
@@ -391,7 +407,8 @@ export function RefundModal({
                     type="button"
                     onClick={() => setRefundMethod("store_credit")}
                     disabled={!hasCustomer}
-                    className={`cursor-pointer rounded-xl border px-3 py-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                    aria-pressed={refundMethod === "store_credit"}
+                    className={`cursor-pointer rounded-xl border px-3 py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary disabled:cursor-not-allowed disabled:opacity-50 ${
                       refundMethod === "store_credit"
                         ? "border-pos-primary bg-pos-primary-soft-8 text-pos-primary"
                         : "border-slate-200 text-slate-700"
@@ -428,6 +445,7 @@ export function RefundModal({
               <Button
                 className="mb-2 w-full cursor-pointer"
                 disabled={busy || selectedReturnLines.length === 0}
+                aria-busy={busy}
                 onClick={() => void submitReturn()}
               >
                 {busy ? "Processing…" : isFullReturn ? "Complete full return" : "Process partial return"}

@@ -7,27 +7,32 @@ import { cachePosSession, clearCachedPosSession, getCachedPosSession, decrementC
 import { isBrowserOnline } from "@/lib/offline/network";
 import { useOfflineOptional } from "@/components/offline/offline-provider";
 import { useCartStore, calcCartTotals } from "@/stores/cart-store";
+import { usePosCart } from "@/lib/pos/use-pos-cart";
 import { canAddToCart } from "@/lib/pos/stock-utils";
 import type { PosStaffSession } from "@/lib/pos-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PaymentModal } from "./payment-modal";
 import { ReceiptPrint } from "./receipt-print";
 import type { PosCatalogItem } from "./product-card";
 import { VirtualizedCatalogGrid } from "./virtualized-catalog-grid";
 import { CategoryNav } from "./category-nav";
 import { CartPanel } from "./cart-panel";
-import { CustomerLookupModal, type PosCustomer } from "./customer-lookup-modal";
-import { CloseShiftModal } from "./close-shift-modal";
-import { RefundModal } from "./refund-modal";
 import { ShiftStatsBar } from "./shift-stats-bar";
-import { ManagerPinModal } from "./manager-pin-modal";
-import { BarcodeScannerModal, type BarcodeScanResult } from "./barcode-scanner-modal";
-import { PosToolsMenu } from "./pos-tools-menu";
 import { PosSyncBadge } from "./pos-sync-badge";
-import { HeldCartPickerModal } from "./held-cart-picker-modal";
-import { PosOfflineQueueModal } from "./pos-offline-queue-modal";
-import { ShortcutsHelpModal } from "./shortcuts-help-modal";
+import {
+  PaymentModal,
+  BarcodeScannerModal,
+  RefundModal,
+  CloseShiftModal,
+  CustomerLookupModal,
+  ManagerPinModal,
+  HeldCartPickerModal,
+  PosOfflineQueueModal,
+  ShortcutsHelpModal,
+  PosToolsMenu,
+  type BarcodeScanResult,
+  type PosCustomer,
+} from "./pos-lazy-modals";
 import {
   getRecentVariantIds,
   recordRecentVariants,
@@ -65,22 +70,13 @@ import {
   Rows3,
   ShoppingCart,
 } from "lucide-react";
-import { barcodeLookupVariants, normalizeBarcode } from "@/lib/pos/barcode-scan";
-import { buildCatalogSearchIndex, filterCatalogItems } from "@/lib/pos/catalog-search";
+import {
+  buildCatalogSearchIndex,
+  filterCatalogItems,
+  lookupCatalogByBarcode,
+} from "@/lib/pos/catalog-search";
+import { fetchPosCatalogPage } from "@/lib/pos/catalog-page";
 import "./pos.css";
-
-function findCatalogByBarcode(
-  catalog: PosCatalogItem[],
-  code: string
-): PosCatalogItem | undefined {
-  const normalized = normalizeBarcode(code);
-  const variants = barcodeLookupVariants(normalized);
-  for (const v of variants) {
-    const byBarcode = catalog.find((p) => p.barcode === v);
-    if (byBarcode) return byBarcode;
-  }
-  return catalog.find((p) => p.sku?.toLowerCase() === normalized.toLowerCase());
-}
 
 type Session = {
   id: string;
@@ -102,6 +98,7 @@ export function PosScreen({
   orgName,
   receiptFooter,
   catalog,
+  catalogTruncated = false,
   openSession: initialSession,
   posStaffSession,
   onStaffSignOut,
@@ -110,6 +107,10 @@ export function PosScreen({
   maxCashierDiscountPct = 15,
   tipsEnabled = false,
   tipPresets = [10, 15, 20],
+  loyaltyEnabled = false,
+  loyaltyPointsPer = 1,
+  loyaltySpendPerPoint = 0.1,
+  loyaltyMinRedeemPoints = 100,
 }: {
   registerId: string;
   registerName: string;
@@ -122,6 +123,7 @@ export function PosScreen({
   orgName: string;
   receiptFooter: string | null;
   catalog: PosCatalogItem[];
+  catalogTruncated?: boolean;
   openSession: Session;
   posStaffSession?: PosStaffSession;
   onStaffSignOut?: () => void;
@@ -130,6 +132,10 @@ export function PosScreen({
   maxCashierDiscountPct?: number;
   tipsEnabled?: boolean;
   tipPresets?: number[];
+  loyaltyEnabled?: boolean;
+  loyaltyPointsPer?: number;
+  loyaltySpendPerPoint?: number;
+  loyaltyMinRedeemPoints?: number;
 }) {
   const [session, setSession] = useState(initialSession);
   const [shiftError, setShiftError] = useState<string | null>(null);
@@ -147,8 +153,10 @@ export function PosScreen({
   const [customerReceivableBalance, setCustomerReceivableBalance] = useState(0);
   const [customerOnAccountEnabled, setCustomerOnAccountEnabled] = useState(false);
   const [customerCreditAvailable, setCustomerCreditAvailable] = useState<number | null>(null);
+  const [customerLoyaltyPoints, setCustomerLoyaltyPoints] = useState(0);
   const [localCatalog, setLocalCatalog] = useState(catalog);
   const [catalogCachedAt, setCatalogCachedAt] = useState<string | null>(null);
+  const [serverSearchItems, setServerSearchItems] = useState<PosCatalogItem[] | null>(null);
   const [stockToast, setStockToast] = useState<string | null>(null);
   const [showCustomerLookup, setShowCustomerLookup] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
@@ -183,6 +191,7 @@ export function PosScreen({
   const [openingFloat, setOpeningFloat] = useState("0");
   const searchRef = useRef<HTMLInputElement>(null);
   const scannerStreamRef = useRef<MediaStream | null>(null);
+  const customerDisplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const offline = useOfflineOptional();
 
   useEffect(() => {
@@ -226,6 +235,7 @@ export function PosScreen({
     setCustomerReceivableBalance(0);
     setCustomerOnAccountEnabled(false);
     setCustomerCreditAvailable(null);
+    setCustomerLoyaltyPoints(0);
   }
 
   function selectCustomer(c: PosCustomer) {
@@ -238,6 +248,7 @@ export function PosScreen({
     setCustomerCreditAvailable(
       c.creditAvailable != null ? Number(c.creditAvailable) : null
     );
+    setCustomerLoyaltyPoints(Number(c.loyaltyPoints) || 0);
     setShowCustomerLookup(false);
   }
 
@@ -254,22 +265,29 @@ export function PosScreen({
     showOfflineQueue ||
     !!lastSale;
 
-  const lines = useCartStore((s) => s.lines);
-  const cartDiscount = useCartStore((s) => s.cartDiscount);
-  const promoCode = useCartStore((s) => s.promoCode);
-  const promoDiscount = useCartStore((s) => s.promoDiscount);
-  const promotionName = useCartStore((s) => s.promotionName);
-  const heldCarts = useCartStore((s) => s.heldCarts);
-  const addLine = useCartStore((s) => s.addLine);
-  const updateQuantity = useCartStore((s) => s.updateQuantity);
-  const removeLine = useCartStore((s) => s.removeLine);
-  const setCartDiscount = useCartStore((s) => s.setCartDiscount);
-  const setLineDiscount = useCartStore((s) => s.setLineDiscount);
-  const applyPromotion = useCartStore((s) => s.applyPromotion);
-  const clearPromotion = useCartStore((s) => s.clearPromotion);
-  const clear = useCartStore((s) => s.clear);
-  const hold = useCartStore((s) => s.hold);
-  const recall = useCartStore((s) => s.recall);
+  const {
+    lines,
+    cartDiscount,
+    promoCode,
+    promoDiscount,
+    promotionName,
+    heldCarts,
+    addLine,
+    updateQuantity,
+    removeLine,
+    setCartDiscount,
+    setLineDiscount,
+    applyPromotion,
+    clearPromotion,
+    clear,
+    hold,
+    recall,
+    initForRegister,
+  } = usePosCart();
+
+  useEffect(() => {
+    initForRegister(registerId);
+  }, [registerId, initForRegister]);
 
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -303,10 +321,28 @@ export function PosScreen({
   }
 
   useEffect(() => {
-    if (!session) return;
-    const id = setInterval(() => void refreshCatalog(), 5 * 60_000);
-    return () => clearInterval(id);
-  }, [session, refreshCatalog]);
+    if (!catalogTruncated || debouncedSearch.trim().length < 2 || !isBrowserOnline()) {
+      setServerSearchItems(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchPosCatalogPage(registerId, {
+      search: debouncedSearch,
+      category,
+      limit: 200,
+    })
+      .then((page) => {
+        if (!cancelled) setServerSearchItems(page.items);
+      })
+      .catch(() => {
+        if (!cancelled) setServerSearchItems(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogTruncated, debouncedSearch, category, registerId]);
 
   useEffect(() => {
     if (!session) return;
@@ -314,12 +350,12 @@ export function PosScreen({
     if (showPayment) return;
 
     const lineDiscount = lines.reduce((s, l) => s + l.discountAmount, 0);
-    publishCustomerDisplay({
+    const payload = {
       registerId,
       orgName,
       storeName,
       currency,
-      phase: "cart",
+      phase: "cart" as const,
       lines: lines.map((l) => ({
         name: l.productName,
         qty: l.quantity,
@@ -332,7 +368,20 @@ export function PosScreen({
       tipAmount: 0,
       total,
       updatedAt: Date.now(),
-    });
+    };
+
+    if (customerDisplayTimerRef.current) {
+      clearTimeout(customerDisplayTimerRef.current);
+    }
+    customerDisplayTimerRef.current = setTimeout(() => {
+      publishCustomerDisplay(payload);
+    }, 150);
+
+    return () => {
+      if (customerDisplayTimerRef.current) {
+        clearTimeout(customerDisplayTimerRef.current);
+      }
+    };
   }, [
     session,
     registerId,
@@ -434,27 +483,31 @@ export function PosScreen({
     [localCatalog]
   );
 
-  const filtered = useMemo(
-    () =>
-      filterCatalogItems(localCatalog, catalogSearchIndex, {
-        search: debouncedSearch,
-        category,
-        viewFavorites,
-        viewRecent,
-        favorites,
-        recentVariantIds,
-      }),
-    [
-      localCatalog,
-      catalogSearchIndex,
-      debouncedSearch,
+  const filtered = useMemo(() => {
+    const q = debouncedSearch.trim();
+    if (catalogTruncated && q.length >= 2 && serverSearchItems) {
+      return serverSearchItems;
+    }
+    return filterCatalogItems(localCatalog, catalogSearchIndex, {
+      search: debouncedSearch,
       category,
       viewFavorites,
       viewRecent,
       favorites,
       recentVariantIds,
-    ]
-  );
+    });
+  }, [
+    catalogTruncated,
+    serverSearchItems,
+    localCatalog,
+    catalogSearchIndex,
+    debouncedSearch,
+    category,
+    viewFavorites,
+    viewRecent,
+    favorites,
+    recentVariantIds,
+  ]);
 
   const addProductByVariantId = useCallback(
     (variantId: string) => {
@@ -565,7 +618,7 @@ export function PosScreen({
   }
 
   function handleBarcodeScan(code: string): BarcodeScanResult {
-    const item = findCatalogByBarcode(localCatalog, code);
+    const item = lookupCatalogByBarcode(catalogSearchIndex, code);
     if (item) {
       addProductByVariantId(item.variantId);
       return { ok: true, label: item.name };
@@ -716,11 +769,11 @@ export function PosScreen({
 
   useEffect(() => {
     if (!search) return;
-    const byBarcode = localCatalog.find((p) => p.barcode === search);
-    if (byBarcode && search.length >= 4) {
-      addProductByVariantId(byBarcode.variantId);
+    const hit = lookupCatalogByBarcode(catalogSearchIndex, search);
+    if (hit && search.length >= 4) {
+      addProductByVariantId(hit.variantId);
     }
-  }, [search, localCatalog, addProductByVariantId]);
+  }, [search, catalogSearchIndex, addProductByVariantId]);
 
   async function openShift() {
     setShiftError(null);
@@ -1029,8 +1082,9 @@ export function PosScreen({
             className="h-10 cursor-pointer border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
             onClick={() => setShowTools(true)}
             title="POS tools"
+            aria-label="Open POS tools"
           >
-            <Wrench className="h-4 w-4" />
+            <Wrench className="h-4 w-4" aria-hidden />
           </Button>
           <Button
             variant="outline"
@@ -1038,8 +1092,9 @@ export function PosScreen({
             className="h-10 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
             onClick={() => setShowRefund(true)}
             title="Void / refund (F7)"
+            aria-label="Void or refund sale"
           >
-            <RotateCcw className="h-4 w-4 sm:mr-1.5" />
+            <RotateCcw className="h-4 w-4 sm:mr-1.5" aria-hidden />
             <span className="hidden sm:inline">Refunds</span>
           </Button>
           <Button
@@ -1048,8 +1103,9 @@ export function PosScreen({
             className="h-10 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
             onClick={() => setShowCloseShift(true)}
             title="Close shift (F6)"
+            aria-label="Close shift and print Z-report"
           >
-            <DoorClosed className="h-4 w-4 sm:mr-1.5" />
+            <DoorClosed className="h-4 w-4 sm:mr-1.5" aria-hidden />
             <span className="hidden sm:inline">Close shift</span>
           </Button>
           {onStaffSignOut && (
@@ -1058,8 +1114,9 @@ export function PosScreen({
               size="sm"
               className="h-10 cursor-pointer border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
               onClick={onStaffSignOut}
+              aria-label="Switch staff user"
             >
-              <LogOut className="mr-1.5 h-4 w-4" />
+              <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
               Switch
             </Button>
           )}
@@ -1078,26 +1135,33 @@ export function PosScreen({
         {/* Products — ~70% */}
         <div className="flex min-h-0 flex-[1.1] flex-col pb-20 lg:min-h-0 lg:flex-1 lg:pb-0">
           <div className="shrink-0 space-y-4 border-b border-slate-200/80 bg-white px-3 py-3 sm:px-5 sm:py-4">
-            <div className="pos-search-wrap flex items-center gap-2 px-3">
-              <Search className="h-5 w-5 shrink-0 text-slate-400" />
+            <label className="pos-search-wrap flex items-center gap-2 px-3">
+              <span className="sr-only">Search products by name, SKU, or barcode</span>
+              <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
               <Input
                 ref={searchRef}
+                id="pos-product-search"
                 placeholder="Search name, SKU, or scan barcode (F2 · F8 checkout)"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-12 flex-1 border-0 bg-transparent pl-0 pr-0 text-base shadow-none focus-visible:ring-0"
                 autoFocus
+                aria-describedby="pos-search-hint"
               />
+              <span id="pos-search-hint" className="sr-only">
+                Press F2 to focus search. Press F9 to open camera scanner.
+              </span>
               <button
                 type="button"
                 onClick={() => void openCameraScanner()}
-                className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-pos-primary/40 hover:bg-pos-primary-soft-8 hover:text-pos-primary"
+                className="touch-target flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-pos-primary/40 hover:bg-pos-primary-soft-8 hover:text-pos-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
                 title="Scan with camera (F9)"
+                aria-label="Scan barcode with camera"
               >
-                <ScanBarcode className="h-4 w-4" />
+                <ScanBarcode className="h-4 w-4" aria-hidden />
                 <span className="hidden sm:inline">Camera</span>
               </button>
-            </div>
+            </label>
             <CategoryNav
               categories={categories}
               active={category}
@@ -1122,7 +1186,11 @@ export function PosScreen({
           </div>
 
           {stockToast && (
-            <div className="mx-5 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900">
+            <div
+              role="status"
+              aria-live="polite"
+              className="mx-5 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
+            >
               {stockToast}
             </div>
           )}
@@ -1134,28 +1202,35 @@ export function PosScreen({
             </div>
           )}
 
-          <div className={cn("flex min-h-0 flex-1 flex-col", catalogDensity === "compact" ? "p-3" : "p-5")}>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="pos-heading text-sm font-semibold text-slate-700">
+          <div className={cn("flex min-h-0 flex-1 flex-col", catalogDensity === "compact" ? "p-3" : "p-4 sm:p-5")}>
+            <div className="mb-3 flex items-center justify-between gap-2 sm:gap-3">
+              <p className="pos-heading min-w-0 truncate text-sm font-semibold text-slate-700" id="pos-catalog-heading">
                 {viewFavorites ? "Favorites" : viewRecent ? "Recent" : category === "all" ? "All products" : category}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <div
+                  className="flex overflow-hidden rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+                  role="group"
+                  aria-label="Product card size"
+                >
                   <button
                     type="button"
                     onClick={() => {
                       if (catalogDensity !== "compact") toggleCatalogDensity();
                     }}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                      "touch-target flex cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors sm:px-2.5",
                       catalogDensity === "compact"
                         ? "bg-pos-primary text-white shadow-sm"
                         : "text-slate-500 hover:text-slate-700"
                     )}
-                    title="Compact grid — more products on screen"
+                    title="Compact — more products on screen"
+                    aria-label="Compact product cards"
+                    aria-pressed={catalogDensity === "compact"}
                   >
-                    <LayoutGrid className="h-3.5 w-3.5" />
-                    Compact
+                    <LayoutGrid className="h-4 w-4 shrink-0" />
+                    <span className="hidden sm:inline">Compact</span>
+                    <span className="sm:hidden">S</span>
                   </button>
                   <button
                     type="button"
@@ -1163,30 +1238,45 @@ export function PosScreen({
                       if (catalogDensity !== "comfortable") toggleCatalogDensity();
                     }}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                      "touch-target flex cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors sm:px-2.5",
                       catalogDensity === "comfortable"
                         ? "bg-pos-primary text-white shadow-sm"
                         : "text-slate-500 hover:text-slate-700"
                     )}
-                    title="Comfortable grid — larger product cards"
+                    title="Large — bigger product cards"
+                    aria-label="Large product cards"
+                    aria-pressed={catalogDensity === "comfortable"}
                   >
-                    <Rows3 className="h-3.5 w-3.5" />
-                    Large
+                    <Rows3 className="h-4 w-4 shrink-0" />
+                    <span className="hidden sm:inline">Large</span>
+                    <span className="sm:hidden">L</span>
                   </button>
                 </div>
-                <span className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">
-                  {filtered.length} items
+                <span className="rounded-lg bg-white px-2 py-1 text-[10px] font-semibold tabular-nums text-slate-500 shadow-sm ring-1 ring-slate-200 sm:px-3 sm:text-xs">
+                  {filtered.length}
                 </span>
               </div>
             </div>
             {filtered.length === 0 ? (
-              <div className="flex h-full min-h-[240px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 text-slate-400">
-                <Search className="mb-4 h-12 w-12 opacity-30" />
-                <p className="pos-heading text-base font-semibold text-slate-500">No products found</p>
+              <div
+                id="pos-catalog-panel"
+                role="tabpanel"
+                aria-labelledby="pos-catalog-heading"
+                className="flex h-full min-h-[240px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 text-slate-400"
+              >
+                <Search className="mb-4 h-12 w-12 opacity-30" aria-hidden />
+                <p className="pos-heading text-base font-semibold text-slate-500" role="status">
+                  No products found
+                </p>
                 <p className="mt-1 text-sm">Try a different search or category</p>
               </div>
             ) : (
-              <div className="min-h-0 flex-1">
+              <div
+                id="pos-catalog-panel"
+                role="tabpanel"
+                aria-labelledby="pos-catalog-heading"
+                className="min-h-0 flex-1"
+              >
                 <VirtualizedCatalogGrid
                   items={filtered}
                   currency={currency}
@@ -1215,9 +1305,10 @@ export function PosScreen({
         {!showMobileCart && lines.length > 0 && (
         <button
           type="button"
-          className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex h-14 touch-target items-center justify-between rounded-2xl bg-pos-navy px-4 text-white shadow-xl sm:px-5 lg:hidden"
-            onClick={() => setShowMobileCart(true)}
-          >
+          className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 touch-target items-center justify-between rounded-2xl bg-pos-navy px-4 text-white shadow-xl sm:px-5 lg:hidden"
+          onClick={() => setShowMobileCart(true)}
+          aria-label={`Open cart, ${lines.reduce((s, l) => s + l.quantity, 0)} items, total ${formatCurrency(total, currency)}`}
+        >
             <span className="flex items-center gap-2 text-sm font-semibold sm:text-base">
               <ShoppingCart className="h-5 w-5" />
               Cart ({lines.reduce((s, l) => s + l.quantity, 0)})
@@ -1234,6 +1325,9 @@ export function PosScreen({
               : "hidden",
             "lg:relative lg:inset-auto lg:top-auto lg:flex lg:max-h-none lg:shadow-none"
           )}
+          role={showMobileCart ? "dialog" : undefined}
+          aria-modal={showMobileCart ? true : undefined}
+          aria-label={showMobileCart ? "Shopping cart" : undefined}
         >
         <CartPanel
           lines={lines}
@@ -1316,6 +1410,10 @@ export function PosScreen({
           customerReceivableBalance={customerReceivableBalance}
           tipsEnabled={tipsEnabled}
           tipPresets={tipPresets}
+          loyaltyEnabled={loyaltyEnabled}
+          customerLoyaltyPoints={customerLoyaltyPoints}
+          loyaltySpendPerPoint={loyaltySpendPerPoint}
+          loyaltyMinRedeemPoints={loyaltyMinRedeemPoints}
           onClose={() => setShowPayment(false)}
           onComplete={onCheckoutComplete}
           posSessionToken={posStaffSession?.token}
@@ -1468,9 +1566,10 @@ export function PosScreen({
             <button
               type="button"
               onClick={() => setLastSale(null)}
-              className="cursor-pointer rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+              className="cursor-pointer rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
+              aria-label="Close receipt preview"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden />
             </button>
           </div>
           <ReceiptPrint

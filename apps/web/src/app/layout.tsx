@@ -6,16 +6,27 @@ import { AuthHashHandler } from "@/components/auth/auth-hash-handler";
 
 const openSans = Open_Sans({
   subsets: ["latin"],
+  weight: ["400", "600"],
   variable: "--font-open-sans",
   display: "swap",
+  adjustFontFallback: true,
 });
 
+/** Headings only — defer preload so body/LCP text isn't blocked by extra WOFF2 files. */
 const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["600", "700"],
   variable: "--font-poppins",
   display: "swap",
+  preload: false,
+  adjustFontFallback: true,
 });
+
+/** Inlined so PageHeader description paints before the main CSS bundle. */
+const CRITICAL_LCP_CSS = `
+.page-header-desc{max-width:42rem;font-size:.875rem;line-height:1.625;color:hsl(215 16% 42%)}
+.dark .page-header-desc{color:hsl(215 16% 58%)}
+`;
 
 export const metadata: Metadata = {
   title: "Nexus ERP",
@@ -36,6 +47,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <style dangerouslySetInnerHTML={{ __html: CRITICAL_LCP_CSS }} />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('nexus-theme');var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d)}catch(e){}})()`,

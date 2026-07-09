@@ -9,6 +9,7 @@ import {
 } from "@/lib/pos/barcode-scan";
 import { playScanErrorSound, playScanSuccessSound } from "@/lib/pos/scan-sounds";
 import { Camera, CheckCircle2, FlipHorizontal, Loader2, X } from "lucide-react";
+import { usePosModal } from "./use-pos-modal";
 
 declare global {
   interface Window {
@@ -329,14 +330,24 @@ export function BarcodeScannerModal({
     onClose();
   }
 
+  const panelRef = usePosModal(handleClose);
+
   return (
-    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
-      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+    <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="presentation">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pos-scanner-title"
+        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+      >
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-2">
-            <Camera className="h-5 w-5 text-white" />
+            <Camera className="h-5 w-5 text-white" aria-hidden />
             <div>
-              <h2 className="pos-heading text-lg font-bold text-white">Scan items</h2>
+              <h2 id="pos-scanner-title" className="pos-heading text-lg font-bold text-white">
+                Scan items
+              </h2>
               {scanCount > 0 && (
                 <p className="text-xs text-white/80">{scanCount} added to cart</p>
               )}
@@ -345,9 +356,10 @@ export function BarcodeScannerModal({
           <button
             type="button"
             onClick={handleClose}
-            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10"
+            className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close barcode scanner"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
@@ -358,6 +370,7 @@ export function BarcodeScannerModal({
             muted
             playsInline
             autoPlay
+            aria-label="Camera preview for barcode scanning"
           />
           {flash === "success" && (
             <div className="pointer-events-none absolute inset-0 bg-emerald-400/25 transition-opacity" />
@@ -366,8 +379,13 @@ export function BarcodeScannerModal({
             <div className="pointer-events-none absolute inset-0 bg-red-500/25 transition-opacity" />
           )}
           {status === "starting" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 text-white">
-              <Loader2 className="h-10 w-10 animate-spin" />
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 text-white"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <Loader2 className="h-10 w-10 animate-spin" aria-hidden />
               <p className="text-sm font-medium">Starting camera…</p>
             </div>
           )}
@@ -386,9 +404,11 @@ export function BarcodeScannerModal({
           )}
         </div>
 
-        <div className="space-y-3 p-4">
+        <div className="flex flex-col gap-3 p-4">
           {lastFeedback && status === "scanning" && (
             <div
+              role="status"
+              aria-live="polite"
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
                 lastFeedback.ok
                   ? "bg-emerald-50 text-emerald-800"

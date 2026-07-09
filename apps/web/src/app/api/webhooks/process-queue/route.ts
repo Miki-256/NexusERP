@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { dispatchSecurityAlerts } from "@/lib/security-alert-dispatch";
+import { dispatchHrWebhooks } from "@/lib/hr/webhook-dispatch";
+import { processNotificationPipeline } from "@/lib/notifications/worker";
+import { runNotificationSchedules } from "@/lib/notifications/schedule-runner";
 
 function verifySecret(request: Request): boolean {
   const webhookSecret = process.env.POS_WEBHOOK_SECRET;
@@ -54,6 +57,15 @@ async function processQueue(request: Request) {
   );
   if (!ledgerError && ledgerData && typeof ledgerData === "object") {
     ledgerPosts = ledgerData as Record<string, unknown>;
+  }
+
+  let refundLedgerPosts: Record<string, unknown> | null = null;
+  const { data: refundLedgerData, error: refundLedgerError } = await admin.rpc(
+    "process_refund_ledger_post_queue",
+    { p_limit: 200 }
+  );
+  if (!refundLedgerError && refundLedgerData && typeof refundLedgerData === "object") {
+    refundLedgerPosts = refundLedgerData as Record<string, unknown>;
   }
 
   const archiveSales = resolveArchiveSales(request);
@@ -115,10 +127,80 @@ async function processQueue(request: Request) {
     );
   }
 
+  let hrWebhooks = { sent: 0, failed: 0, claimed: 0 };
+  try {
+    hrWebhooks = await dispatchHrWebhooks(admin, 25);
+  } catch (hrWebhookError) {
+    const message =
+      hrWebhookError instanceof Error ? hrWebhookError.message : "HR webhook dispatch failed";
+    return NextResponse.json(
+      { processed: data, security_alerts: securityAlerts, hr_webhooks: hrWebhooks, hr_webhook_error: message },
+      { status: 500 }
+    );
+  }
+
+  let notifications = { processed: 0, sent: 0, failed: 0, events_expanded: null as Record<string, unknown> | null };
+  let lowStockScan: Record<string, unknown> | null = null;
+  let dailySalesTelegram: Record<string, unknown> | null = null;
+  let queueBacklogScan: Record<string, unknown> | null = null;
+
+  const { data: dailySalesData } = await admin.rpc("enqueue_daily_sales_telegram_reports", {
+    p_limit: 100,
+  });
+  if (dailySalesData && typeof dailySalesData === "object") {
+    dailySalesTelegram = dailySalesData as Record<string, unknown>;
+  }
+
+  const { data: lowStockData } = await admin.rpc("scan_low_stock_notification_events", { p_limit: 100 });
+  if (lowStockData && typeof lowStockData === "object") {
+    lowStockScan = lowStockData as Record<string, unknown>;
+  }
+
+  const { data: backlogData } = await admin.rpc("scan_notification_queue_backlog", {
+    p_delivery_threshold: 50,
+    p_event_threshold: 25,
+  });
+  if (backlogData && typeof backlogData === "object") {
+    queueBacklogScan = backlogData as Record<string, unknown>;
+  }
+
+  let schedules = { claimed: 0, deliveries_created: 0, errors: [] as string[] };
+
+  try {
+    schedules = await runNotificationSchedules(admin, 20);
+  } catch (scheduleError) {
+    const message =
+      scheduleError instanceof Error ? scheduleError.message : "Scheduled report runner failed";
+    schedules.errors.push(message);
+  }
+
+  try {
+    notifications = await processNotificationPipeline(admin, 50);
+  } catch (notificationError) {
+    const message =
+      notificationError instanceof Error ? notificationError.message : "Notification dispatch failed";
+    return NextResponse.json(
+      {
+        processed: data,
+        security_alerts: securityAlerts,
+        notifications,
+        notification_error: message,
+      },
+      { status: 500 }
+    );
+  }
+
   return NextResponse.json({
     processed: data,
     ledger_posts: ledgerPosts,
+    refund_ledger_posts: refundLedgerPosts,
     security_alerts: securityAlerts,
+    hr_webhooks: hrWebhooks,
+    notifications,
+    scheduled_reports: schedules,
+    daily_sales_telegram: dailySalesTelegram,
+    low_stock_scan: lowStockScan,
+    queue_backlog_scan: queueBacklogScan,
     maintenance,
     summaries_refreshed: summariesRefreshed,
     db_activity_log_pruned: prunedLogs,
