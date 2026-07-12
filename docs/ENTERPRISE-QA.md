@@ -81,7 +81,7 @@ Run on preprod with a manager account. Check each box only after live verificati
 - [x] Permission matrix (manager E2E + cashier redirect E2E)
 - [x] Pilot UAT checklist documented
 - [ ] Optional: Upstash keys in local `.env.local` (already on Vercel)
-- [ ] Commit / PR hardening branch
+- [x] Commit / PR hardening branch ([#11](https://github.com/Miki-256/NexusERP/pull/11))
 
 ## Remaining after pilot gate
 
