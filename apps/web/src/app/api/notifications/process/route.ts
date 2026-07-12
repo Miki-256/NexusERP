@@ -1,15 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { verifyInternalSecret } from "@/lib/api/internal-auth";
 import { processNotificationPipeline } from "@/lib/notifications/worker";
 
-/** Lightweight notification dispatch after POS sales (Vercel Hobby cron is daily). */
-export async function POST() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+export const dynamic = "force-dynamic";
+
+/** Internal notification dispatch — cron/webhook secret only (not tenant sessions). */
+export async function POST(request: Request) {
+  if (!verifyInternalSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

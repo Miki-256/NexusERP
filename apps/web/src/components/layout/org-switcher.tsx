@@ -41,7 +41,13 @@ export function OrgSwitcher({
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5 px-2 sm:px-3" disabled={pending}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 px-2 sm:px-3"
+          disabled={pending}
+          aria-label={hasMultiple ? `Switch company, ${orgName}` : `Organization, ${orgName}`}
+        >
           <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="hidden max-w-[120px] truncate font-medium sm:inline md:max-w-[160px]">{orgName}</span>
           {hasMultiple && <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}

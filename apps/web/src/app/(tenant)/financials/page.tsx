@@ -1,22 +1,81 @@
 import { requireAppAccess } from "@/lib/require-app-access";
 import { createReportingClient } from "@/lib/supabase/server";
-import { Suspense } from "react";
 import { FinancialsClient } from "@/components/finance/financials-client";
 import type { AccountRow } from "@/components/finance/chart-of-accounts-tab";
 import type { JournalDraft } from "@/components/finance/manual-journal-tab";
 import type { FiscalPeriodRow } from "@/components/finance/fiscal-periods-tab";
+import {
+  TreasuryTab,
+  type TreasuryCashPosition,
+  type TreasuryForecast,
+  type TreasuryTransferRow,
+} from "@/components/finance/treasury-tab";
 import type { BankAccountRow } from "@/components/finance/banking-tab";
-import type { TaxCodeRow, TaxSummaryLine } from "@/components/finance/tax-tab";
+import type {
+  TaxCodeRow,
+  TaxSummaryLine,
+  TaxComplianceSettings,
+  VatLiabilityReport,
+  TaxReturnPeriod,
+  EinvoiceDocument,
+  PendingEinvoiceInvoice,
+  WithholdingRule,
+} from "@/components/finance/tax-tab";
 import type { BudgetRow } from "@/components/finance/budget-tab";
+import {
+  FpaTab,
+  type FpaScenario,
+  type RollingForecastSummary,
+  type FpaDashboard,
+  type ScenarioComparison,
+} from "@/components/finance/fpa-tab";
+import {
+  JobCostTab,
+  type CostCenterRow,
+  type ProjectJobCostRow,
+  type CostCenterSummaryRow,
+} from "@/components/finance/job-cost-tab";
 import type { DepartmentRow, AnalyticSummaryRow } from "@/components/finance/analytics-tab";
-import type { FixedAssetRow } from "@/components/finance/fixed-assets-tab";
-import type { ConsolidationGroup, OrgOption } from "@/components/finance/consolidation-tab";
-import type { RecurringJournalTemplate, InvoiceReminderRow } from "@/components/finance/automation-tab";
+import type { FixedAssetRow, FaBookRow, FaBookComparison } from "@/components/finance/fixed-assets-tab";
+import type { ExecutiveDashboard } from "@/components/finance/executive-dashboard-tab";
+import type {
+  ConsolidationGroup,
+  OrgOption,
+  IntercompanyRelationship,
+  IntercompanyTransaction,
+} from "@/components/finance/consolidation-tab";
+import type { RecurringJournalTemplate, InvoiceReminderRow, FinancialAutomationRule, FinancialScheduledReport } from "@/components/finance/automation-tab";
+import type {
+  FinancialSecuritySettings,
+  SodConflictRule,
+  PendingFinancialApprovals,
+} from "@/components/finance/financial-security-tab";
+import type {
+  FinancialPerformanceSettings,
+  FinancialPerformanceDashboard,
+} from "@/components/finance/financial-performance-tab";
+import type {
+  FinancialAiSettings,
+  FinancialAiSuggestedPrompt,
+  FinancialAiInsight,
+} from "@/components/finance/financial-assistant-tab";
+import type { FinancialShellPreferences, LaunchpadArea } from "@/lib/finance/financial-shell-config";
 import type { ReportSnapshotRow } from "@/components/finance/reports-library-tab";
+import type { ExchangeRateRow, FxRevaluationRunRow } from "@/components/finance/fx-currencies-tab";
 import type { ArAging, ApAging } from "@/components/finance/aging-tab";
 import { monthToDate, priorPeriod, priorBalanceSheetDate, formatPeriod } from "@/lib/finance-dates";
 import { bucketDailyTotals } from "@/lib/finance-aggregates";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  fetchConsolidatedFinancialReports,
+  fetchFinancialsPageRawData,
+} from "@/lib/finance/financials-page-data";
+
+function unwrapCachedReport<T>(payload: unknown): T {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    return (payload as { data: T }).data;
+  }
+  return payload as T;
+}
 
 type PnL = {
   from: string;
@@ -74,6 +133,9 @@ async function FinancialsContent({
   pnlMode,
   canPostLedger,
   unpostedCount,
+  initialTab,
+  initialArea,
+  orgTimezone,
 }: {
   orgId: string;
   currency: string;
@@ -82,97 +144,90 @@ async function FinancialsContent({
   pnlMode: "operational" | "gl";
   canPostLedger: boolean;
   unpostedCount: number;
+  initialTab?: string;
+  initialArea?: string;
+  orgTimezone: string;
 }) {
   const supabase = await createReportingClient();
   const prior = priorPeriod(from, to);
   const priorBsDate = priorBalanceSheetDate(to, from);
 
-  if (canPostLedger) {
-    await supabase.rpc("ensure_fiscal_year", { p_org_id: orgId });
-    await supabase.rpc("ensure_default_tax_codes", { p_org_id: orgId });
-  }
-
-  const [
-    { data: pnlData },
-    { data: trialData },
-    { data: bsData },
-    { data: cfData },
-    { data: chartData },
-    { data: accountsData },
-    { data: arAgingData },
-    { data: apAgingData },
-    { data: journalsData },
-    { data: fiscalData },
-    { data: draftsData },
-    { data: orgData },
-    { data: bankData },
-    { data: taxCodesData },
-    { data: taxSummaryData },
-    { data: pnlComparativeData },
-    { data: bsComparativeData },
-    { data: budgetsData },
-    { data: departmentsData },
-    { data: storeAnalyticData },
-    { data: projectAnalyticData },
-    { data: deptAnalyticData },
-    { data: storesData },
-    { data: projectsData },
-    { data: fixedAssetsData },
-    { data: consolidationGroupsData },
-    { data: myOrgsData },
-    { data: recurringTemplatesData },
-    { data: invoiceRemindersData },
-    { data: reportSnapshotsData },
-  ] = await Promise.all([
-    supabase.rpc("profit_and_loss", {
-      p_org_id: orgId,
-      p_from: from,
-      p_to: to,
-      p_mode: pnlMode,
-    }),
-    supabase.rpc("trial_balance", { p_org_id: orgId, p_to: to }),
-    supabase.rpc("balance_sheet", { p_org_id: orgId, p_to: to }),
-    supabase.rpc("cash_flow", { p_org_id: orgId, p_from: from, p_to: to }),
-    supabase.rpc("financials_chart_data", { p_org_id: orgId, p_from: from, p_to: to }),
-    supabase.rpc("list_accounts", { p_org_id: orgId }),
-    supabase.rpc("accounts_receivable_aging", { p_org_id: orgId, p_as_of: to }),
-    supabase.rpc("accounts_payable_aging", { p_org_id: orgId, p_as_of: to }),
-    supabase.from("journals").select("id, code, name").eq("organization_id", orgId).order("code"),
-    supabase.rpc("list_fiscal_periods", { p_org_id: orgId }),
-    canPostLedger
-      ? supabase.rpc("list_journal_entry_drafts", { p_org_id: orgId })
-      : Promise.resolve({ data: [] as JournalDraft[] }),
-    supabase.from("organizations").select("je_requires_approval").eq("id", orgId).single(),
-    supabase.rpc("list_bank_accounts", { p_org_id: orgId }),
-    supabase.rpc("list_tax_codes", { p_org_id: orgId }),
-    supabase.rpc("tax_summary_report", { p_org_id: orgId, p_from: from, p_to: to }),
-    supabase.rpc("comparative_profit_and_loss", {
-      p_org_id: orgId,
-      p_from: from,
-      p_to: to,
-      p_prior_from: prior.from,
-      p_prior_to: prior.to,
-      p_mode: pnlMode,
-    }),
-    supabase.rpc("comparative_balance_sheet", {
-      p_org_id: orgId,
-      p_as_of: to,
-      p_prior_as_of: priorBsDate,
-    }),
-    supabase.rpc("list_budgets", { p_org_id: orgId }),
-    supabase.rpc("list_departments", { p_org_id: orgId }),
-    supabase.rpc("analytic_ledger_summary", { p_org_id: orgId, p_from: from, p_to: to, p_dimension: "store" }),
-    supabase.rpc("analytic_ledger_summary", { p_org_id: orgId, p_from: from, p_to: to, p_dimension: "project" }),
-    supabase.rpc("analytic_ledger_summary", { p_org_id: orgId, p_from: from, p_to: to, p_dimension: "department" }),
-    supabase.from("stores").select("id, name").eq("organization_id", orgId).order("name"),
-    supabase.from("projects").select("id, name").eq("organization_id", orgId).order("name").limit(100),
-    supabase.rpc("list_fixed_assets", { p_org_id: orgId }),
-    supabase.rpc("list_consolidation_groups", { p_org_id: orgId }),
-    supabase.rpc("list_my_organizations"),
-    supabase.rpc("list_recurring_journal_templates", { p_org_id: orgId }),
-    supabase.rpc("list_invoices_needing_reminder", { p_org_id: orgId }),
-    supabase.rpc("list_financial_report_snapshots", { p_org_id: orgId }),
-  ]);
+  const raw = await fetchFinancialsPageRawData(supabase, {
+    orgId,
+    from,
+    to,
+    pnlMode,
+    canPostLedger,
+    initialTab,
+    initialArea,
+  });
+  const { scope } = raw;
+  const {
+    pnlData,
+    trialData,
+    bsData,
+    cfData,
+    chartData,
+    accountsData,
+    arAgingData,
+    apAgingData,
+    journalsData,
+    fiscalData,
+    draftsData,
+    orgData,
+    bankData,
+    taxCodesData,
+    taxSummaryData,
+    pnlComparativeData,
+    bsComparativeData,
+    budgetsData,
+    departmentsData,
+    storeAnalyticData,
+    projectAnalyticData,
+    deptAnalyticData,
+    storesData,
+    projectsData,
+    fixedAssetsData,
+    consolidationGroupsData,
+    myOrgsData,
+    recurringTemplatesData,
+    invoiceRemindersData,
+    reportSnapshotsData,
+    exchangeRatesData,
+    fxRunsData,
+    icRelationshipsData,
+    icTransactionsData,
+    treasuryPositionData,
+    treasuryForecastData,
+    treasuryTransfersData,
+    taxComplianceData,
+    vatLiabilityData,
+    taxReturnsData,
+    einvoiceDocsData,
+    pendingEinvoiceData,
+    withholdingRulesData,
+    fpaScenariosData,
+    fpaForecastsData,
+    fpaDashboardData,
+    fpaComparisonData,
+    costCentersData,
+    projectsJobCostData,
+    costCenterSummaryData,
+    faBooksData,
+    faBookComparisonData,
+    executiveDashboardData,
+    financialRulesData,
+    financialSchedulesData,
+    financialSecurityData,
+    sodRulesData,
+    pendingApprovalsData,
+    performanceDashboardData,
+    financialAiSettingsData,
+    financialAiPromptsData,
+    financialAiInsightsData,
+    shellPreferencesData,
+    launchpadTilesData,
+  } = raw;
 
   const charts = (chartData ?? {}) as {
     daily_revenue?: { date: string; value: number }[];
@@ -234,15 +289,110 @@ async function FinancialsContent({
   const fiscalYear = fiscal.year ?? new Date().getFullYear();
   const lockDate = fiscal.lock_date ?? null;
   const fiscalPeriods = fiscal.periods ?? [];
-  const jeRequiresApproval = orgData?.je_requires_approval ?? false;
+  const jeRequiresApproval =
+    (orgData as { je_requires_approval?: boolean } | null)?.je_requires_approval ?? false;
   const journalDrafts = (Array.isArray(draftsData) ? draftsData : []) as JournalDraft[];
   const bankAccounts = (Array.isArray(bankData) ? bankData : []) as BankAccountRow[];
   const taxCodes = (Array.isArray(taxCodesData) ? taxCodesData : []) as TaxCodeRow[];
-  const taxSummaryRaw = (taxSummaryData ?? {}) as { total_tax?: number; lines?: TaxSummaryLine[] };
+  const taxSummaryRaw = (taxSummaryData ?? {}) as {
+    total_tax?: number;
+    input_tax?: number;
+    net_payable?: number;
+    lines?: TaxSummaryLine[];
+  };
   const taxSummary = {
     total_tax: Number(taxSummaryRaw.total_tax ?? 0),
+    input_tax: Number(taxSummaryRaw.input_tax ?? 0),
+    net_payable: Number(taxSummaryRaw.net_payable ?? 0),
     lines: taxSummaryRaw.lines ?? [],
   };
+  const taxComplianceSettings = (taxComplianceData ?? {}) as TaxComplianceSettings;
+  const vatLiability = (vatLiabilityData ?? {}) as VatLiabilityReport;
+  const taxReturns = (Array.isArray(taxReturnsData) ? taxReturnsData : []) as TaxReturnPeriod[];
+  const einvoiceDocuments = (Array.isArray(einvoiceDocsData) ? einvoiceDocsData : []) as EinvoiceDocument[];
+  const pendingEinvoices = (Array.isArray(pendingEinvoiceData) ? pendingEinvoiceData : []) as PendingEinvoiceInvoice[];
+  const withholdingRules = (Array.isArray(withholdingRulesData) ? withholdingRulesData : []) as WithholdingRule[];
+  const fpaScenarios = (Array.isArray(fpaScenariosData) ? fpaScenariosData : []) as FpaScenario[];
+  const fpaForecasts = (Array.isArray(fpaForecastsData) ? fpaForecastsData : []) as RollingForecastSummary[];
+  const fpaDashboard = (fpaDashboardData ?? {
+    as_of: to,
+    ytd: { from: from, to: to, revenue: 0, net_profit: 0, operating_expenses: 0 },
+    scenario_count: 0,
+    active_forecast_count: 0,
+  }) as FpaDashboard;
+  const fpaComparison = (Array.isArray(fpaComparisonData) ? fpaComparisonData : []) as ScenarioComparison[];
+  const costCenters = (Array.isArray(costCentersData) ? costCentersData : []) as CostCenterRow[];
+  const projectsJobCost = (Array.isArray(projectsJobCostData) ? projectsJobCostData : []) as ProjectJobCostRow[];
+  const costCenterSummary = (Array.isArray(costCenterSummaryData) ? costCenterSummaryData : []) as CostCenterSummaryRow[];
+  const faBooks = (Array.isArray(faBooksData) ? faBooksData : []) as FaBookRow[];
+  const faBookComparison = (Array.isArray(faBookComparisonData) ? faBookComparisonData : []) as FaBookComparison[];
+  const executiveDashboard = unwrapCachedReport<ExecutiveDashboard>(
+    executiveDashboardData ?? {
+      from,
+      to,
+      kpis: [],
+      monthly_trends: [],
+    }
+  );
+  const financialRules = (Array.isArray(financialRulesData) ? financialRulesData : []) as FinancialAutomationRule[];
+  const financialSchedules = (Array.isArray(financialSchedulesData) ? financialSchedulesData : []) as FinancialScheduledReport[];
+  const financialSecuritySettings = (financialSecurityData ?? {
+    je_requires_approval: jeRequiresApproval,
+    je_dual_approval_enabled: false,
+    je_dual_approval_threshold: null,
+    ap_dual_approval_enabled: false,
+    ap_dual_approval_threshold: 50000,
+    sod_enforcement_enabled: true,
+  }) as FinancialSecuritySettings;
+  const sodRules = (Array.isArray(sodRulesData) ? sodRulesData : []) as SodConflictRule[];
+  const pendingFinancialApprovals = (pendingApprovalsData ?? {
+    journal_entries: [],
+    payment_runs: [],
+  }) as PendingFinancialApprovals;
+  const performanceDashboard = (performanceDashboardData ?? {
+    settings: {
+      financial_cache_enabled: true,
+      financial_cache_ttl_minutes: 60,
+      financial_prefer_read_replica: true,
+    },
+    table_counts: {
+      journal_entries: 0,
+      journal_entry_lines: 0,
+      journal_entries_archived: 0,
+      sales: 0,
+      sales_archived: 0,
+    },
+    cache: {},
+    partition_policies: [],
+  }) as FinancialPerformanceDashboard;
+  const financialPerformanceSettings = (performanceDashboard.settings ?? {
+    financial_cache_enabled: true,
+    financial_cache_ttl_minutes: 60,
+    financial_prefer_read_replica: true,
+  }) as FinancialPerformanceSettings;
+  const financialAiSettings = (financialAiSettingsData ?? {
+    financial_ai_enabled: true,
+    financial_ai_provider: "internal",
+    financial_ai_model: "gpt-4o-mini",
+  }) as FinancialAiSettings;
+  const financialAiPrompts = (Array.isArray(financialAiPromptsData)
+    ? financialAiPromptsData
+    : []) as FinancialAiSuggestedPrompt[];
+  const financialAiInsights = (Array.isArray(financialAiInsightsData)
+    ? financialAiInsightsData
+    : []) as FinancialAiInsight[];
+  const shellPreferences = {
+    default_area: ((shellPreferencesData as FinancialShellPreferences)?.default_area ?? "home") as FinancialShellPreferences["default_area"],
+    density: ((shellPreferencesData as FinancialShellPreferences)?.density ?? "cozy") as FinancialShellPreferences["density"],
+    pinned_tabs: Array.isArray((shellPreferencesData as FinancialShellPreferences)?.pinned_tabs)
+      ? ((shellPreferencesData as FinancialShellPreferences).pinned_tabs as string[])
+      : [],
+    show_launchpad: (shellPreferencesData as FinancialShellPreferences)?.show_launchpad ?? true,
+    updated_at: (shellPreferencesData as FinancialShellPreferences)?.updated_at,
+  } satisfies FinancialShellPreferences;
+  const launchpadCatalog = (
+    (launchpadTilesData as { areas?: LaunchpadArea[] })?.areas ?? []
+  ) as LaunchpadArea[];
 
   const pnlComparative = (pnlComparativeData ?? {}) as {
     prior?: Partial<PnL>;
@@ -270,25 +420,27 @@ async function FinancialsContent({
   const recurringTemplates = (Array.isArray(recurringTemplatesData) ? recurringTemplatesData : []) as RecurringJournalTemplate[];
   const invoiceReminders = (Array.isArray(invoiceRemindersData) ? invoiceRemindersData : []) as InvoiceReminderRow[];
   const reportSnapshots = (Array.isArray(reportSnapshotsData) ? reportSnapshotsData : []) as ReportSnapshotRow[];
+  const exchangeRatesPayload = (exchangeRatesData ?? {}) as { rates?: ExchangeRateRow[] };
+  const exchangeRates = exchangeRatesPayload.rates ?? [];
+  const fxRevaluationRuns = (Array.isArray(fxRunsData) ? fxRunsData : []) as FxRevaluationRunRow[];
+  const intercompanyRelationships = (Array.isArray(icRelationshipsData) ? icRelationshipsData : []) as IntercompanyRelationship[];
+  const intercompanyTransactions = (Array.isArray(icTransactionsData) ? icTransactionsData : []) as IntercompanyTransaction[];
+  const treasuryCashPosition = (treasuryPositionData ?? null) as TreasuryCashPosition | null;
+  const treasuryForecast = (treasuryForecastData ?? null) as TreasuryForecast | null;
+  const treasuryTransfers = (Array.isArray(treasuryTransfersData) ? treasuryTransfersData : []) as TreasuryTransferRow[];
 
   let consolidatedPnl: Record<string, unknown> | null = null;
   let consolidatedBs: Record<string, unknown> | null = null;
-  if (consolidationGroups.length > 0) {
-    const firstGroupId = consolidationGroups[0].id;
-    const [{ data: cPnl }, { data: cBs }] = await Promise.all([
-      supabase.rpc("consolidated_profit_and_loss", {
-        p_group_id: firstGroupId,
-        p_from: from,
-        p_to: to,
-        p_mode: pnlMode,
-      }),
-      supabase.rpc("consolidated_balance_sheet", {
-        p_group_id: firstGroupId,
-        p_as_of: to,
-      }),
-    ]);
-    consolidatedPnl = (cPnl as Record<string, unknown>) ?? null;
-    consolidatedBs = (cBs as Record<string, unknown>) ?? null;
+  if (scope.planning && consolidationGroups.length > 0) {
+    const consolidated = await fetchConsolidatedFinancialReports(supabase, {
+      groupId: consolidationGroups[0].id,
+      from,
+      to,
+      pnlMode,
+      asOf: to,
+    });
+    consolidatedPnl = consolidated.consolidatedPnl;
+    consolidatedBs = consolidated.consolidatedBs;
   }
 
   return (
@@ -312,6 +464,19 @@ async function FinancialsContent({
       bankAccounts={bankAccounts}
       taxCodes={taxCodes}
       taxSummary={taxSummary}
+      taxComplianceSettings={taxComplianceSettings}
+      vatLiability={vatLiability}
+      taxReturns={taxReturns}
+      einvoiceDocuments={einvoiceDocuments}
+      pendingEinvoices={pendingEinvoices}
+      withholdingRules={withholdingRules}
+      fpaScenarios={fpaScenarios}
+      fpaForecasts={fpaForecasts}
+      fpaDashboard={fpaDashboard}
+      fpaComparison={fpaComparison}
+      costCenters={costCenters}
+      projectsJobCost={projectsJobCost}
+      costCenterSummary={costCenterSummary}
       pnlPrior={(pnlComparative.prior ?? {}) as Partial<PnL>}
       pnlPriorLabel={formatPeriod(pnlComparative.prior_from ?? prior.from, pnlComparative.prior_to ?? prior.to)}
       pnlVariance={pnlComparative.variance ?? {}}
@@ -326,17 +491,42 @@ async function FinancialsContent({
       stores={stores}
       projects={projects}
       fixedAssets={fixedAssets}
+      faBooks={faBooks}
+      faBookComparison={faBookComparison}
+      executiveDashboard={executiveDashboard}
+      initialTab={initialTab}
+      initialArea={initialArea}
+      shellPreferences={shellPreferences}
+      launchpadCatalog={launchpadCatalog}
       consolidationGroups={consolidationGroups}
       myOrganizations={myOrganizations}
       consolidatedPnl={consolidatedPnl}
       consolidatedBs={consolidatedBs}
+      intercompanyRelationships={intercompanyRelationships}
+      intercompanyTransactions={intercompanyTransactions}
+      treasuryCashPosition={treasuryCashPosition}
+      treasuryForecast={treasuryForecast}
+      treasuryTransfers={treasuryTransfers}
       recurringTemplates={recurringTemplates}
       invoiceReminders={invoiceReminders}
+      financialRules={financialRules}
+      financialSchedules={financialSchedules}
+      orgTimezone={orgTimezone}
+      financialSecuritySettings={financialSecuritySettings}
+      sodRules={sodRules}
+      pendingFinancialApprovals={pendingFinancialApprovals}
+      financialPerformanceSettings={financialPerformanceSettings}
+      performanceDashboard={performanceDashboard}
+      financialAiSettings={financialAiSettings}
+      financialAiPrompts={financialAiPrompts}
+      financialAiInsights={financialAiInsights}
       reportSnapshots={reportSnapshots}
-      pnl={(pnlData ?? {}) as Partial<PnL & { source?: string }>}
-      trial={(trialData ?? []) as TrialRow[]}
-      bs={bsData as BalanceSheet | null}
-      cf={cfData as CashFlow | null}
+      exchangeRates={exchangeRates}
+      fxRevaluationRuns={fxRevaluationRuns}
+      pnl={unwrapCachedReport<Partial<PnL & { source?: string }>>(pnlData ?? {})}
+      trial={unwrapCachedReport<TrialRow[]>(trialData ?? [])}
+      bs={unwrapCachedReport<BalanceSheet | null>(bsData)}
+      cf={unwrapCachedReport<CashFlow | null>(cfData)}
       dailyTrend={dailyTrend}
       paymentMix={paymentMix}
       expenseByCategory={expenseByCategory}
@@ -347,7 +537,7 @@ async function FinancialsContent({
 export default async function FinancialsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; pnl?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; pnl?: string; tab?: string; area?: string }>;
 }) {
   const ctx = await requireAppAccess("accounting");
 
@@ -356,6 +546,9 @@ export default async function FinancialsPage({
   const from = sp.from ?? def.from;
   const to = sp.to ?? def.to;
   const pnlMode = sp.pnl === "gl" ? "gl" : "operational";
+  const initialTab = sp.tab;
+  const initialArea = sp.area;
+  const orgTimezone = ctx.organization.timezone?.trim() || "Africa/Addis_Ababa";
   const canPostLedger = ctx.canManageApp("accounting");
 
   let unpostedCount = 0;
@@ -366,29 +559,17 @@ export default async function FinancialsPage({
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className="space-y-6 p-6">
-          <Skeleton className="h-10 w-72" />
-          <Skeleton className="h-24 w-full" />
-          <div className="grid gap-4 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 rounded-xl" />
-            ))}
-          </div>
-          <Skeleton className="h-96 rounded-xl" />
-        </div>
-      }
-    >
-      <FinancialsContent
-        orgId={ctx.organization.id}
-        currency={ctx.organization.currency}
-        from={from}
-        to={to}
-        pnlMode={pnlMode}
-        canPostLedger={canPostLedger}
-        unpostedCount={unpostedCount}
-      />
-    </Suspense>
+    <FinancialsContent
+      orgId={ctx.organization.id}
+      currency={ctx.organization.currency}
+      from={from}
+      to={to}
+      pnlMode={pnlMode}
+      canPostLedger={canPostLedger}
+      unpostedCount={unpostedCount}
+      initialTab={initialTab}
+      initialArea={initialArea}
+      orgTimezone={orgTimezone}
+    />
   );
 }

@@ -34,9 +34,21 @@ import { Building2, FileText, Package, Truck } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
 import { PurchasingScmPanel } from "@/components/scm/purchasing-scm-panel";
+import { StandaloneBillForm } from "@/components/finance/standalone-bill-form";
+import { ApPaymentRunsTab, type OpenBillOption, type PaymentRunRow } from "@/components/finance/ap-payment-runs-tab";
 import type { VendorRow, PORow, BillRow, VariantOption } from "./page";
 
-type Tab = "orders" | "planning" | "vendors" | "bills";
+type Tab = "orders" | "planning" | "vendors" | "bills" | "payment_runs";
+
+function billBalanceDue(b: BillRow) {
+  if (b.balance_due != null) return Number(b.balance_due);
+  if (b.status === "paid") return 0;
+  return Math.max(Number(b.amount) - Number(b.amount_paid ?? 0), 0);
+}
+
+function isPayableBill(b: BillRow) {
+  return b.status === "open" || b.status === "partially_paid";
+}
 type DraftLine = { variantId: string; productName: string; quantity: string; unitCost: string };
 
 export function PurchasingClient({
@@ -48,6 +60,8 @@ export function PurchasingClient({
   purchaseOrders,
   bills,
   variants,
+  openBills,
+  paymentRuns,
 }: {
   organizationId: string;
   currency: string;
@@ -57,22 +71,27 @@ export function PurchasingClient({
   purchaseOrders: PORow[];
   bills: BillRow[];
   variants: VariantOption[];
+  openBills: OpenBillOption[];
+  paymentRuns: PaymentRunRow[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("orders");
   const [busy, setBusy] = useState<string>("");
+  const [payBillId, setPayBillId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState<"cash" | "mobile_money" | "bank_transfer">("bank_transfer");
 
   const money = (n: number) => formatCurrency(Number(n), currency);
   const variantLabel = (v: VariantOption) =>
     `${relationName(v.products)}${v.name && v.name !== "Default" ? ` (${v.name})` : ""}`;
 
   const summary = useMemo(() => {
-    const openBills = bills.filter((b) => b.status === "open");
+    const openBillRows = bills.filter((b) => isPayableBill(b) && billBalanceDue(b) > 0.01);
     const pendingPo = purchaseOrders.filter((p) => p.status === "ordered");
     return {
-      apOpen: openBills.reduce((s, b) => s + Number(b.amount), 0),
-      openBills: openBills.length,
+      apOpen: openBillRows.reduce((s, b) => s + billBalanceDue(b), 0),
+      openBills: openBillRows.length,
       pendingPo: pendingPo.length,
       poValue: pendingPo.reduce((s, p) => s + Number(p.total), 0),
     };
@@ -81,9 +100,9 @@ export function PurchasingClient({
   const apByVendor = useMemo(
     () =>
       groupByField(
-        bills.filter((b) => b.status === "open"),
+        bills.filter((b) => isPayableBill(b) && billBalanceDue(b) > 0.01),
         (b) => relationName(b.vendors) || "Unknown",
-        (b) => Number(b.amount)
+        (b) => billBalanceDue(b)
       ).slice(0, 8),
     [bills]
   );
@@ -261,17 +280,51 @@ export function PurchasingClient({
     router.refresh();
   }
 
-  async function payBill(id: string, method: "cash" | "mobile_money" | "bank_transfer") {
+  async function payBill(id: string, amount?: number, method?: typeof payMethod) {
+    const bill = bills.find((b) => b.id === id);
+    const balance = bill ? billBalanceDue(bill) : 0;
+    const pay = amount ?? balance;
+    if (!pay || pay <= 0) return;
     setBusy(id);
     const supabase = createClient();
     const { error: err } = await supabase.rpc("pay_vendor_bill", {
       p_bill_id: id,
-      p_payment_method: method,
+      p_payment_method: method ?? payMethod,
+      p_amount: pay,
     });
     setBusy("");
     if (err) return toast({ title: "Payment failed", description: err.message, variant: "destructive" });
-    toast({ title: "Bill paid" });
+    toast({ title: pay >= balance - 0.01 ? "Bill paid in full" : "Partial payment recorded" });
+    setPayBillId(null);
+    setPayAmount("");
     router.refresh();
+  }
+
+  async function postBill(id: string) {
+    setBusy(id + "post");
+    const supabase = createClient();
+    const { error } = await supabase.rpc("post_vendor_bill", { p_bill_id: id });
+    setBusy("");
+    if (error) return toast({ title: "Post failed", description: error.message, variant: "destructive" });
+    toast({ title: "Bill posted to ledger" });
+    router.refresh();
+  }
+
+  async function validateMatch(id: string) {
+    setBusy(id + "match");
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("validate_vendor_bill_match", { p_bill_id: id });
+    setBusy("");
+    if (error) return toast({ title: "Match check failed", description: error.message, variant: "destructive" });
+    const row = data as { match_status?: string; variance?: number };
+    toast({ title: `Match: ${row.match_status ?? "unknown"}`, description: row.variance ? `Variance ${row.variance}` : undefined });
+    router.refresh();
+  }
+
+  function openPayDialog(bill: BillRow) {
+    setPayBillId(bill.id);
+    setPayAmount(String(billBalanceDue(bill)));
+    setPayMethod("bank_transfer");
   }
 
   return (
@@ -287,6 +340,7 @@ export function PurchasingClient({
               ...(canManage ? [{ key: "planning" as const, label: "MRP & requisitions" }] : []),
               { key: "vendors" as const, label: "Vendors" },
               { key: "bills" as const, label: "Vendor Bills" },
+              { key: "payment_runs" as const, label: "Payment runs" },
             ]}
             value={tab}
             onChange={setTab}
@@ -631,6 +685,13 @@ export function PurchasingClient({
       )}
 
       {tab === "bills" && (
+        <>
+          {canManage && (
+            <StandaloneBillForm
+              orgId={organizationId}
+              vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
+            />
+          )}
         <ReportSection
           title="Vendor bills"
           subtitle={`${bills.length} bills · ${money(summary.apOpen)} open`}
@@ -657,27 +718,40 @@ export function PurchasingClient({
             <DataTableHeader>
               <DataTableHead>Date</DataTableHead>
               <DataTableHead>Vendor</DataTableHead>
-              <DataTableHead>Status</DataTableHead>
-              <DataTableHead align="right">Amount</DataTableHead>
-              <DataTableHead align="right">Action</DataTableHead>
-            </DataTableHeader>
-            <DataTableBody>
-              {bills.length === 0 ? (
-                <DataTableEmpty colSpan={5} message="No vendor bills yet." />
-              ) : (
-                bills.map((b) => (
-                  <DataTableRow key={b.id}>
-                    <DataTableCell>{b.bill_date}</DataTableCell>
-                    <DataTableCell>{relationName(b.vendors)}</DataTableCell>
-                    <DataTableCell><StatusBadge status={b.status} /></DataTableCell>
-                    <DataTableCell align="right" className="font-mono">{money(b.amount)}</DataTableCell>
-                    <DataTableCell align="right">
-                      {canManage && b.status === "open" ? (
-                        <Button size="sm" disabled={busy === b.id} onClick={() => payBill(b.id, "cash")}>
-                          {busy === b.id ? "…" : "Pay (cash)"}
-                        </Button>
-                      ) : "—"}
-                    </DataTableCell>
+            <DataTableHead>Status</DataTableHead>
+            <DataTableHead>Match</DataTableHead>
+            <DataTableHead align="right">Amount</DataTableHead>
+            <DataTableHead align="right">Balance</DataTableHead>
+            <DataTableHead align="right">Action</DataTableHead>
+          </DataTableHeader>
+          <DataTableBody>
+            {bills.length === 0 ? (
+              <DataTableEmpty colSpan={7} message="No vendor bills yet." />
+            ) : (
+              bills.map((b) => (
+                <DataTableRow key={b.id}>
+                  <DataTableCell>{b.bill_date}</DataTableCell>
+                  <DataTableCell>{relationName(b.vendors)}</DataTableCell>
+                  <DataTableCell><StatusBadge status={b.status} /></DataTableCell>
+                  <DataTableCell className="text-xs capitalize text-muted-foreground">
+                    {b.match_status?.replace(/_/g, " ") ?? "—"}
+                  </DataTableCell>
+                  <DataTableCell align="right" className="font-mono">{money(b.amount)}</DataTableCell>
+                  <DataTableCell align="right" className="font-mono text-amber-700">
+                    {isPayableBill(b) || b.status === "draft" ? money(billBalanceDue(b)) : "—"}
+                  </DataTableCell>
+                  <DataTableCell align="right" className="space-x-2">
+                    {canManage && b.status === "draft" && (
+                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => postBill(b.id)}>Post</Button>
+                    )}
+                    {canManage && b.po_id && isPayableBill(b) && (
+                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => validateMatch(b.id)}>Match</Button>
+                    )}
+                    {canManage && isPayableBill(b) && billBalanceDue(b) > 0.01 && (
+                      <Button size="sm" disabled={busy === b.id} onClick={() => openPayDialog(b)}>Pay</Button>
+                    )}
+                    {!canManage && "—"}
+                  </DataTableCell>
                   </DataTableRow>
                 ))
               )}
@@ -685,6 +759,46 @@ export function PurchasingClient({
           </table>
         </DataTable>
         </ReportSection>
+
+        {payBillId && (
+          <FormCard
+            title="Pay vendor bill"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void payBill(payBillId, Number(payAmount) || undefined);
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Method</Label>
+                <select className={SELECT_CLS} value={payMethod} onChange={(e) => setPayMethod(e.target.value as typeof payMethod)}>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="mobile_money">Mobile money</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button type="submit" disabled={!!busy}>Apply payment</Button>
+              <Button type="button" variant="outline" onClick={() => setPayBillId(null)}>Cancel</Button>
+            </div>
+          </FormCard>
+        )}
+        </>
+      )}
+
+      {tab === "payment_runs" && (
+        <ApPaymentRunsTab
+          orgId={organizationId}
+          currency={currency}
+          canManage={canManage}
+          runs={paymentRuns}
+          openBills={openBills}
+        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import { deliverEmail } from "./channels/email";
 import { deliverInApp } from "./channels/in-app";
 import { deliverTelegram } from "./channels/telegram";
 import { deliverWhatsApp } from "./channels/whatsapp";
+import { resolveNotificationBatchSize } from "./worker-options";
 import type { ClaimedDelivery } from "./types";
 
 export type NotificationWorkerResult = {
@@ -13,11 +14,7 @@ export type NotificationWorkerResult = {
 };
 
 function resolveBatchSize(override?: number): number {
-  if (typeof override === "number" && Number.isFinite(override)) {
-    return Math.max(1, Math.min(override, 200));
-  }
-  const fromEnv = Number(process.env.NOTIFICATION_BATCH_SIZE ?? 50);
-  return Math.max(1, Math.min(Number.isFinite(fromEnv) ? fromEnv : 50, 200));
+  return resolveNotificationBatchSize(override);
 }
 
 export async function processNotificationPipeline(

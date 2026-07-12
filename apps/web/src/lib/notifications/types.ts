@@ -206,7 +206,10 @@ export type NotificationScheduleRow = {
 export const REPORT_TYPE_OPTIONS = [
   { value: "sales.daily", label: "Daily sales" },
   { value: "sales.weekly", label: "Weekly sales (7 days)" },
-  { value: "financial.pnl", label: "Monthly P&L" },
+  { value: "financial.pnl", label: "Monthly GL P&L" },
+  { value: "financial.balance_sheet", label: "Balance sheet" },
+  { value: "financial.executive", label: "Executive KPI summary" },
+  { value: "financial.ar_aging", label: "AR aging" },
   { value: "inventory.stock", label: "Low stock items" },
 ] as const;
 

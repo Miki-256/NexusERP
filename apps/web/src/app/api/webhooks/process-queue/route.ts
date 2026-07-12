@@ -4,35 +4,10 @@ import { dispatchSecurityAlerts } from "@/lib/security-alert-dispatch";
 import { dispatchHrWebhooks } from "@/lib/hr/webhook-dispatch";
 import { processNotificationPipeline } from "@/lib/notifications/worker";
 import { runNotificationSchedules } from "@/lib/notifications/schedule-runner";
+import { verifyInternalSecret } from "@/lib/api/internal-auth";
+import { resolveArchiveSales } from "@/lib/api/process-queue-options";
 
-function verifySecret(request: Request): boolean {
-  const webhookSecret = process.env.POS_WEBHOOK_SECRET;
-  const cronSecret = process.env.CRON_SECRET;
-
-  const headerSecret = request.headers.get("x-pos-webhook-secret");
-  if (webhookSecret && headerSecret === webhookSecret) return true;
-
-  const auth = request.headers.get("authorization");
-  if (cronSecret && auth === `Bearer ${cronSecret}`) return true;
-
-  if (!webhookSecret && !cronSecret) {
-    return process.env.NODE_ENV !== "production";
-  }
-
-  return false;
-}
-
-/** undefined = DB default (archive cold sales on Sunday UTC). */
-function resolveArchiveSales(request: Request): boolean | undefined {
-  const url = new URL(request.url);
-  const param = url.searchParams.get("archive_sales");
-  if (param === "1" || param === "true") return true;
-  if (param === "0" || param === "false") return false;
-  if (request.headers.get("x-archive-sales") === "1") return true;
-  if (process.env.FORCE_SALES_ARCHIVE === "true") return true;
-  if (process.env.SKIP_SALES_ARCHIVE === "true") return false;
-  return undefined;
-}
+export const dynamic = "force-dynamic";
 
 async function processQueue(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -213,14 +188,14 @@ async function processQueue(request: Request) {
 
 /** Vercel Cron invokes GET once daily on Hobby (see vercel.json). POST for manual triggers. */
 export async function GET(request: Request) {
-  if (!verifySecret(request)) {
+  if (!verifyInternalSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return processQueue(request);
 }
 
 export async function POST(request: Request) {
-  if (!verifySecret(request)) {
+  if (!verifyInternalSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return processQueue(request);

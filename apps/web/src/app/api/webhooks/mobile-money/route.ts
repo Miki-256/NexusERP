@@ -1,17 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { mobileMoneyWebhookSchema } from "@nex/shared";
 import { parseJsonBody } from "@/lib/api/parse-body";
+import { verifyInternalSecret } from "@/lib/api/internal-auth";
 import { NextResponse } from "next/server";
 
-function verifySecret(request: Request): boolean {
-  const expected = process.env.POS_WEBHOOK_SECRET;
-  if (!expected) return process.env.NODE_ENV !== "production";
-  const header = request.headers.get("x-pos-webhook-secret");
-  return header === expected;
-}
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!verifySecret(request)) {
+  if (!verifyInternalSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -33,9 +33,24 @@ import { ChartCard, FinanceDonutChart } from "@/components/charts/finance-charts
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { AlertCircle, FileText, Landmark, Wallet } from "lucide-react";
 import type { InvoiceRow, CreditNoteRow } from "./page";
+import { CustomerStatementPanel } from "@/components/finance/customer-statement-panel";
+import { ArCollectionsTab, type CollectionsQueueRow } from "@/components/finance/ar-collections-tab";
 
 type Line = { description: string; quantity: string; unitPrice: string; taxCodeId: string };
-type MainTab = "invoices" | "credit_notes";
+type MainTab = "invoices" | "credit_notes" | "collections" | "statements";
+
+function invoiceBalanceDue(inv: InvoiceRow) {
+  if (inv.balance_due != null) return Number(inv.balance_due);
+  if (inv.status === "paid") return 0;
+  if (inv.status === "posted" || inv.status === "partially_paid") {
+    return Math.max(Number(inv.total) - Number(inv.amount_paid ?? 0) - Number(inv.amount_credited ?? 0), 0);
+  }
+  return 0;
+}
+
+function isOpenInvoice(inv: InvoiceRow) {
+  return inv.status === "posted" || inv.status === "partially_paid";
+}
 
 export function InvoicingClient({
   organizationId,
@@ -46,6 +61,7 @@ export function InvoicingClient({
   invoices,
   creditNotes,
   customers,
+  collectionsQueue,
 }: {
   organizationId: string;
   currency: string;
@@ -55,6 +71,7 @@ export function InvoicingClient({
   invoices: InvoiceRow[];
   creditNotes: CreditNoteRow[];
   customers: { id: string; name: string | null }[];
+  collectionsQueue: CollectionsQueueRow[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -69,21 +86,27 @@ export function InvoicingClient({
   const [cnSettlement, setCnSettlement] = useState<"store_credit" | "ar" | "cash">("store_credit");
   const [cnReason, setCnReason] = useState("");
   const [search, setSearch] = useState("");
+  const [payInvoiceId, setPayInvoiceId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState<"cash" | "mobile_money" | "bank_transfer">("cash");
+  const [payReference, setPayReference] = useState("");
 
   const defaultTaxCodeId = taxCodes.find((t) => t.code === "STANDARD")?.id ?? taxCodes[0]?.id ?? "";
 
   const money = (n: number) => formatCurrency(Number(n), currency);
 
   const summary = useMemo(() => {
-    const open = invoices.filter((i) => i.status === "posted" || i.status === "draft");
-    const overdue = invoices.filter(
-      (i) => i.due_date && i.status === "posted" && i.due_date < new Date().toISOString().slice(0, 10)
+    const openInvoices = invoices.filter((i) => isOpenInvoice(i) && invoiceBalanceDue(i) > 0.01);
+    const overdue = openInvoices.filter(
+      (i) => i.due_date && i.due_date < new Date().toISOString().slice(0, 10)
     );
     return {
-      arOpen: open.reduce((s, i) => s + Number(i.total), 0),
-      openCount: open.length,
+      arOpen: openInvoices.reduce((s, i) => s + invoiceBalanceDue(i), 0),
+      openCount: openInvoices.length,
       overdueCount: overdue.length,
-      paidTotal: invoices.filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.total), 0),
+      paidTotal: invoices
+        .filter((i) => i.status === "paid" || i.status === "partially_paid")
+        .reduce((s, i) => s + Number(i.amount_paid ?? (i.status === "paid" ? i.total : 0)), 0),
     };
   }, [invoices]);
 
@@ -149,17 +172,33 @@ export function InvoicingClient({
     router.refresh();
   }
 
-  async function payInvoice(id: string) {
+  async function payInvoice(id: string, amount?: number) {
+    const inv = invoices.find((i) => i.id === id);
+    const balance = inv ? invoiceBalanceDue(inv) : 0;
+    const pay = amount ?? balance;
+    if (!pay || pay <= 0) return;
     setBusy(id + "pay");
     const supabase = createClient();
     const { error } = await supabase.rpc("pay_customer_invoice", {
       p_invoice_id: id,
-      p_payment_method: "cash",
+      p_payment_method: payMethod,
+      p_amount: pay,
+      p_reference: payReference || null,
     });
     setBusy("");
     if (error) return toast({ title: "Payment failed", description: error.message, variant: "destructive" });
-    toast({ title: "Invoice marked paid" });
+    toast({ title: pay >= balance - 0.01 ? "Invoice paid in full" : "Partial payment recorded" });
+    setPayInvoiceId(null);
+    setPayAmount("");
+    setPayReference("");
     router.refresh();
+  }
+
+  function openPayDialog(inv: InvoiceRow) {
+    setPayInvoiceId(inv.id);
+    setPayAmount(String(invoiceBalanceDue(inv)));
+    setPayMethod("cash");
+    setPayReference("");
   }
 
   async function createCreditNote(e: React.FormEvent) {
@@ -227,6 +266,8 @@ export function InvoicingClient({
         tabs={[
           { key: "invoices" as const, label: "Invoices", count: invoices.length },
           { key: "credit_notes" as const, label: "Credit notes", count: creditNotes.length },
+          { key: "collections" as const, label: "Collections", count: collectionsQueue.length },
+          { key: "statements" as const, label: "Statements" },
         ]}
         value={mainTab}
         onChange={setMainTab}
@@ -391,14 +432,21 @@ export function InvoicingClient({
                     <MobileRecordCardRow label="Date">{inv.invoice_date}</MobileRecordCardRow>
                     <MobileRecordCardRow label="Due">{inv.due_date || "—"}</MobileRecordCardRow>
                     <MobileRecordCardRow label="Total">{money(inv.total)}</MobileRecordCardRow>
+                    {isOpenInvoice(inv) && (
+                      <MobileRecordCardRow label="Balance due">
+                        <span className="font-mono text-amber-700">{money(invoiceBalanceDue(inv))}</span>
+                      </MobileRecordCardRow>
+                    )}
                   </div>
                   {canManage && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {inv.status === "draft" && (
                         <Button size="sm" variant="outline" disabled={!!busy} className="flex-1" onClick={() => postInvoice(inv.id)}>Post</Button>
                       )}
-                      {inv.status === "posted" && (
-                        <Button size="sm" disabled={!!busy} className="flex-1" onClick={() => payInvoice(inv.id)}>Mark paid</Button>
+                      {isOpenInvoice(inv) && invoiceBalanceDue(inv) > 0.01 && (
+                        <Button size="sm" disabled={!!busy} className="flex-1" onClick={() => openPayDialog(inv)}>
+                          {inv.status === "partially_paid" ? "Pay balance" : "Collect"}
+                        </Button>
                       )}
                     </div>
                   )}
@@ -416,11 +464,12 @@ export function InvoicingClient({
             <DataTableHead>Due</DataTableHead>
             <DataTableHead>Status</DataTableHead>
             <DataTableHead align="right">Total</DataTableHead>
+            <DataTableHead align="right">Balance</DataTableHead>
             {canManage && <DataTableHead align="right">Actions</DataTableHead>}
           </DataTableHeader>
           <DataTableBody>
             {filtered.length === 0 ? (
-              <DataTableEmpty colSpan={canManage ? 7 : 6} message="No invoices match your search." />
+              <DataTableEmpty colSpan={canManage ? 8 : 7} message="No invoices match your search." />
             ) : (
               filtered.map((inv) => (
                 <DataTableRow key={inv.id}>
@@ -430,13 +479,18 @@ export function InvoicingClient({
                   <DataTableCell className="text-muted-foreground">{inv.due_date || "—"}</DataTableCell>
                   <DataTableCell><StatusBadge status={inv.status} /></DataTableCell>
                   <DataTableCell align="right">{money(inv.total)}</DataTableCell>
+                  <DataTableCell align="right" className="font-mono text-amber-700">
+                    {isOpenInvoice(inv) ? money(invoiceBalanceDue(inv)) : "—"}
+                  </DataTableCell>
                   {canManage && (
                     <DataTableCell align="right" className="space-x-2">
                       {inv.status === "draft" && (
                         <Button size="sm" variant="outline" disabled={!!busy} onClick={() => postInvoice(inv.id)}>Post</Button>
                       )}
-                      {inv.status === "posted" && (
-                        <Button size="sm" disabled={!!busy} onClick={() => payInvoice(inv.id)}>Mark paid</Button>
+                      {isOpenInvoice(inv) && invoiceBalanceDue(inv) > 0.01 && (
+                        <Button size="sm" disabled={!!busy} onClick={() => openPayDialog(inv)}>
+                          Collect
+                        </Button>
                       )}
                     </DataTableCell>
                   )}
@@ -448,7 +502,60 @@ export function InvoicingClient({
       </DataTable>
       </ResponsiveTableLayout>
       </ReportSection>
+
+      {payInvoiceId && (
+        <FormCard
+          title="Record payment"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void payInvoice(payInvoiceId, Number(payAmount) || undefined);
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Amount</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Method</Label>
+              <select className={SELECT_CLS} value={payMethod} onChange={(e) => setPayMethod(e.target.value as typeof payMethod)}>
+                <option value="cash">Cash</option>
+                <option value="mobile_money">Mobile money</option>
+                <option value="bank_transfer">Bank transfer</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Reference</Label>
+              <Input value={payReference} onChange={(e) => setPayReference(e.target.value)} placeholder="Receipt / txn ID" />
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button type="submit" disabled={!!busy}>Apply payment</Button>
+            <Button type="button" variant="outline" onClick={() => setPayInvoiceId(null)}>Cancel</Button>
+          </div>
+        </FormCard>
+      )}
         </>
+      )}
+
+      {mainTab === "collections" && (
+        <ArCollectionsTab
+          orgId={organizationId}
+          currency={currency}
+          canManage={canManage}
+          queue={collectionsQueue}
+        />
+      )}
+
+      {mainTab === "statements" && (
+        <CustomerStatementPanel orgId={organizationId} currency={currency} customers={customers} />
       )}
 
       {mainTab === "credit_notes" && (

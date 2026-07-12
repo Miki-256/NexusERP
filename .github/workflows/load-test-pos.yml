@@ -1,0 +1,31 @@
+name: POS load test
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly preprod soak — Sunday 05:30 UTC
+    - cron: "30 5 * * 0"
+
+jobs:
+  pos-load:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: POS concurrent sales load test
+        run: |
+          if [ -z "$LOAD_TEST_EMAIL" ]; then
+            echo "Skipping POS load test — set E2E_EMAIL or LOAD_TEST_EMAIL repository secret."
+            exit 0
+          fi
+          npm run load-test:pos:prepare
+          npm run load-test:pos:node
+        env:
+          LOAD_TEST_EMAIL: ${{ secrets.E2E_EMAIL }}
+          LOAD_TEST_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}

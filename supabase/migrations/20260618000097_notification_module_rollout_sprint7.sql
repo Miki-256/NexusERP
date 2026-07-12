@@ -647,7 +647,10 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.collect_customer_receivable TO authenticated;
+GRANT EXECUTE ON FUNCTION public.collect_customer_receivable(UUID, UUID, NUMERIC, payment_method, TEXT) TO authenticated;
+
+-- Clean up premature EFM overload if present (134 recreates the extended signature later)
+DROP FUNCTION IF EXISTS public.pay_customer_invoice(UUID, payment_method, NUMERIC, DATE, TEXT);
 
 CREATE OR REPLACE FUNCTION public.pay_customer_invoice(
   p_invoice_id UUID,
@@ -712,7 +715,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.pay_customer_invoice TO authenticated;
+GRANT EXECUTE ON FUNCTION public.pay_customer_invoice(UUID, payment_method) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.approve_journal_entry(p_entry_id UUID)
 RETURNS UUID

@@ -83,9 +83,18 @@ Optional: add Slack/email via GitHub Actions marketplace.
 
 ### Verify (after deploy with middleware fix)
 
+Public liveness (no auth):
+
 ```bash
 curl -sS https://nexus-erp-preprod.vercel.app/api/health | jq .
-# Expect: {"ok":true,"status":"healthy",...} and HTTP 200
+# Expect: {"ok":true,"status":"healthy","mode":"liveness",...} and HTTP 200
+```
+
+Detailed queue probe (requires `CRON_SECRET`):
+
+```bash
+curl -sS -H "Authorization: Bearer $CRON_SECRET" https://nexus-erp-preprod.vercel.app/api/health | jq .
+# Expect ledger/webhook queue depths; HTTP 503 when degraded
 ```
 
 ---
@@ -103,6 +112,7 @@ LOAD_TEST_PASSWORD=your-password
 Run:
 
 ```bash
+npm run verify:supabase
 npm run test:integration
 ```
 
@@ -121,8 +131,29 @@ npm run setup:launch-ops
 | `APP_URL` + `CRON_SECRET` | 5-min cron + health monitor |
 | `E2E_EMAIL` + `E2E_PASSWORD` | Integration + Playwright smoke |
 | `NEXT_PUBLIC_SUPABASE_URL` + key | RPC verify on push |
+| `SUPABASE_SERVICE_ROLE_KEY` | Health probe + platform integration tests |
 
 ---
+
+## Production readiness audits (CI)
+
+These run on every PR / push to `main`:
+
+| Command | Purpose |
+|---------|---------|
+| `npm run audit:stable-rpcs` | STABLE/VOLATILE write RPC safety |
+| `npm run audit:rls` | Block legacy RLS patterns in new migrations |
+| `npm run audit:api-auth` | Cron/webhook/admin route auth markers |
+| `npm run audit:financials-scope` | Area-scoped financials data loading |
+| `npm run audit:e2e` | Required Playwright specs present |
+| `npm run audit:launch-ops` | Launch workflows + scripts wired |
+
+Pre-launch local gate:
+
+```bash
+CHECK_PRODUCTION_ENV=1 npm run verify:production-env
+npm run setup:launch-ops
+```
 
 ## Troubleshooting
 

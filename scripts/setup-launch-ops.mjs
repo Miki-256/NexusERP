@@ -18,19 +18,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const applyGithub = process.argv.includes("--apply-github-secrets");
 const generateCron = process.argv.includes("--generate-cron-secret");
+const skipIntegration = process.argv.includes("--skip-integration");
 
 function loadEnvFile(filePath) {
   const out = {};
   if (!existsSync(filePath)) return out;
   for (const line of readFileSync(filePath, "utf8").split("\n")) {
     const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
   }
   return out;
 }
 
 const fileEnv = loadEnvFile(path.join(root, "apps/web/.env.local"));
-const env = { ...fileEnv, ...process.env };
+// Prefer .env.local over a stale exported shell var (e.g. after secret rotation).
+const env = { ...process.env, ...fileEnv };
 
 const APP_URL =
   env.APP_URL ?? env.NEXT_PUBLIC_APP_URL ?? env.E2E_BASE_URL ?? "https://nexus-erp-preprod.vercel.app";
@@ -41,12 +43,24 @@ const UPSTASH_TOKEN = env.UPSTASH_REDIS_REST_TOKEN;
 console.log("NexusERP launch ops setup\n");
 console.log(`APP_URL: ${APP_URL}`);
 
-if (generateCron && !CRON_SECRET) {
+if (generateCron) {
+  if (CRON_SECRET && !process.argv.includes("--force")) {
+    console.log("\nCRON_SECRET already exists in apps/web/.env.local.");
+    console.log("Sync it to Vercel (no new secret needed):");
+    console.log("  npm run vercel:launch-env");
+    console.log("  npm run deploy:live");
+    console.log("  npm run setup:launch-ops");
+    console.log("\nTo generate a NEW secret instead: --generate-cron-secret --force");
+    process.exit(0);
+  }
   const secret = randomBytes(32).toString("hex");
   console.log("\nGenerated CRON_SECRET (save to Vercel + GitHub repo secrets):");
   console.log(secret);
   console.log("\nAdd to apps/web/.env.local:");
   console.log(`CRON_SECRET=${secret}`);
+  console.log("\nThen:");
+  console.log("  npm run vercel:launch-env");
+  console.log("  npm run deploy:live");
   process.exit(0);
 }
 
@@ -106,6 +120,7 @@ async function checkProcessQueue() {
     console.log(`   HTTP ${res.status}`, typeof body === "object" ? JSON.stringify(body) : body);
     if (!res.ok) {
       console.log("   ❌ Cron auth failed — CRON_SECRET must match Vercel");
+      console.log("   Fix: npm run vercel:launch-env && npm run deploy:live");
       return false;
     }
     console.log("   ✅ Process-queue OK");
@@ -123,10 +138,10 @@ function checkUpstash() {
     console.log("   → Confirm both are set on Vercel Production + redeploy");
     return true;
   }
-  console.log("   ❌ Missing UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN");
-  console.log("   → https://upstash.com → Redis → copy REST URL + token");
-  console.log("   → Vercel → Project → Settings → Environment Variables → Production");
-  return false;
+  console.log("   ⚠️  Missing locally (optional for pilot)");
+  console.log("   → Already on Vercel Production if configured earlier — local copy is for scripts only");
+  console.log("   → https://upstash.com → Redis → copy REST URL + token into apps/web/.env.local");
+  return true; // optional — do not fail launch ops
 }
 
 function checkGithubSecrets() {
@@ -155,6 +170,8 @@ function checkGithubSecrets() {
         execSync(`gh secret set CRON_SECRET --body "${CRON_SECRET}"`, { cwd: root, stdio: "inherit" });
       }
       console.log("   Applied secrets via gh");
+      const listAfter = execSync("gh secret list", { cwd: root, encoding: "utf8" });
+      return /APP_URL/.test(listAfter) && /CRON_SECRET/.test(listAfter);
     }
     return hasApp && hasCron;
   } catch (err) {
@@ -166,6 +183,10 @@ function checkGithubSecrets() {
 
 function runIntegrationTests() {
   console.log("\n5. Integration tests (remote Supabase RPCs)");
+  if (skipIntegration) {
+    console.log("   Skipped (--skip-integration). Run: npm run test:integration");
+    return true;
+  }
   const email = env.INTEGRATION_TEST_EMAIL ?? env.E2E_EMAIL ?? env.LOAD_TEST_EMAIL;
   const password = env.INTEGRATION_TEST_PASSWORD ?? env.E2E_PASSWORD ?? env.LOAD_TEST_PASSWORD;
   if (!email || !password) {

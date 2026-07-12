@@ -207,13 +207,27 @@ CREATE INDEX IF NOT EXISTS idx_mrp_suggestions_org_active
   ON mrp_suggestions(organization_id, store_id)
   WHERE NOT is_dismissed;
 
-ALTER TABLE purchase_requisition_lines
-  ADD CONSTRAINT purchase_requisition_lines_mrp_suggestion_fkey
-  FOREIGN KEY (mrp_suggestion_id) REFERENCES mrp_suggestions(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'purchase_requisition_lines_mrp_suggestion_fkey'
+  ) THEN
+    ALTER TABLE purchase_requisition_lines
+      ADD CONSTRAINT purchase_requisition_lines_mrp_suggestion_fkey
+      FOREIGN KEY (mrp_suggestion_id) REFERENCES mrp_suggestions(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
-ALTER TABLE mrp_suggestions
-  ADD CONSTRAINT mrp_suggestions_requisition_line_fkey
-  FOREIGN KEY (requisition_line_id) REFERENCES purchase_requisition_lines(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'mrp_suggestions_requisition_line_fkey'
+  ) THEN
+    ALTER TABLE mrp_suggestions
+      ADD CONSTRAINT mrp_suggestions_requisition_line_fkey
+      FOREIGN KEY (requisition_line_id) REFERENCES purchase_requisition_lines(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- RLS

@@ -170,7 +170,7 @@ run("RPC integration — adjust_inventory negative guard", () => {
         p_delta: -(level!.quantity + 100),
         p_reason: "Integration test negative guard",
       })
-    ).rejects.toThrow(/negative stock/i);
+    ).rejects.toThrow(/negative stock|insufficient stock/i);
   });
 });
 

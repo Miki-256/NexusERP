@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { ShellProvider } from "@/components/layout/shell-context";
 import { NavigationProvider, useNavigation } from "@/components/layout/navigation-context";
@@ -19,9 +21,45 @@ const Sidebar = dynamic(
 
 function MainContent({ children }: { children: React.ReactNode }) {
   const { isNavigating } = useNavigation();
+  const pathname = usePathname();
+  const mainRef = useRef<HTMLElement>(null);
+  const scrollSnapshotRef = useRef(0);
+  const pathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const onScroll = () => {
+      scrollSnapshotRef.current = main.scrollTop;
+    };
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => main.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+
+    const pathnameChanged = pathname !== pathnameRef.current;
+    pathnameRef.current = pathname;
+
+    if (pathnameChanged) {
+      scrollSnapshotRef.current = 0;
+      return;
+    }
+
+    const target = scrollSnapshotRef.current;
+    if (target <= 0) return;
+
+    const restore = () => {
+      main.scrollTop = target;
+    };
+    restore();
+    requestAnimationFrame(restore);
+  }, [children, pathname]);
 
   return (
-    <main className="relative min-h-0 flex-1 overflow-y-auto">
+    <main ref={mainRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
       {isNavigating && (
         <div
           className="pointer-events-none absolute inset-0 z-10 bg-background/20 backdrop-blur-[1px]"

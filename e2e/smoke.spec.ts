@@ -1,7 +1,8 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { loginTenantUser } from "./helpers/auth";
+import { e2eCredentials, hasE2eCredentials } from "./helpers/credentials";
 
 type Fixtures = {
   prepared?: boolean;
@@ -14,7 +15,7 @@ type Fixtures = {
   error?: string;
 };
 
-const e2eDir = path.dirname(fileURLToPath(import.meta.url));
+const e2eDir = path.join(process.cwd(), "e2e");
 
 function loadFixtures(): Fixtures {
   const file = path.join(e2eDir, "fixtures.json");
@@ -23,19 +24,17 @@ function loadFixtures(): Fixtures {
 }
 
 const fixtures = loadFixtures();
-const email = process.env.E2E_EMAIL ?? fixtures.email;
-const password = process.env.E2E_PASSWORD;
+const { email, password } = e2eCredentials();
+const loginEmail = email || fixtures.email || "";
 
 test.describe("NexusERP smoke", () => {
+  // Exercise the real login form — not the shared auth.setup session.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test("login and sales register loads", async ({ page }) => {
-    test.skip(!email || !password, "Set E2E_EMAIL and E2E_PASSWORD to run smoke tests");
+    test.skip(!hasE2eCredentials(), "Set E2E_EMAIL and E2E_PASSWORD to run smoke tests");
 
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(email!);
-    await page.getByLabel("Password").fill(password!);
-    await page.getByRole("button", { name: /^Sign in/ }).click();
-
-    await page.waitForURL(/\/(dashboard|pending-approval|onboarding)/, { timeout: 30_000 });
+    await loginTenantUser(page, loginEmail, password);
 
     await page.goto("/sales");
     await expect(page.getByRole("heading", { name: "Sales Register" })).toBeVisible({
@@ -45,24 +44,21 @@ test.describe("NexusERP smoke", () => {
   });
 
   test("POS cash sale appears in sales register", async ({ page }) => {
+    const fx = loadFixtures();
     test.skip(
-      !fixtures.prepared || !email || !password,
-      fixtures.error ?? "Run with E2E_EMAIL, E2E_PASSWORD, E2E_STAFF_PIN and stocked products"
+      !fx.prepared || !hasE2eCredentials(),
+      fx.error ?? "Run with E2E_EMAIL, E2E_PASSWORD, E2E_STAFF_PIN and stocked products"
     );
 
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(email!);
-    await page.getByLabel("Password").fill(password!);
-    await page.getByRole("button", { name: /^Sign in/ }).click();
-    await page.waitForURL(/\/(dashboard|pending-approval|onboarding)/, { timeout: 30_000 });
+    await loginTenantUser(page, loginEmail, password);
 
-    await page.goto(`/pos/${fixtures.registerId}`);
-    await expect(page.getByText(fixtures.registerName ?? "Register", { exact: false })).toBeVisible({
+    await page.goto(`/pos/${fx.registerId}`);
+    await expect(page.getByText(fx.registerName ?? "Register", { exact: false })).toBeVisible({
       timeout: 30_000,
     });
 
-    await page.getByRole("button", { name: fixtures.staffName! }).click();
-    await page.getByPlaceholder("••••").fill(fixtures.staffPin!);
+    await page.getByRole("option", { name: new RegExp(fx.staffName!, "i") }).click();
+    await page.getByPlaceholder("••••").fill(fx.staffPin!);
     await page.getByRole("button", { name: "Enter" }).click();
 
     const openShift = page.getByRole("button", { name: "Open shift" });
@@ -72,7 +68,7 @@ test.describe("NexusERP smoke", () => {
 
     await expect(page.getByRole("button", { name: /Checkout/i })).toBeVisible({ timeout: 30_000 });
 
-    const productButton = page.getByRole("button", { name: fixtures.productName!, exact: false }).first();
+    const productButton = page.getByRole("button", { name: fx.productName!, exact: false }).first();
     await productButton.click();
 
     await page.getByRole("button", { name: /Checkout/i }).click();

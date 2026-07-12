@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { ACTIVE_ORG_COOKIE } from "@/lib/active-org";
+import { loadWorkspaceFromRpc } from "@/lib/workspace";
 import { clientIp, rateLimitResponse } from "@/lib/rate-limit";
 import { rateLimitDistributed } from "@/lib/rate-limit-distributed";
 import { NextRequest, NextResponse } from "next/server";
@@ -42,8 +45,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: workspace } = await supabase.rpc("get_my_workspace");
-  const org = (workspace as { organization?: { id?: string } } | null)?.organization;
+  const cookieStore = await cookies();
+  const activeOrgId = cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null;
+  const workspace = await loadWorkspaceFromRpc(supabase, activeOrgId);
+  const org = workspace?.organization;
   if (!org?.id) {
     return NextResponse.json({ error: "No organization context" }, { status: 403 });
   }

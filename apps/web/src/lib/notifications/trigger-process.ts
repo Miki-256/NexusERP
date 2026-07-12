@@ -1,11 +1,4 @@
-/** Fire-and-forget: process queued notification events (Telegram, in-app, email). */
+/** Notifications are processed by the process-queue cron (every 5 min). No client trigger. */
 export function triggerNotificationProcess(): void {
-  if (typeof window === "undefined") return;
-  void fetch("/api/notifications/process", {
-    method: "POST",
-    credentials: "include",
-    keepalive: true,
-  }).catch(() => {
-    /* cron / manual repair will catch up */
-  });
+  /* no-op — /api/notifications/process requires cron secret; use process-queue cron */
 }

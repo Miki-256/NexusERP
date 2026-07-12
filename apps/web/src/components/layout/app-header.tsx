@@ -123,7 +123,7 @@ export function AppHeader({
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1.5">
+              <Button variant="ghost" size="sm" className="gap-1.5" aria-label="Quick actions">
                 <Plus className="h-4 w-4" />
                 <span className="hidden md:inline">Quick actions</span>
               </Button>
@@ -182,7 +182,11 @@ export function AppHeader({
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-9 gap-2 pl-1.5 pr-2">
+              <Button
+                variant="ghost"
+                className="h-9 gap-2 pl-1.5 pr-2"
+                aria-label={userEmail ? `Account menu for ${userEmail}` : "Account menu"}
+              >
                 <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-xs font-semibold text-background">
                   {initials}
                 </div>

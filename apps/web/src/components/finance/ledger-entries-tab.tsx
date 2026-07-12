@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { ExportCsvButton } from "@/components/finance/export-csv-button";
@@ -17,6 +18,7 @@ import {
   DataTableRow,
 } from "@/components/layout/data-table";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { SELECT_CLS } from "@/lib/ui-classes";
 import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +43,9 @@ export type LedgerEntryRow = {
   source_id: string | null;
   created_at: string;
   journal_code?: string;
+  reversal_entry_id?: string | null;
+  reversed_entry_id?: string | null;
+  entry_status?: string;
   journal_entry_lines: LedgerLineRow[];
 };
 
@@ -74,6 +79,9 @@ function normalizeRpcEntry(raw: Record<string, unknown>): LedgerEntryRow {
     source_id: (raw.source_id as string | null) ?? null,
     created_at: String(raw.created_at),
     journal_code: raw.journal_code as string | undefined,
+    reversal_entry_id: (raw.reversal_entry_id as string | null) ?? null,
+    reversed_entry_id: (raw.reversed_entry_id as string | null) ?? null,
+    entry_status: raw.entry_status as string | undefined,
     journal_entry_lines: lines.map((l) => ({
       id: String(l.id),
       debit: Number(l.debit),
@@ -91,14 +99,18 @@ export function LedgerEntriesTab({
   currency,
   from,
   to,
+  canManage = false,
   entries: initialEntries,
 }: {
   orgId?: string;
   currency: string;
   from: string;
   to: string;
+  canManage?: boolean;
   entries?: LedgerEntryRow[];
 }) {
+  const router = useRouter();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -106,6 +118,7 @@ export function LedgerEntriesTab({
   const [entries, setEntries] = useState<LedgerEntryRow[]>(initialEntries ?? []);
   const [total, setTotal] = useState(initialEntries?.length ?? 0);
   const [loading, setLoading] = useState(Boolean(orgId));
+  const [reversingId, setReversingId] = useState<string | null>(null);
 
   const money = (n: number) => formatCurrency(n, currency);
   const serverMode = Boolean(orgId);
@@ -209,6 +222,25 @@ export function LedgerEntriesTab({
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleReverse(entryId: string) {
+    if (!canManage) return;
+    setReversingId(entryId);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("reverse_journal_entry", {
+      p_entry_id: entryId,
+      p_reversal_date: to,
+      p_memo: null,
+    });
+    setReversingId(null);
+    if (error) {
+      toast({ title: "Reverse failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Journal entry reversed" });
+    if (serverMode) void loadPage();
+    router.refresh();
   }
 
   const clientSearch = serverMode ? null : (
@@ -327,10 +359,28 @@ export function LedgerEntriesTab({
                         {link && (
                           <Button variant="outline" size="sm" asChild>
                             <Link href={link.href}>
-                              <ExternalLink className="h-3.5 w-3.5" />
+                              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
                               {link.label}
                             </Link>
                           </Button>
+                        )}
+                        {canManage &&
+                          entry.entry_status !== "draft" &&
+                          !entry.reversal_entry_id &&
+                          !entry.reversed_entry_id &&
+                          entry.source_type !== "reversal" &&
+                          entry.source_type !== "period_close" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={reversingId === entry.id}
+                              onClick={() => void handleReverse(entry.id)}
+                            >
+                              {reversingId === entry.id ? "Reversing…" : "Reverse entry"}
+                            </Button>
+                          )}
+                        {entry.reversal_entry_id && (
+                          <span className="text-amber-700">Reversed</span>
                         )}
                       </div>
                       <DataTable>

@@ -10,7 +10,10 @@ dist
 *.tsbuildinfo
 scripts/k6/fixtures.json
 e2e/fixtures.json
+e2e/.auth/
 test-results/
 playwright-report/
 supabase/.temp
 .support/
+
+coverage/

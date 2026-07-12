@@ -13,6 +13,6 @@ export const config = {
      * - Public API routes (health, webhooks, auth) — must not redirect to /login
      * - Static assets
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/(?:dev|webhooks|health|auth|invite|v1|workspace)|pos(?:/|$)|register(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!monitoring|_next/static|_next/image|favicon.ico|api/(?:dev|webhooks|health|auth|invite|v1|workspace|notifications/process)|pos(?:/|$)|register(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

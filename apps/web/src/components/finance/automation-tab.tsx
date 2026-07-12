@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -42,28 +43,94 @@ export type InvoiceReminderRow = {
   days_overdue: number;
 };
 
+export type FinancialAutomationRule = {
+  id: string;
+  name: string;
+  rule_type: string;
+  config: Record<string, unknown>;
+  is_active: boolean;
+  cooldown_hours: number;
+  last_evaluated_at?: string | null;
+  last_triggered_at?: string | null;
+};
+
+export type FinancialScheduledReport = {
+  id: string;
+  name: string;
+  report_type: string;
+  preset: "daily" | "weekly" | "monthly";
+  run_at_hour: number;
+  run_at_minute: number;
+  timezone: string;
+  channels: string[];
+  recipient_spec: Record<string, unknown>;
+  export_format: "csv" | "pdf" | "xlsx";
+  is_active: boolean;
+  last_run_at: string | null;
+  next_run_at: string;
+};
+
+const KPI_KEYS = ["revenue", "gross_profit", "net_profit", "cash", "liquid", "ar", "ap", "tax_payable"] as const;
+
+const RULE_TYPES = [
+  { value: "kpi_threshold", label: "KPI threshold" },
+  { value: "cash_minimum", label: "Cash minimum" },
+  { value: "ar_overdue", label: "AR overdue" },
+  { value: "period_close_reminder", label: "Period close reminder" },
+] as const;
+
+const FINANCIAL_REPORT_TYPES = [
+  { value: "financial.pnl", label: "GL P&L (MTD)" },
+  { value: "financial.balance_sheet", label: "Balance sheet" },
+  { value: "financial.executive", label: "Executive KPI summary" },
+  { value: "financial.ar_aging", label: "AR aging" },
+] as const;
+
+function ruleSummary(rule: FinancialAutomationRule) {
+  const c = rule.config ?? {};
+  switch (rule.rule_type) {
+    case "kpi_threshold":
+    case "cash_minimum":
+      return `${c.kpi_key ?? "net_profit"} ${c.operator ?? "lt"} ${c.threshold ?? 0}`;
+    case "ar_overdue":
+      return `60+ days total ≥ ${c.min_total ?? 0}`;
+    case "period_close_reminder":
+      return `${c.days_before_end ?? 3} days before period end`;
+    default:
+      return rule.rule_type;
+  }
+}
+
 export function AutomationTab({
   orgId,
   currency,
   canManage,
+  orgTimezone,
   accounts,
   journals,
   templates: initialTemplates,
   invoiceReminders: initialReminders,
+  financialRules: initialRules,
+  financialSchedules: initialSchedules,
 }: {
   orgId: string;
   currency: string;
   canManage: boolean;
+  orgTimezone: string;
   accounts: AccountRow[];
   journals: { id: string; code: string; name: string }[];
   templates: RecurringJournalTemplate[];
   invoiceReminders: InvoiceReminderRow[];
+  financialRules: FinancialAutomationRule[];
+  financialSchedules: FinancialScheduledReport[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const money = (n: number) => formatCurrency(n, currency);
   const [templates, setTemplates] = useState(initialTemplates);
   const [reminders, setReminders] = useState(initialReminders);
+  const [rules, setRules] = useState(initialRules);
+  const [schedules, setSchedules] = useState(initialSchedules);
   const [busy, setBusy] = useState("");
   const [name, setName] = useState("");
   const [journalCode, setJournalCode] = useState(journals[0]?.code ?? "GEN");
@@ -74,8 +141,131 @@ export function AutomationTab({
   const [creditAcct, setCreditAcct] = useState(accounts.find((a) => a.code === "1010")?.id ?? "");
   const [amount, setAmount] = useState("");
 
+  const [ruleName, setRuleName] = useState("");
+  const [ruleType, setRuleType] = useState<string>("kpi_threshold");
+  const [ruleKpi, setRuleKpi] = useState<string>("net_profit");
+  const [ruleOperator, setRuleOperator] = useState("lt");
+  const [ruleThreshold, setRuleThreshold] = useState("0");
+
   const expenseAccounts = accounts.filter((a) => a.is_active);
   const assetAccounts = accounts.filter((a) => a.is_active && a.type === "asset");
+
+  async function reloadFinancial() {
+    const supabase = createClient();
+    const [{ data: rulesData }, { data: schedulesData }] = await Promise.all([
+      supabase.rpc("list_financial_automation_rules", { p_org_id: orgId }),
+      supabase.rpc("list_financial_scheduled_reports", { p_org_id: orgId }),
+    ]);
+    setRules((rulesData as FinancialAutomationRule[]) ?? []);
+    setSchedules((schedulesData as FinancialScheduledReport[]) ?? []);
+    router.refresh();
+  }
+
+  async function evaluateRules() {
+    setBusy("evaluate");
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("evaluate_financial_automation_rules", {
+      p_org_id: orgId,
+    });
+    setBusy("");
+    if (error) {
+      toast({ title: "Evaluation failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    const result = data as { triggered?: number; evaluated?: number };
+    toast({
+      title: result.triggered ? `${result.triggered} alert(s) fired` : "No alerts triggered",
+      description: `Evaluated ${result.evaluated ?? 0} active rule(s). Notifications queued when matched.`,
+    });
+    await reloadFinancial();
+  }
+
+  async function toggleRule(rule: FinancialAutomationRule) {
+    if (!canManage) return;
+    setBusy(rule.id);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("upsert_financial_automation_rule", {
+      p_org_id: orgId,
+      p_rule_id: rule.id,
+      p_name: rule.name,
+      p_rule_type: rule.rule_type,
+      p_config: rule.config,
+      p_is_active: !rule.is_active,
+      p_cooldown_hours: rule.cooldown_hours,
+    });
+    setBusy("");
+    if (error) {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    await reloadFinancial();
+  }
+
+  async function addRule(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canManage || !ruleName.trim()) return;
+    const threshold = parseFloat(ruleThreshold);
+    if (!Number.isFinite(threshold) && ruleType !== "period_close_reminder" && ruleType !== "ar_overdue") {
+      toast({ title: "Invalid threshold", variant: "destructive" });
+      return;
+    }
+
+    let config: Record<string, unknown> = {};
+    if (ruleType === "kpi_threshold" || ruleType === "cash_minimum") {
+      config = { kpi_key: ruleKpi, operator: ruleOperator, threshold };
+    } else if (ruleType === "ar_overdue") {
+      config = { min_days: 30, min_total: threshold || 1000 };
+    } else if (ruleType === "period_close_reminder") {
+      config = { days_before_end: parseInt(ruleThreshold, 10) || 3 };
+    }
+
+    setBusy("add-rule");
+    const supabase = createClient();
+    const { error } = await supabase.rpc("upsert_financial_automation_rule", {
+      p_org_id: orgId,
+      p_rule_id: null,
+      p_name: ruleName.trim(),
+      p_rule_type: ruleType,
+      p_config: config,
+      p_is_active: true,
+      p_cooldown_hours: 24,
+    });
+    setBusy("");
+    if (error) {
+      toast({ title: "Save failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Alert rule created" });
+    setRuleName("");
+    await reloadFinancial();
+  }
+
+  async function toggleSchedule(schedule: FinancialScheduledReport) {
+    if (!canManage) return;
+    setBusy(schedule.id);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("upsert_financial_scheduled_report", {
+      p_org_id: orgId,
+      p_schedule_id: schedule.id,
+      p_name: schedule.name,
+      p_report_type: schedule.report_type,
+      p_preset: schedule.preset,
+      p_run_at_hour: schedule.run_at_hour,
+      p_run_at_minute: schedule.run_at_minute,
+      p_timezone: schedule.timezone || orgTimezone,
+      p_channels: schedule.channels,
+      p_recipient_spec: schedule.recipient_spec,
+      p_export_format: schedule.export_format,
+      p_is_active: !schedule.is_active,
+    });
+    setBusy("");
+    if (error) {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: schedule.is_active ? "Schedule paused" : "Schedule activated" });
+    await reloadFinancial();
+  }
 
   async function createTemplate(e: React.FormEvent) {
     e.preventDefault();
@@ -148,6 +338,152 @@ export function AutomationTab({
 
   return (
     <div className="space-y-6">
+      <ReportSection
+        title="Financial alert rules"
+        subtitle="KPI thresholds, cash minimums, AR overdue, and period-close reminders — notifications via Communications"
+        actions={
+          canManage ? (
+            <Button type="button" variant="outline" size="sm" onClick={evaluateRules} disabled={!!busy}>
+              Evaluate now
+            </Button>
+          ) : undefined
+        }
+      >
+        {canManage && (
+          <form onSubmit={addRule} className="mb-6 grid gap-4 rounded-lg border border-border/60 bg-muted/10 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Rule name</Label>
+              <Input value={ruleName} onChange={(e) => setRuleName(e.target.value)} placeholder="Net profit below target" required />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <select className={SELECT_CLS} value={ruleType} onChange={(e) => setRuleType(e.target.value)}>
+                {RULE_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            {(ruleType === "kpi_threshold" || ruleType === "cash_minimum") && (
+              <div className="space-y-2">
+                <Label>KPI</Label>
+                <select className={SELECT_CLS} value={ruleKpi} onChange={(e) => setRuleKpi(e.target.value)}>
+                  {KPI_KEYS.map((k) => (
+                    <option key={k} value={k}>{k.replace(/_/g, " ")}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {(ruleType === "kpi_threshold" || ruleType === "cash_minimum") && (
+              <div className="space-y-2">
+                <Label>Operator</Label>
+                <select className={SELECT_CLS} value={ruleOperator} onChange={(e) => setRuleOperator(e.target.value)}>
+                  <option value="lt">&lt;</option>
+                  <option value="lte">≤</option>
+                  <option value="gt">&gt;</option>
+                  <option value="gte">≥</option>
+                  <option value="eq">=</option>
+                </select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>{ruleType === "period_close_reminder" ? "Days before end" : ruleType === "ar_overdue" ? "Min overdue total" : "Threshold"}</Label>
+              <Input type="number" step="0.01" value={ruleThreshold} onChange={(e) => setRuleThreshold(e.target.value)} />
+            </div>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <Button type="submit" disabled={busy === "add-rule"}>Add alert rule</Button>
+            </div>
+          </form>
+        )}
+
+        <DataTable>
+          <table className="w-full">
+            <DataTableHeader>
+              <DataTableRow>
+                <DataTableHead>Name</DataTableHead>
+                <DataTableHead>Type</DataTableHead>
+                <DataTableHead>Condition</DataTableHead>
+                <DataTableHead>Last triggered</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                {canManage && <DataTableHead align="right">Action</DataTableHead>}
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {rules.length === 0 ? (
+                <DataTableEmpty colSpan={canManage ? 6 : 5} message="No financial alert rules." />
+              ) : (
+                rules.map((rule) => (
+                  <DataTableRow key={rule.id}>
+                    <DataTableCell className="font-medium">{rule.name}</DataTableCell>
+                    <DataTableCell>{rule.rule_type.replace(/_/g, " ")}</DataTableCell>
+                    <DataTableCell className="text-muted-foreground">{ruleSummary(rule)}</DataTableCell>
+                    <DataTableCell>{rule.last_triggered_at ? new Date(rule.last_triggered_at).toLocaleString() : "—"}</DataTableCell>
+                    <DataTableCell>{rule.is_active ? "Active" : "Inactive"}</DataTableCell>
+                    {canManage && (
+                      <DataTableCell align="right">
+                        <Button size="sm" variant="outline" disabled={!!busy} onClick={() => toggleRule(rule)}>
+                          {rule.is_active ? "Pause" : "Activate"}
+                        </Button>
+                      </DataTableCell>
+                    )}
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </table>
+        </DataTable>
+      </ReportSection>
+
+      <ReportSection
+        title="Scheduled financial reports"
+        subtitle="GL P&L, balance sheet, executive summary, and AR aging — delivered via email or in-app"
+        actions={
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/communications/schedules">All schedules</Link>
+          </Button>
+        }
+      >
+        <DataTable>
+          <table className="w-full">
+            <DataTableHeader>
+              <DataTableRow>
+                <DataTableHead>Name</DataTableHead>
+                <DataTableHead>Report</DataTableHead>
+                <DataTableHead>Cadence</DataTableHead>
+                <DataTableHead>Format</DataTableHead>
+                <DataTableHead>Next run</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                {canManage && <DataTableHead align="right">Action</DataTableHead>}
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {schedules.length === 0 ? (
+                <DataTableEmpty colSpan={canManage ? 7 : 6} message="No financial report schedules." />
+              ) : (
+                schedules.map((s) => (
+                  <DataTableRow key={s.id}>
+                    <DataTableCell className="font-medium">{s.name}</DataTableCell>
+                    <DataTableCell>
+                      {FINANCIAL_REPORT_TYPES.find((t) => t.value === s.report_type)?.label ?? s.report_type}
+                    </DataTableCell>
+                    <DataTableCell>{s.preset}</DataTableCell>
+                    <DataTableCell>{s.export_format.toUpperCase()}</DataTableCell>
+                    <DataTableCell>{new Date(s.next_run_at).toLocaleString()}</DataTableCell>
+                    <DataTableCell>{s.is_active ? "Active" : "Inactive"}</DataTableCell>
+                    {canManage && (
+                      <DataTableCell align="right">
+                        <Button size="sm" variant="outline" disabled={!!busy} onClick={() => toggleSchedule(s)}>
+                          {s.is_active ? "Pause" : "Activate"}
+                        </Button>
+                      </DataTableCell>
+                    )}
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </table>
+        </DataTable>
+      </ReportSection>
+
       <ReportSection title="Recurring journal entries" subtitle="Accruals, rent, allocations — run due templates from here">
         {canManage && (
           <form onSubmit={createTemplate} className="mb-6 grid gap-4 rounded-lg border border-border/60 bg-muted/10 p-4 sm:grid-cols-2">

@@ -33,16 +33,28 @@ const env = {
 const required = [
   ["NEXT_PUBLIC_SUPABASE_URL", "Supabase project URL"],
   ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "Supabase anon/publishable key"],
-  ["SUPABASE_SERVICE_ROLE_KEY", "Service role for webhooks/cron"],
+  ["SUPABASE_SERVICE_ROLE_KEY", "Service role for webhooks/cron/health probe"],
   ["NEXT_PUBLIC_APP_URL", "Public app URL for auth redirects"],
-  ["CRON_SECRET", "5-min process-queue cron auth"],
-  ["POS_WEBHOOK_SECRET", "Mobile-money webhook auth"],
+  ["CRON_SECRET", "Process-queue + health probe auth"],
+  ["POS_WEBHOOK_SECRET", "Mobile-money + internal webhook auth"],
 ];
 
 const recommended = [
-  ["UPSTASH_REDIS_REST_URL", "Distributed login rate limits"],
+  ["UPSTASH_REDIS_REST_URL", "Distributed login/API rate limits"],
   ["UPSTASH_REDIS_REST_TOKEN", "Upstash REST token"],
   ["SENTRY_DSN", "Error monitoring"],
+  ["RESEND_API_KEY", "Notification email delivery"],
+  ["NOTIFICATION_FROM_EMAIL", "Default notification sender address"],
+];
+
+const automatedGates = [
+  "npm run verify:supabase",
+  "npm run test:integration",
+  "npm run test:e2e",
+  "npm run audit:stable-rpcs",
+  "npm run audit:rls",
+  "npm run audit:api-auth",
+  "npm run audit:launch-ops",
 ];
 
 let failed = 0;
@@ -52,7 +64,7 @@ console.log("NexusERP production environment check\n");
 
 for (const [key, label] of required) {
   const val = env[key];
-  if (!val || val.includes("placeholder")) {
+  if (!val || val.includes("placeholder") || val.includes("your-")) {
     console.log(`❌ MISSING (required): ${key} — ${label}`);
     failed++;
   } else {
@@ -62,7 +74,7 @@ for (const [key, label] of required) {
 
 for (const [key, label] of recommended) {
   const val = env[key];
-  if (!val) {
+  if (!val || val.includes("your-")) {
     console.log(`⚠️  MISSING (recommended): ${key} — ${label}`);
     warned++;
   } else {
@@ -70,10 +82,15 @@ for (const [key, label] of recommended) {
   }
 }
 
+console.log("\nOperational gates (automated in CI when secrets are set):");
+for (const gate of automatedGates) {
+  console.log(`  • ${gate}`);
+}
+
 console.log("\nOperational gates (manual):");
-console.log("  • GitHub Actions cron-process-queue.yml secrets: APP_URL + CRON_SECRET");
-console.log("  • npm run verify:supabase — all RPCs through latest migration");
-console.log("  • GET /api/health — monitor for HTTP 503 (degraded queues)");
+console.log("  • GitHub Actions cron-process-queue.yml — APP_URL + CRON_SECRET");
+console.log("  • GitHub Actions cron-health-monitor.yml — APP_URL + CRON_SECRET (detailed probe)");
+console.log("  • GET /api/health — public liveness; Bearer CRON_SECRET for queue depths");
 console.log("  • Supabase Dashboard → Database → Backups — confirm PITR enabled (Pro)");
 
 if (failed > 0) {

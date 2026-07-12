@@ -33,6 +33,30 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      - name: Unit test coverage (lib/api)
+        run: npm run test:unit:coverage
+
+      - name: STABLE/VOLATILE RPC audit
+        run: npm run audit:stable-rpcs
+
+      - name: RLS org-access audit
+        run: npm run audit:rls
+
+      - name: API route auth audit
+        run: npm run audit:api-auth
+
+      - name: Financials area-scope audit
+        run: npm run audit:financials-scope
+
+      - name: E2E spec audit
+        run: npm run audit:e2e
+
+      - name: Module E2E coverage audit
+        run: npm run audit:module-e2e
+
+      - name: Launch ops audit
+        run: npm run audit:launch-ops
+
       - name: Build
         run: npm run build
         env:
@@ -40,6 +64,36 @@ jobs:
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: placeholder-key
           SUPABASE_URL: https://placeholder.supabase.co
           SUPABASE_ANON_KEY: placeholder-key
+
+  production-env:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Production environment checklist
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "Skipping production env check — set NEXT_PUBLIC_SUPABASE_URL on main."
+            exit 0
+          fi
+          CHECK_PRODUCTION_ENV=1 npm run verify:production-env
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          POS_WEBHOOK_SECRET: ${{ secrets.POS_WEBHOOK_SECRET }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFICATION_FROM_EMAIL: ${{ secrets.NOTIFICATION_FROM_EMAIL }}
 
   audit:
     runs-on: ubuntu-latest
@@ -56,7 +110,6 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,7 +122,11 @@ jobs:
       - name: Smoke E2E
         run: |
           if [ -z "$E2E_EMAIL" ]; then
-            echo "Skipping E2E — set E2E_EMAIL repo secret to enable."
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              echo "ERROR: E2E_EMAIL secret required on main branch."
+              exit 1
+            fi
+            echo "Skipping E2E on PR — set E2E_EMAIL repo secret to enable."
             exit 0
           fi
           npm run test:e2e
@@ -85,7 +142,6 @@ jobs:
   verify-supabase:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +155,11 @@ jobs:
       - name: Verify remote Supabase RPCs
         run: |
           if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
-            echo "Skipping Supabase verify — set NEXT_PUBLIC_SUPABASE_URL repo secret to enable."
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              echo "ERROR: NEXT_PUBLIC_SUPABASE_URL secret required on main branch."
+              exit 1
+            fi
+            echo "Skipping Supabase verify on PR — set NEXT_PUBLIC_SUPABASE_URL to enable."
             exit 0
           fi
           npm run verify:supabase
@@ -110,7 +170,6 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -121,7 +180,11 @@ jobs:
       - name: RPC integration tests
         run: |
           if [ -z "$E2E_EMAIL" ]; then
-            echo "Skipping integration tests — set E2E_EMAIL repo secret to enable."
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              echo "ERROR: E2E_EMAIL secret required on main branch for integration tests."
+              exit 1
+            fi
+            echo "Skipping integration tests on PR — set E2E_EMAIL to enable."
             exit 0
           fi
           npm run test:integration
@@ -130,3 +193,4 @@ jobs:
           INTEGRATION_TEST_PASSWORD: ${{ secrets.E2E_PASSWORD }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

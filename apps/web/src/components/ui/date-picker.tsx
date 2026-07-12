@@ -84,6 +84,11 @@ export function DatePicker({
   const panelId = useId();
   const panelStyle = useCalendarPanelPosition(open, triggerRef);
   const label = value ? formatDisplayDate(value) : placeholder;
+  const accessibleName = ariaLabel
+    ? value
+      ? `${formatDisplayDate(value)}, ${ariaLabel}`
+      : ariaLabel
+    : label;
 
   useEffect(() => {
     setMounted(true);
@@ -103,7 +108,7 @@ export function DatePicker({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
-        triggerRef.current?.focus();
+        triggerRef.current?.focus({ preventScroll: true });
       }
     }
 
@@ -123,7 +128,7 @@ export function DatePicker({
         type="button"
         variant="outline"
         disabled={disabled}
-        aria-label={ariaLabel ?? placeholder}
+        aria-label={accessibleName}
         aria-required={required}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -159,7 +164,7 @@ export function DatePicker({
               onSelect={(ymd) => {
                 onChange(ymd);
                 setOpen(false);
-                triggerRef.current?.focus();
+                triggerRef.current?.focus({ preventScroll: true });
               }}
             />
           </div>,

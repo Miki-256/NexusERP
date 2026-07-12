@@ -1,9 +1,11 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { dateRangeForPreset, type DatePreset } from "@/lib/finance-dates";
+import { replaceTenantUrl } from "@/lib/tenant-scroll";
 import { cn } from "@/lib/utils";
 
 const PRESETS: { key: DatePreset; label: string }[] = [
@@ -27,18 +29,19 @@ export function DateRangeToolbar({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   function applyRange(nextFrom: string, nextTo: string) {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams.toString());
     params.set("from", nextFrom);
     params.set("to", nextTo);
-    const pnl = searchParams.get("pnl");
-    if (pnl) params.set("pnl", pnl);
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      replaceTenantUrl(router, pathname, params);
+    });
   }
 
   return (
-    <div className={cn("flex flex-wrap items-end gap-3", className)}>
+    <div className={cn("flex flex-wrap items-end gap-3", className, isPending && "opacity-80 transition-opacity")}>
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => {
           const range = dateRangeForPreset(p.key);

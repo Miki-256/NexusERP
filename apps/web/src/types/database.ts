@@ -916,6 +916,161 @@ export interface Database {
           balance: number;
         }[];
       };
+      list_customer_invoices_page: {
+        Args: {
+          p_org_id: string;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_status?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+          p_search?: string | null;
+        };
+        Returns: Json;
+      };
+      list_vendor_bills_page: {
+        Args: {
+          p_org_id: string;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_status?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+          p_search?: string | null;
+        };
+        Returns: Json;
+      };
+      list_accounts: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      list_accounts_tree: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_account: {
+        Args: {
+          p_org_id: string;
+          p_account_id: string | null;
+          p_code: string;
+          p_name: string;
+          p_type: "asset" | "liability" | "equity" | "income" | "expense";
+          p_is_active?: boolean;
+          p_parent_account_id?: string | null;
+          p_is_postable?: boolean;
+          p_sort_order?: number;
+        };
+        Returns: string;
+      };
+      approve_journal_entry: {
+        Args: { p_entry_id: string };
+        Returns: string;
+      };
+      reverse_journal_entry: {
+        Args: {
+          p_entry_id: string;
+          p_reversal_date?: string | null;
+          p_memo?: string | null;
+        };
+        Returns: string;
+      };
+      import_opening_balances: {
+        Args: {
+          p_org_id: string;
+          p_date: string;
+          p_lines: Json;
+          p_memo?: string;
+        };
+        Returns: string;
+      };
+      list_journal_entry_attachments: {
+        Args: { p_entry_id: string };
+        Returns: Json;
+      };
+      list_journal_entry_audit_log: {
+        Args: { p_entry_id: string };
+        Returns: Json;
+      };
+      list_allocation_rules: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      get_customer_statement: {
+        Args: {
+          p_org_id: string;
+          p_customer_id: string;
+          p_from?: string | null;
+          p_to?: string | null;
+        };
+        Returns: Json;
+      };
+      list_customer_open_invoices: {
+        Args: {
+          p_org_id: string;
+          p_customer_id?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      list_customers_ar_summary: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      pay_customer_invoice: {
+        Args: {
+          p_invoice_id: string;
+          p_payment_method: "cash" | "mobile_money" | "bank_transfer" | "on_account" | "store_credit";
+          p_amount?: number | null;
+          p_payment_date?: string | null;
+          p_reference?: string | null;
+        };
+        Returns: string;
+      };
+      apply_credit_to_invoice: {
+        Args: {
+          p_invoice_id: string;
+          p_credit_note_id: string;
+          p_amount?: number | null;
+        };
+        Returns: string;
+      };
+      list_ar_dunning_policies: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_ar_dunning_policy: {
+        Args: {
+          p_org_id: string;
+          p_policy_id: string | null;
+          p_name: string;
+          p_is_default?: boolean;
+          p_is_active?: boolean;
+          p_grace_days?: number;
+          p_levels?: Json;
+        };
+        Returns: string;
+      };
+      send_invoice_dunning: {
+        Args: { p_invoice_id: string; p_level_no?: number | null };
+        Returns: string;
+      };
+      run_ar_dunning_batch: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      set_invoice_collection_status: {
+        Args: { p_invoice_id: string; p_status: string };
+        Returns: undefined;
+      };
+      list_ar_collections_queue: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      ensure_default_ar_dunning_policy: {
+        Args: { p_org_id: string };
+        Returns: string;
+      };
       ensure_default_accounts: {
         Args: { p_org_id: string };
         Returns: undefined;
@@ -1401,7 +1556,741 @@ export interface Database {
       pay_vendor_bill: {
         Args: {
           p_bill_id: string;
-          p_payment_method: "cash" | "mobile_money" | "bank_transfer";
+          p_payment_method: "cash" | "mobile_money" | "bank_transfer" | "on_account" | "store_credit";
+          p_amount?: number | null;
+          p_payment_date?: string | null;
+          p_reference?: string | null;
+          p_payment_run_id?: string | null;
+          p_discount_taken?: number | null;
+        };
+        Returns: string;
+      };
+      create_vendor_bill: {
+        Args: {
+          p_org_id: string;
+          p_vendor_id: string;
+          p_bill_no?: string | null;
+          p_bill_date?: string | null;
+          p_due_date?: string | null;
+          p_memo?: string | null;
+          p_lines?: Json;
+        };
+        Returns: string;
+      };
+      post_vendor_bill: {
+        Args: { p_bill_id: string };
+        Returns: string;
+      };
+      validate_vendor_bill_match: {
+        Args: { p_bill_id: string };
+        Returns: Json;
+      };
+      list_vendor_open_bills: {
+        Args: {
+          p_org_id: string;
+          p_vendor_id?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: Json;
+      };
+      list_vendors_ap_summary: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      get_vendor_statement: {
+        Args: {
+          p_org_id: string;
+          p_vendor_id: string;
+          p_from?: string | null;
+          p_to?: string | null;
+        };
+        Returns: Json;
+      };
+      create_payment_run: {
+        Args: {
+          p_org_id: string;
+          p_bill_ids: string[];
+          p_payment_method?: "cash" | "mobile_money" | "bank_transfer";
+          p_run_date?: string | null;
+          p_memo?: string | null;
+        };
+        Returns: string;
+      };
+      approve_payment_run: {
+        Args: { p_run_id: string };
+        Returns: string;
+      };
+      execute_payment_run: {
+        Args: { p_run_id: string };
+        Returns: Json;
+      };
+      list_payment_runs: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      ensure_default_close_checklist: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      start_period_close: {
+        Args: { p_period_id: string };
+        Returns: Json;
+      };
+      get_period_close_status: {
+        Args: { p_period_id: string };
+        Returns: Json;
+      };
+      run_period_close_preflight: {
+        Args: { p_period_id: string };
+        Returns: Json;
+      };
+      refresh_period_close_run: {
+        Args: { p_run_id: string };
+        Returns: Json;
+      };
+      waive_period_close_task: {
+        Args: { p_run_id: string; p_task_code: string; p_note?: string | null };
+        Returns: Json;
+      };
+      lock_period_subledgers: {
+        Args: { p_period_id: string };
+        Returns: Json;
+      };
+      list_exchange_rates: {
+        Args: { p_org_id: string; p_currency_code?: string | null; p_from?: string | null; p_to?: string | null };
+        Returns: Json;
+      };
+      upsert_exchange_rate: {
+        Args: {
+          p_org_id: string;
+          p_currency_code: string;
+          p_rate_date: string;
+          p_rate: number;
+          p_rate_type?: string | null;
+          p_source?: string | null;
+        };
+        Returns: string;
+      };
+      get_exchange_rate: {
+        Args: { p_org_id: string; p_currency_code: string; p_date?: string | null; p_rate_type?: string | null };
+        Returns: Json;
+      };
+      get_foreign_currency_balances: {
+        Args: { p_org_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      preview_fx_revaluation: {
+        Args: { p_org_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      run_fx_revaluation: {
+        Args: { p_org_id: string; p_as_of?: string | null; p_memo?: string | null };
+        Returns: Json;
+      };
+      list_fx_revaluation_runs: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      reverse_fx_revaluation: {
+        Args: { p_run_id: string };
+        Returns: string;
+      };
+      post_foreign_currency_journal: {
+        Args: {
+          p_org_id: string;
+          p_date: string;
+          p_memo: string;
+          p_currency_code: string;
+          p_lines: Json;
+          p_exchange_rate?: number | null;
+        };
+        Returns: string;
+      };
+      list_intercompany_relationships: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      list_intercompany_transactions: {
+        Args: { p_org_id: string; p_status?: string | null; p_limit?: number };
+        Returns: Json;
+      };
+      post_intercompany_invoice: {
+        Args: {
+          p_org_id: string;
+          p_from_org_id: string;
+          p_to_org_id: string;
+          p_amount: number;
+          p_transaction_date?: string | null;
+          p_description?: string | null;
+        };
+        Returns: string;
+      };
+      get_intercompany_matrix: {
+        Args: { p_group_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      preview_consolidation_eliminations: {
+        Args: { p_group_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      upsert_consolidation_group: {
+        Args: {
+          p_org_id: string;
+          p_group_id: string | null;
+          p_name: string;
+          p_member_org_ids: Json;
+          p_reporting_currency?: string | null;
+          p_elimination_method?: string | null;
+        };
+        Returns: string;
+      };
+      get_treasury_cash_position: {
+        Args: { p_org_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      get_treasury_liquidity_forecast: {
+        Args: { p_org_id: string; p_days?: number; p_as_of?: string | null };
+        Returns: Json;
+      };
+      create_treasury_transfer: {
+        Args: {
+          p_org_id: string;
+          p_from_bank_account_id: string;
+          p_to_bank_account_id: string;
+          p_amount: number;
+          p_transfer_date?: string | null;
+          p_reference?: string | null;
+          p_memo?: string | null;
+        };
+        Returns: string;
+      };
+      list_treasury_transfers: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      update_bank_account_treasury_settings: {
+        Args: {
+          p_bank_account_id: string;
+          p_account_type?: string | null;
+          p_target_balance?: number | null;
+          p_minimum_balance?: number | null;
+        };
+        Returns: undefined;
+      };
+      get_tax_compliance_settings: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      update_tax_compliance_settings: {
+        Args: {
+          p_org_id: string;
+          p_tax_id?: string | null;
+          p_einvoice_enabled?: boolean | null;
+          p_einvoice_provider?: string | null;
+          p_tax_filing_frequency?: string | null;
+        };
+        Returns: undefined;
+      };
+      get_vat_liability_report: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      create_tax_return_period: {
+        Args: {
+          p_org_id: string;
+          p_from: string;
+          p_to: string;
+          p_return_type?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      list_tax_return_periods: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      file_tax_return: {
+        Args: { p_return_id: string };
+        Returns: undefined;
+      };
+      submit_einvoice: {
+        Args: { p_org_id: string; p_invoice_id: string };
+        Returns: string;
+      };
+      list_einvoice_documents: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      list_invoices_pending_einvoice: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      list_withholding_tax_rules: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_withholding_tax_rule: {
+        Args: {
+          p_org_id: string;
+          p_rule_id: string | null;
+          p_name: string;
+          p_rate: number;
+          p_applies_to?: string | null;
+          p_is_active?: boolean | null;
+        };
+        Returns: string;
+      };
+      ensure_default_fpa_scenarios: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      list_fpa_scenarios: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_fpa_scenario: {
+        Args: {
+          p_org_id: string;
+          p_scenario_id: string | null;
+          p_name: string;
+          p_scenario_type?: string | null;
+          p_revenue_adjustment_pct?: number | null;
+          p_expense_adjustment_pct?: number | null;
+          p_description?: string | null;
+          p_is_active?: boolean | null;
+        };
+        Returns: string;
+      };
+      generate_rolling_forecast: {
+        Args: {
+          p_org_id: string;
+          p_scenario_id: string;
+          p_horizon_months?: number | null;
+          p_as_of?: string | null;
+          p_name?: string | null;
+          p_budget_id?: string | null;
+        };
+        Returns: string;
+      };
+      get_rolling_forecast: {
+        Args: { p_forecast_id: string };
+        Returns: Json;
+      };
+      list_rolling_forecasts: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      compare_fpa_scenarios: {
+        Args: { p_org_id: string; p_scenario_ids?: Json | null; p_as_of?: string | null };
+        Returns: Json;
+      };
+      get_fpa_dashboard: {
+        Args: { p_org_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      list_cost_centers: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_cost_center: {
+        Args: {
+          p_org_id: string;
+          p_cost_center_id: string | null;
+          p_code: string;
+          p_name: string;
+          p_parent_id?: string | null;
+          p_analytic_department_id?: string | null;
+          p_is_active?: boolean | null;
+        };
+        Returns: string;
+      };
+      upsert_project_financials: {
+        Args: {
+          p_org_id: string;
+          p_project_id: string;
+          p_project_code?: string | null;
+          p_budget_cost?: number | null;
+          p_budget_revenue?: number | null;
+          p_contract_value?: number | null;
+          p_cost_center_id?: string | null;
+          p_accounting_status?: string | null;
+          p_start_date?: string | null;
+          p_end_date?: string | null;
+        };
+        Returns: string;
+      };
+      set_project_cost_budget: {
+        Args: { p_org_id: string; p_project_id: string; p_lines: Json };
+        Returns: number;
+      };
+      list_projects_job_cost: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      get_project_job_cost: {
+        Args: { p_project_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      get_cost_center_summary: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      post_project_cost_allocation: {
+        Args: {
+          p_org_id: string;
+          p_project_id: string;
+          p_amount: number;
+          p_source_account_id: string;
+          p_destination_account_id: string;
+          p_allocation_date?: string | null;
+          p_cost_category?: string | null;
+          p_memo?: string | null;
+        };
+        Returns: string;
+      };
+      ensure_default_fa_books: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      list_fa_books: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_fa_book: {
+        Args: {
+          p_org_id: string;
+          p_book_id: string | null;
+          p_code: string;
+          p_name: string;
+          p_book_type?: string | null;
+          p_posts_to_gl?: boolean | null;
+          p_depr_method?: string | null;
+          p_is_active?: boolean | null;
+        };
+        Returns: string;
+      };
+      upsert_asset_book_profile: {
+        Args: {
+          p_asset_id: string;
+          p_book_id: string;
+          p_useful_life_months?: number | null;
+          p_salvage_value?: number | null;
+          p_depr_method?: string | null;
+        };
+        Returns: string;
+      };
+      get_fa_book_comparison: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      ensure_default_executive_layout: {
+        Args: { p_org_id: string };
+        Returns: string;
+      };
+      get_executive_dashboard_layout: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_executive_kpi_target: {
+        Args: {
+          p_org_id: string;
+          p_kpi_key: string;
+          p_period_from: string;
+          p_period_to: string;
+          p_target_value: number;
+          p_notes?: string | null;
+        };
+        Returns: string;
+      };
+      list_executive_kpi_targets: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      get_executive_financial_dashboard: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      get_executive_kpi_drilldown: {
+        Args: {
+          p_org_id: string;
+          p_kpi_key: string;
+          p_from: string;
+          p_to: string;
+          p_limit?: number;
+        };
+        Returns: Json;
+      };
+      ensure_default_financial_automation_rules: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      list_financial_automation_rules: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_financial_automation_rule: {
+        Args: {
+          p_org_id: string;
+          p_rule_id: string | null;
+          p_name: string;
+          p_rule_type: string;
+          p_config: Json;
+          p_is_active?: boolean;
+          p_cooldown_hours?: number;
+        };
+        Returns: string;
+      };
+      delete_financial_automation_rule: {
+        Args: { p_org_id: string; p_rule_id: string };
+        Returns: boolean;
+      };
+      evaluate_financial_automation_rules: {
+        Args: { p_org_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      list_financial_scheduled_reports: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_financial_scheduled_report: {
+        Args: {
+          p_org_id: string;
+          p_schedule_id: string | null;
+          p_name: string;
+          p_report_type: string;
+          p_preset: string;
+          p_run_at_hour: number;
+          p_run_at_minute: number;
+          p_timezone: string;
+          p_channels: string[];
+          p_recipient_spec: Json;
+          p_export_format: string;
+          p_is_active: boolean;
+        };
+        Returns: string;
+      };
+      ensure_default_financial_scheduled_reports: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      get_financial_security_settings: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      update_financial_security_settings: {
+        Args: {
+          p_org_id: string;
+          p_je_requires_approval?: boolean | null;
+          p_je_dual_approval_enabled?: boolean | null;
+          p_je_dual_approval_threshold?: number | null;
+          p_ap_dual_approval_enabled?: boolean | null;
+          p_ap_dual_approval_threshold?: number | null;
+          p_sod_enforcement_enabled?: boolean | null;
+        };
+        Returns: Json;
+      };
+      ensure_default_sod_rules: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      list_sod_conflict_rules: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_sod_conflict_rule: {
+        Args: {
+          p_org_id: string;
+          p_rule_id: string | null;
+          p_name: string;
+          p_action_create: string;
+          p_action_approve: string;
+          p_is_active?: boolean;
+          p_severity?: string;
+        };
+        Returns: string;
+      };
+      list_pending_financial_approvals: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      get_financial_performance_settings: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      update_financial_performance_settings: {
+        Args: {
+          p_org_id: string;
+          p_financial_cache_enabled?: boolean | null;
+          p_financial_cache_ttl_minutes?: number | null;
+          p_financial_prefer_read_replica?: boolean | null;
+        };
+        Returns: Json;
+      };
+      ensure_default_financial_partition_policies: {
+        Args: { p_org_id: string };
+        Returns: number;
+      };
+      list_financial_partition_policies: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      upsert_financial_partition_policy: {
+        Args: {
+          p_org_id: string;
+          p_policy_id: string;
+          p_is_active?: boolean | null;
+          p_retention_months?: number | null;
+        };
+        Returns: Json;
+      };
+      fetch_financial_report: {
+        Args: {
+          p_org_id: string;
+          p_report_type: string;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_as_of?: string | null;
+          p_mode?: string | null;
+          p_force_refresh?: boolean | null;
+        };
+        Returns: Json;
+      };
+      invalidate_financial_report_cache: {
+        Args: { p_org_id: string; p_report_type?: string | null };
+        Returns: number;
+      };
+      warm_financial_report_cache: {
+        Args: { p_org_id: string; p_as_of?: string | null };
+        Returns: Json;
+      };
+      archive_old_journal_entries: {
+        Args: {
+          p_org_id: string;
+          p_before_date: string;
+          p_batch_size?: number | null;
+          p_dry_run?: boolean | null;
+        };
+        Returns: Json;
+      };
+      run_financial_partition_maintenance: {
+        Args: { p_org_id: string; p_dry_run?: boolean | null };
+        Returns: Json;
+      };
+      get_financial_performance_dashboard: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      get_financial_ai_settings: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      update_financial_ai_settings: {
+        Args: {
+          p_org_id: string;
+          p_financial_ai_enabled?: boolean | null;
+          p_financial_ai_provider?: string | null;
+          p_financial_ai_model?: string | null;
+        };
+        Returns: Json;
+      };
+      list_financial_ai_suggested_prompts: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      build_financial_ai_context: {
+        Args: { p_org_id: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      resolve_financial_ai_question: {
+        Args: { p_org_id: string; p_question: string; p_from: string; p_to: string };
+        Returns: Json;
+      };
+      generate_financial_ai_insights: {
+        Args: {
+          p_org_id: string;
+          p_from: string;
+          p_to: string;
+          p_replace_existing?: boolean | null;
+        };
+        Returns: Json;
+      };
+      list_financial_ai_insights: {
+        Args: {
+          p_org_id: string;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_limit?: number | null;
+        };
+        Returns: Json;
+      };
+      list_financial_ai_conversations: {
+        Args: { p_org_id: string; p_limit?: number | null };
+        Returns: Json;
+      };
+      create_financial_ai_conversation: {
+        Args: {
+          p_org_id: string;
+          p_title?: string | null;
+          p_from?: string | null;
+          p_to?: string | null;
+        };
+        Returns: Json;
+      };
+      get_financial_ai_conversation: {
+        Args: { p_conversation_id: string };
+        Returns: Json;
+      };
+      append_financial_ai_message: {
+        Args: {
+          p_conversation_id: string;
+          p_role: string;
+          p_content: string;
+          p_metadata?: Json | null;
+        };
+        Returns: Json;
+      };
+      delete_financial_ai_conversation: {
+        Args: { p_conversation_id: string };
+        Returns: boolean;
+      };
+      get_financial_shell_preferences: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      update_financial_shell_preferences: {
+        Args: {
+          p_org_id: string;
+          p_default_area?: string | null;
+          p_density?: string | null;
+          p_pinned_tabs?: Json | null;
+          p_show_launchpad?: boolean | null;
+        };
+        Returns: Json;
+      };
+      list_financial_launchpad_tiles: {
+        Args: { p_org_id: string };
+        Returns: Json;
+      };
+      get_fixed_asset_book_detail: {
+        Args: { p_asset_id: string };
+        Returns: Json;
+      };
+      run_depreciation_batch: {
+        Args: { p_org_id: string; p_through_date?: string | null; p_book_id?: string | null };
+        Returns: Json;
+      };
+      upsert_tax_code: {
+        Args: {
+          p_org_id: string;
+          p_tax_code_id: string | null;
+          p_code: string;
+          p_name: string;
+          p_rate: number;
+          p_is_active?: boolean | null;
+          p_tax_type?: string | null;
+          p_jurisdiction?: string | null;
+          p_is_recoverable?: boolean | null;
         };
         Returns: string;
       };

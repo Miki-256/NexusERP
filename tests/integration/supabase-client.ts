@@ -25,18 +25,81 @@ export function hasIntegrationCredentials() {
   return Boolean(email && password && supabaseUrl && anonKey);
 }
 
-export async function signIn(): Promise<string> {
+export function hasServiceRoleCredentials() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  return Boolean(supabaseUrl && serviceKey);
+}
+
+export async function serviceRpc<T>(
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<T> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(args),
+  });
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
+  if (!res.ok) {
+    const msg =
+      typeof data === "object" && data && "message" in data
+        ? String((data as { message: string }).message)
+        : String(data);
+    throw new Error(`${name}: ${msg}`);
+  }
+  return data as T;
+}
+
+let cachedToken: string | null = null;
+let cachedAt = 0;
+const TOKEN_TTL_MS = 45 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+}
+
+export async function signIn(forceRefresh = false): Promise<string> {
+  if (!forceRefresh && cachedToken && Date.now() - cachedAt < TOKEN_TTL_MS) {
+    return cachedToken;
+  }
+
   const { email, password, supabaseUrl, anonKey } = integrationCredentials();
-  const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+  const res = await fetchWithTimeout(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { apikey: anonKey, "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  const body = (await res.json()) as { access_token?: string; error_description?: string };
+  const body = (await res.json()) as {
+    access_token?: string;
+    error_description?: string;
+    msg?: string;
+  };
   if (!res.ok || !body.access_token) {
-    throw new Error(body.error_description ?? "Sign-in failed");
+    throw new Error(body.error_description ?? body.msg ?? "Sign-in failed");
   }
-  return body.access_token;
+
+  cachedToken = body.access_token;
+  cachedAt = Date.now();
+  return cachedToken;
+}
+
+export function clearSignInCache() {
+  cachedToken = null;
+  cachedAt = 0;
 }
 
 export async function rpc<T>(
@@ -45,7 +108,7 @@ export async function rpc<T>(
   args: Record<string, unknown> = {}
 ): Promise<T> {
   const { supabaseUrl, anonKey } = integrationCredentials();
-  const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${name}`, {
+  const res = await fetchWithTimeout(`${supabaseUrl}/rest/v1/rpc/${name}`, {
     method: "POST",
     headers: {
       apikey: anonKey,
