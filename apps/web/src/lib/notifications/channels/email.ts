@@ -1,17 +1,11 @@
 import { Resend } from "resend";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClaimedDelivery } from "../types";
+import { resolveEmailSender, type EmailChannelConfig } from "./email-sender";
 
 export type EmailDeliveryResult =
   | { ok: true; messageId: string }
   | { ok: false; error: string };
-
-type EmailChannelConfig = {
-  is_enabled?: boolean;
-  from_name?: string;
-  from_email?: string;
-  reply_to?: string | null;
-};
 
 export async function deliverEmail(
   admin: SupabaseClient,
@@ -31,39 +25,31 @@ export async function deliverEmail(
   }
 
   const config = (configRaw ?? {}) as EmailChannelConfig;
-  if (!config.is_enabled) {
-    return { ok: false, error: "Email channel is disabled for this organization" };
+  const sender = resolveEmailSender(config, {
+    defaultFromEmail: process.env.NOTIFICATION_FROM_EMAIL,
+    defaultFromName: process.env.NOTIFICATION_FROM_NAME,
+  });
+  if (!sender.ok) {
+    return { ok: false, error: sender.error };
   }
-
-  const fromEmail = config.from_email || process.env.NOTIFICATION_FROM_EMAIL;
-  if (!fromEmail) {
-    return {
-      ok: false,
-      error: "No from email configured (org channel settings or NOTIFICATION_FROM_EMAIL)",
-    };
-  }
-
-  const fromName =
-    config.from_name || process.env.NOTIFICATION_FROM_NAME || "NexusERP";
-  const from = `${fromName} <${fromEmail}>`;
 
   const resend = new Resend(apiKey);
   const subject = delivery.subject ?? "(no subject)";
   const { data, error } =
     delivery.body_format === "html"
       ? await resend.emails.send({
-          from,
+          from: sender.from,
           to: delivery.recipient_ref,
           subject,
           html: delivery.body,
-          replyTo: config.reply_to ?? undefined,
+          replyTo: sender.replyTo,
         })
       : await resend.emails.send({
-          from,
+          from: sender.from,
           to: delivery.recipient_ref,
           subject,
           text: delivery.body,
-          replyTo: config.reply_to ?? undefined,
+          replyTo: sender.replyTo,
         });
 
   if (error) {

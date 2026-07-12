@@ -31,6 +31,11 @@ export type BankAccountRow = {
   account_number: string | null;
   bank_name: string | null;
   currency: string;
+  account_type?: string;
+  target_balance?: number | null;
+  minimum_balance?: number | null;
+  is_foreign?: boolean;
+  functional_currency?: string;
   is_active: boolean;
   gl_account_id: string;
   gl_account_code: string;
@@ -91,6 +96,7 @@ export function BankingTab({
   const [glAccountId, setGlAccountId] = useState(glAccounts.find((a) => a.code === "1010")?.id ?? glAccounts[0]?.id ?? "");
   const [accountNumber, setAccountNumber] = useState("");
   const [bankName, setBankName] = useState("");
+  const [bankCurrency, setBankCurrency] = useState(currency);
   const [stmtDate, setStmtDate] = useState(to);
   const [openingBal, setOpeningBal] = useState("0");
   const [closingBal, setClosingBal] = useState("0");
@@ -156,7 +162,7 @@ export function BankingTab({
       p_gl_account_id: glAccountId,
       p_account_number: accountNumber || null,
       p_bank_name: bankName || null,
-      p_currency: currency,
+      p_currency: bankCurrency.toUpperCase(),
       p_is_active: true,
     });
     setBusy("");
@@ -169,6 +175,7 @@ export function BankingTab({
     setName("");
     setAccountNumber("");
     setBankName("");
+    setBankCurrency(currency);
     await refreshAccounts();
   }
 
@@ -333,6 +340,15 @@ export function BankingTab({
               <Label>Account number</Label>
               <Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
             </div>
+            <div className="space-y-2">
+              <Label>Currency</Label>
+              <Input
+                value={bankCurrency}
+                onChange={(e) => setBankCurrency(e.target.value.toUpperCase())}
+                maxLength={3}
+                placeholder={currency}
+              />
+            </div>
             <div className="sm:col-span-2">
               <Button type="submit" disabled={busy === "save-acct"}>Save bank account</Button>
             </div>
@@ -380,17 +396,24 @@ export function BankingTab({
             <DataTableHeader>
               <DataTableHead>Account</DataTableHead>
               <DataTableHead>GL</DataTableHead>
+              <DataTableHead>Currency</DataTableHead>
               <DataTableHead align="right">Balance</DataTableHead>
               <DataTableHead align="right">Unreconciled</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
               {accounts.length === 0 ? (
-                <DataTableEmpty colSpan={4} message="No bank accounts. Add one linked to your Bank GL account (1010)." />
+                <DataTableEmpty colSpan={5} message="No bank accounts. Add one linked to your Bank GL account (1010)." />
               ) : (
                 accounts.map((a) => (
                   <DataTableRow key={a.id}>
                     <DataTableCell>{a.name}</DataTableCell>
                     <DataTableCell className="font-mono text-xs">{a.gl_account_code}</DataTableCell>
+                    <DataTableCell>
+                      {a.currency}
+                      {a.is_foreign && (
+                        <span className="ml-1 text-xs text-amber-600">FC</span>
+                      )}
+                    </DataTableCell>
                     <DataTableCell align="right" className="font-mono">{money(Number(a.gl_balance))}</DataTableCell>
                     <DataTableCell align="right">{a.unreconciled_lines}</DataTableCell>
                   </DataTableRow>

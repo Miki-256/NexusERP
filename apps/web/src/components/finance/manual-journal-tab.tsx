@@ -24,6 +24,8 @@ export type JournalDraft = {
   created_at: string;
   journal_code: string;
   total_debit: number;
+  dual_approval_required?: boolean;
+  approvals_received?: number;
   lines: { account_code: string; account_name: string; debit: number; credit: number; description: string | null }[];
 };
 
@@ -75,7 +77,10 @@ export function ManualJournalTab({
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState(initialDrafts);
 
-  const activeAccounts = useMemo(() => accounts.filter((a) => a.is_active), [accounts]);
+  const activeAccounts = useMemo(
+    () => accounts.filter((a) => a.is_active && a.is_postable !== false),
+    [accounts]
+  );
   const money = (n: number) => formatCurrency(n, currency);
 
   const { totalDebit, totalCredit, balanced } = useMemo(() => {
@@ -349,11 +354,16 @@ export function ManualJournalTab({
                   <p className="font-medium">{d.memo || "Manual journal entry"}</p>
                   <p className="text-xs text-muted-foreground">
                     {d.entry_date} · {d.journal_code} · {money(d.total_debit)}
+                    {d.dual_approval_required && (
+                      <> · {d.approvals_received ?? 0}/2 approvals</>
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" disabled={busy} onClick={() => approveDraft(d.id)}>
-                    Approve
+                    {d.dual_approval_required && (d.approvals_received ?? 0) < 1
+                      ? "First approval"
+                      : "Approve"}
                   </Button>
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => rejectDraft(d.id)}>
                     Reject

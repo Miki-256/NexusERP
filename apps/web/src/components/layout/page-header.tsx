@@ -10,15 +10,13 @@ export function PageHeader({
   title: string;
   description?: string;
   action?: React.ReactNode;
-  breadcrumb?: string;
+  breadcrumb?: React.ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn("border-b border-border pb-6", className)}>
       {breadcrumb && (
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {breadcrumb}
-        </p>
+        <div className="mb-2">{breadcrumb}</div>
       )}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">

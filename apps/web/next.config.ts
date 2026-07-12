@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 import path from "path";
 
 // Phase 0 hardening (audit S3): security headers incl. Content-Security-Policy.
@@ -18,7 +19,8 @@ const csp = [
   `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
-  `connect-src 'self' https://${supabaseHost} wss://${supabaseHost} http://127.0.0.1:17832 http://localhost:17832`,
+  `connect-src 'self' https://${supabaseHost} wss://${supabaseHost} http://127.0.0.1:17832 http://localhost:17832 https://*.sentry.io https://*.ingest.sentry.io`,
+  "worker-src 'self' blob:",
   "font-src 'self' data:",
 ]
   .filter(Boolean)
@@ -75,4 +77,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
+  silent: !process.env.CI,
+});

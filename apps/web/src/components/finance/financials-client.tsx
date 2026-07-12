@@ -5,24 +5,97 @@ import { useRouter, usePathname } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { formatPeriod } from "@/lib/finance-dates";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getTenantMainElement,
+  refreshPreservingTenantScroll,
+  replaceTenantUrl,
+  replaceTenantUrlQuery,
+  restoreTenantMainScroll,
+} from "@/lib/tenant-scroll";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/layout/stat-card";
-import { TabBar } from "@/components/layout/tab-bar";
 import { DateRangeToolbar } from "@/components/finance/date-range-toolbar";
 import { ExportCsvButton } from "@/components/finance/export-csv-button";
 import { LedgerEntriesTab } from "@/components/finance/ledger-entries-tab";
 import { ChartOfAccountsTab, type AccountRow } from "@/components/finance/chart-of-accounts-tab";
 import { ManualJournalTab, type JournalDraft } from "@/components/finance/manual-journal-tab";
+import { OpeningBalanceWizard } from "@/components/finance/opening-balance-wizard";
 import { AgingTab, type ArAging, type ApAging } from "@/components/finance/aging-tab";
+import {
+  TreasuryTab,
+  type TreasuryCashPosition,
+  type TreasuryForecast,
+  type TreasuryTransferRow,
+} from "@/components/finance/treasury-tab";
+import { FxCurrenciesTab, type ExchangeRateRow, type FxRevaluationRunRow } from "@/components/finance/fx-currencies-tab";
 import { FiscalPeriodsTab, type FiscalPeriodRow } from "@/components/finance/fiscal-periods-tab";
 import { BankingTab, type BankAccountRow } from "@/components/finance/banking-tab";
-import { TaxTab, type TaxCodeRow, type TaxSummaryLine } from "@/components/finance/tax-tab";
+import { TaxTab, type TaxCodeRow, type TaxSummaryLine, type TaxComplianceSettings, type VatLiabilityReport, type TaxReturnPeriod, type EinvoiceDocument, type PendingEinvoiceInvoice, type WithholdingRule } from "@/components/finance/tax-tab";
 import { BudgetTab, type BudgetRow } from "@/components/finance/budget-tab";
+import {
+  FpaTab,
+  type FpaScenario,
+  type RollingForecastSummary,
+  type FpaDashboard,
+  type ScenarioComparison,
+} from "@/components/finance/fpa-tab";
+import {
+  JobCostTab,
+  type CostCenterRow,
+  type ProjectJobCostRow,
+  type CostCenterSummaryRow,
+} from "@/components/finance/job-cost-tab";
 import { AnalyticsTab, type DepartmentRow, type AnalyticSummaryRow } from "@/components/finance/analytics-tab";
-import { FixedAssetsTab, type FixedAssetRow } from "@/components/finance/fixed-assets-tab";
-import { ConsolidationTab, type ConsolidationGroup, type OrgOption } from "@/components/finance/consolidation-tab";
-import { AutomationTab, type RecurringJournalTemplate, type InvoiceReminderRow } from "@/components/finance/automation-tab";
+import { FixedAssetsTab, type FixedAssetRow, type FaBookRow, type FaBookComparison } from "@/components/finance/fixed-assets-tab";
+import {
+  ExecutiveDashboardTab,
+  type ExecutiveDashboard,
+} from "@/components/finance/executive-dashboard-tab";
+import {
+  ConsolidationTab,
+  type ConsolidationGroup,
+  type OrgOption,
+  type IntercompanyRelationship,
+  type IntercompanyTransaction,
+} from "@/components/finance/consolidation-tab";
+import {
+  AutomationTab,
+  type RecurringJournalTemplate,
+  type InvoiceReminderRow,
+  type FinancialAutomationRule,
+  type FinancialScheduledReport,
+} from "@/components/finance/automation-tab";
+import {
+  FinancialSecurityTab,
+  type FinancialSecuritySettings,
+  type SodConflictRule,
+  type PendingFinancialApprovals,
+} from "@/components/finance/financial-security-tab";
+import {
+  FinancialPerformanceTab,
+  type FinancialPerformanceSettings,
+  type FinancialPerformanceDashboard,
+} from "@/components/finance/financial-performance-tab";
+import {
+  FinancialAssistantTab,
+  type FinancialAiSettings,
+  type FinancialAiSuggestedPrompt,
+  type FinancialAiInsight,
+} from "@/components/finance/financial-assistant-tab";
 import { ReportsLibraryTab, type ReportSnapshotRow } from "@/components/finance/reports-library-tab";
+import { FinancialLaunchpad } from "@/components/finance/financial-launchpad";
+import { FinancialShellNav, FinancialShellBreadcrumb } from "@/components/finance/financial-shell-nav";
+import {
+  areaForTab,
+  isFinancialShellTab,
+  AREA_TABS,
+  FINANCIAL_SHELL_AREAS,
+  type FinancialShellAreaId,
+  type FinancialShellTab,
+  type FinancialShellPreferences,
+  type LaunchpadArea,
+} from "@/lib/finance/financial-shell-config";
+import { cn } from "@/lib/utils";
 import { ReportSection, StatementTable, ComparativeStatementTable } from "@/components/finance/report-section";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -107,7 +180,7 @@ type CashFlow = {
   by_source: { source: string; net: number }[];
 };
 
-type Tab = "overview" | "pnl" | "balance" | "cashflow" | "trial" | "ledger" | "coa" | "journal" | "aging" | "periods" | "banking" | "tax" | "budget" | "analytics" | "assets" | "consolidation" | "automation" | "reports";
+type Tab = FinancialShellTab;
 
 export function FinancialsClient({
   orgId,
@@ -129,6 +202,19 @@ export function FinancialsClient({
   bankAccounts,
   taxCodes,
   taxSummary,
+  taxComplianceSettings,
+  vatLiability,
+  taxReturns,
+  einvoiceDocuments,
+  pendingEinvoices,
+  withholdingRules,
+  fpaScenarios,
+  fpaForecasts,
+  fpaDashboard,
+  fpaComparison,
+  costCenters,
+  projectsJobCost,
+  costCenterSummary,
   pnlPrior,
   pnlPriorLabel,
   pnlVariance,
@@ -143,13 +229,38 @@ export function FinancialsClient({
   stores,
   projects,
   fixedAssets,
+  faBooks,
+  faBookComparison,
+  executiveDashboard,
+  initialTab,
+  initialArea,
+  shellPreferences,
+  launchpadCatalog,
   consolidationGroups,
   myOrganizations,
   consolidatedPnl,
   consolidatedBs,
+  intercompanyRelationships,
+  intercompanyTransactions,
+  treasuryCashPosition,
+  treasuryForecast,
+  treasuryTransfers,
   recurringTemplates,
   invoiceReminders,
+  financialRules,
+  financialSchedules,
+  orgTimezone,
+  financialSecuritySettings,
+  sodRules,
+  pendingFinancialApprovals,
+  financialPerformanceSettings,
+  performanceDashboard,
+  financialAiSettings,
+  financialAiPrompts,
+  financialAiInsights,
   reportSnapshots,
+  exchangeRates,
+  fxRevaluationRuns,
   pnl,
   trial,
   bs,
@@ -176,7 +287,20 @@ export function FinancialsClient({
   fiscalPeriods: FiscalPeriodRow[];
   bankAccounts: BankAccountRow[];
   taxCodes: TaxCodeRow[];
-  taxSummary: { total_tax: number; lines: TaxSummaryLine[] };
+  taxSummary: { total_tax: number; input_tax?: number; net_payable?: number; lines: TaxSummaryLine[] };
+  taxComplianceSettings: TaxComplianceSettings;
+  vatLiability: VatLiabilityReport;
+  taxReturns: TaxReturnPeriod[];
+  einvoiceDocuments: EinvoiceDocument[];
+  pendingEinvoices: PendingEinvoiceInvoice[];
+  withholdingRules: WithholdingRule[];
+  fpaScenarios: FpaScenario[];
+  fpaForecasts: RollingForecastSummary[];
+  fpaDashboard: FpaDashboard;
+  fpaComparison: ScenarioComparison[];
+  costCenters: CostCenterRow[];
+  projectsJobCost: ProjectJobCostRow[];
+  costCenterSummary: CostCenterSummaryRow[];
   pnlPrior: Partial<PnL>;
   pnlPriorLabel: string;
   pnlVariance: Record<string, number>;
@@ -191,6 +315,13 @@ export function FinancialsClient({
   stores: { id: string; name: string }[];
   projects: { id: string; name: string }[];
   fixedAssets: FixedAssetRow[];
+  faBooks: FaBookRow[];
+  faBookComparison: FaBookComparison[];
+  executiveDashboard: ExecutiveDashboard;
+  initialTab?: string;
+  initialArea?: string;
+  shellPreferences: FinancialShellPreferences;
+  launchpadCatalog: LaunchpadArea[];
   consolidationGroups: ConsolidationGroup[];
   myOrganizations: OrgOption[];
   consolidatedPnl: {
@@ -203,9 +334,27 @@ export function FinancialsClient({
     total_equity?: number;
     organizations?: { name: string; total_assets: number }[];
   } | null;
+  intercompanyRelationships: IntercompanyRelationship[];
+  intercompanyTransactions: IntercompanyTransaction[];
+  treasuryCashPosition: TreasuryCashPosition | null;
+  treasuryForecast: TreasuryForecast | null;
+  treasuryTransfers: TreasuryTransferRow[];
   recurringTemplates: RecurringJournalTemplate[];
   invoiceReminders: InvoiceReminderRow[];
+  financialRules: FinancialAutomationRule[];
+  financialSchedules: FinancialScheduledReport[];
+  orgTimezone: string;
+  financialSecuritySettings: FinancialSecuritySettings;
+  sodRules: SodConflictRule[];
+  pendingFinancialApprovals: PendingFinancialApprovals;
+  financialPerformanceSettings: FinancialPerformanceSettings;
+  performanceDashboard: FinancialPerformanceDashboard;
+  financialAiSettings: FinancialAiSettings;
+  financialAiPrompts: FinancialAiSuggestedPrompt[];
+  financialAiInsights: FinancialAiInsight[];
   reportSnapshots: ReportSnapshotRow[];
+  exchangeRates: ExchangeRateRow[];
+  fxRevaluationRuns: FxRevaluationRunRow[];
   pnl: Partial<PnL>;
   trial: TrialRow[];
   bs: BalanceSheet | null;
@@ -214,7 +363,17 @@ export function FinancialsClient({
   paymentMix: { name: string; value: number }[];
   expenseByCategory: { name: string; value: number }[];
 }) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const defaultTab: Tab = shellPreferences.show_launchpad ? "home" : "overview";
+  const resolvedInitialTab =
+    initialTab && isFinancialShellTab(initialTab) ? initialTab : defaultTab;
+  const resolvedInitialArea: FinancialShellAreaId =
+    initialArea && FINANCIAL_SHELL_AREAS.some((a) => a.id === initialArea)
+      ? (initialArea as FinancialShellAreaId)
+      : areaForTab(resolvedInitialTab);
+
+  const [tab, setTab] = useState<Tab>(resolvedInitialTab);
+  const [area, setArea] = useState<FinancialShellAreaId>(resolvedInitialArea);
+  const [shellPrefs, setShellPrefs] = useState(shellPreferences);
   const [unpostedCount, setUnpostedCount] = useState(initialUnpostedCount);
   const [posting, setPosting] = useState(false);
   const router = useRouter();
@@ -222,13 +381,58 @@ export function FinancialsClient({
   const { toast } = useToast();
   const money = (n: number | undefined) => formatCurrency(n ?? 0, currency);
   const period = formatPeriod(from, to);
+  const compact = shellPrefs.density === "compact";
+
+  function navigateShell(nextArea: FinancialShellAreaId, nextTab: Tab, refetchArea = false) {
+    const main = getTenantMainElement();
+    const scrollTop = main?.scrollTop ?? 0;
+    setArea(nextArea);
+    setTab(nextTab);
+    const params = new URLSearchParams(window.location.search);
+    params.set("from", from);
+    params.set("to", to);
+    if (pnlMode === "gl") params.set("pnl", "gl");
+    else params.delete("pnl");
+    params.set("tab", nextTab);
+    params.set("area", nextArea);
+
+    if (refetchArea) {
+      replaceTenantUrlQuery(pathname, params);
+      restoreTenantMainScroll(main, scrollTop);
+      refreshPreservingTenantScroll(router, scrollTop);
+      return;
+    }
+    replaceTenantUrlQuery(pathname, params);
+    restoreTenantMainScroll(main, scrollTop);
+  }
+
+  function handleAreaChange(nextArea: FinancialShellAreaId) {
+    const tabs = nextArea === "home" ? (["home"] as Tab[]) : (AREA_TABS[nextArea] as Tab[]);
+    navigateShell(nextArea, tabs[0] ?? "overview", true);
+  }
+
+  function handleTabChange(nextTab: Tab) {
+    const nextArea = areaForTab(nextTab);
+    navigateShell(nextArea, nextTab, nextArea !== area);
+  }
+
+  async function toggleDensity() {
+    const next = shellPrefs.density === "cozy" ? "compact" : "cozy";
+    setShellPrefs((p) => ({ ...p, density: next }));
+    const supabase = createClient();
+    await supabase.rpc("update_financial_shell_preferences", {
+      p_org_id: orgId,
+      p_density: next,
+    });
+  }
 
   function setPnlMode(mode: "operational" | "gl") {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(window.location.search);
     params.set("from", from);
     params.set("to", to);
     if (mode === "gl") params.set("pnl", "gl");
-    router.push(`${pathname}?${params.toString()}`);
+    else params.delete("pnl");
+    replaceTenantUrl(router, pathname, params);
   }
 
   async function handleBatchPost() {
@@ -266,7 +470,7 @@ export function FinancialsClient({
             : "All eligible sales are on the ledger.",
       variant: posted === 0 ? "destructive" : undefined,
     });
-    if (posted > 0) router.refresh();
+    if (posted > 0) refreshPreservingTenantScroll(router);
   }
 
   const pnlModeLabel =
@@ -424,11 +628,16 @@ export function FinancialsClient({
   ];
 
   return (
-    <div className={PAGE_SHELL}>
+    <div className={cn(PAGE_SHELL, compact && "financial-shell-compact space-y-4")}>
       <PageHeader
-        breadcrumb="Accounting"
-        title="Financial Statements"
-        description={`Double-entry ledger reports for ${period}. All figures in ${currency}.`}
+        breadcrumb={<FinancialShellBreadcrumb area={area} tab={tab} />}
+        title="Financial Management"
+        description={`Enterprise financial hub · ${period} · ${currency}`}
+        action={
+          <Button type="button" size="sm" variant="outline" onClick={() => void toggleDensity()}>
+            {compact ? "Cozy density" : "Compact density"}
+          </Button>
+        }
       />
 
       <DateRangeToolbar from={from} to={to} className="rounded-xl border border-border/60 bg-muted/20 p-4" />
@@ -462,72 +671,85 @@ export function FinancialsClient({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Revenue"
-          value={money(pnl.revenue)}
-          sub={`${pnl.gross_margin_pct ?? 0}% gross margin`}
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Gross Profit"
-          value={money(pnl.gross_profit)}
-          icon={TrendingUp}
-          highlight={(pnl.gross_profit ?? 0) >= 0 ? "positive" : "negative"}
-        />
-        <StatCard
-          label="Operating Expenses"
-          value={money(pnl.operating_expenses)}
-          icon={TrendingDown}
-        />
-        <StatCard
-          label="Net Profit"
-          value={money(pnl.net_profit)}
-          sub={`${pnl.net_margin_pct ?? 0}% net margin`}
-          icon={Landmark}
-          highlight={(pnl.net_profit ?? 0) >= 0 ? "positive" : "negative"}
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total Assets" value={money(bs?.total_assets)} icon={Wallet} />
-        <StatCard label="Closing Cash" value={money(cf?.closing_cash)} icon={ArrowUpRight} />
-        <StatCard
-          label="Ledger Balance"
-          value={bs?.balanced ? "Balanced" : "Out of balance"}
-          sub={`Debits ${money(totalDebits)} · Credits ${money(totalCredits)}`}
-          icon={Scale}
-          highlight={bs?.balanced ? "positive" : "negative"}
-        />
-      </div>
-
-      <TabBar
-        tabs={[
-          { key: "overview" as const, label: "Overview" },
-          { key: "pnl" as const, label: "P&L" },
-          { key: "balance" as const, label: "Balance Sheet" },
-          { key: "cashflow" as const, label: "Cash Flow" },
-          { key: "aging" as const, label: "Aging" },
-          { key: "periods" as const, label: "Periods" },
-          { key: "banking" as const, label: "Banking" },
-          { key: "tax" as const, label: "Tax" },
-          { key: "budget" as const, label: "Budget" },
-          { key: "analytics" as const, label: "Analytics" },
-          { key: "assets" as const, label: "Assets" },
-          { key: "consolidation" as const, label: "Consolidation" },
-          { key: "automation" as const, label: "Automation" },
-          { key: "reports" as const, label: "Reports" },
-          { key: "ledger" as const, label: "Ledger" },
-          { key: "coa" as const, label: "COA", count: accounts.length },
-          { key: "journal" as const, label: "Manual JE" },
-          { key: "trial" as const, label: "Trial Balance" },
-        ]}
-        value={tab}
-        onChange={setTab}
+      <FinancialShellNav
+        area={area}
+        tab={tab}
+        onAreaChange={handleAreaChange}
+        onTabChange={handleTabChange}
+        tabCounts={{ coa: accounts.length }}
       />
+
+      {tab === "home" && (
+        <FinancialLaunchpad
+          catalog={launchpadCatalog}
+          pinnedTabs={shellPrefs.pinned_tabs}
+          onSelectTab={(nextTab) => navigateShell(areaForTab(nextTab), nextTab)}
+          compact={compact}
+          kpis={[
+            { label: "Revenue", value: money(pnl.revenue), sub: `${pnl.gross_margin_pct ?? 0}% gross margin` },
+            { label: "Net profit", value: money(pnl.net_profit), sub: `${pnl.net_margin_pct ?? 0}% net margin` },
+            { label: "Closing cash", value: money(cf?.closing_cash) },
+            {
+              label: "Ledger",
+              value: bs?.balanced ? "Balanced" : "Review",
+              sub: bs?.balanced ? "Trial balance OK" : "Out of balance",
+            },
+          ]}
+        />
+      )}
+
+      {tab === "executive" && (
+        <ExecutiveDashboardTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          from={from}
+          to={to}
+          dashboard={executiveDashboard}
+        />
+      )}
 
       {tab === "overview" && (
         <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Revenue"
+              value={money(pnl.revenue)}
+              sub={`${pnl.gross_margin_pct ?? 0}% gross margin`}
+              icon={DollarSign}
+            />
+            <StatCard
+              label="Gross Profit"
+              value={money(pnl.gross_profit)}
+              icon={TrendingUp}
+              highlight={(pnl.gross_profit ?? 0) >= 0 ? "positive" : "negative"}
+            />
+            <StatCard
+              label="Operating Expenses"
+              value={money(pnl.operating_expenses)}
+              icon={TrendingDown}
+            />
+            <StatCard
+              label="Net Profit"
+              value={money(pnl.net_profit)}
+              sub={`${pnl.net_margin_pct ?? 0}% net margin`}
+              icon={Landmark}
+              highlight={(pnl.net_profit ?? 0) >= 0 ? "positive" : "negative"}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard label="Total Assets" value={money(bs?.total_assets)} icon={Wallet} />
+            <StatCard label="Closing Cash" value={money(cf?.closing_cash)} icon={ArrowUpRight} />
+            <StatCard
+              label="Ledger Balance"
+              value={bs?.balanced ? "Balanced" : "Out of balance"}
+              sub={`Debits ${money(totalDebits)} · Credits ${money(totalCredits)}`}
+              icon={Scale}
+              highlight={bs?.balanced ? "positive" : "negative"}
+            />
+          </div>
+
           <div className="grid gap-6 lg:grid-cols-2">
             <ChartCard title="Revenue vs expenses" subtitle={`Daily trend · ${period}`}>
               <DualMetricChart data={dailyTrend} formatValue={money} />
@@ -801,7 +1023,7 @@ export function FinancialsClient({
       )}
 
       {tab === "ledger" && (
-        <LedgerEntriesTab orgId={orgId} currency={currency} from={from} to={to} />
+        <LedgerEntriesTab orgId={orgId} currency={currency} from={from} to={to} canManage={canPostLedger} />
       )}
 
       {tab === "coa" && (
@@ -809,23 +1031,30 @@ export function FinancialsClient({
       )}
 
       {tab === "journal" && (
-        <ManualJournalTab
-          orgId={orgId}
-          currency={currency}
-          canManage={canPostLedger}
-          jeRequiresApproval={jeRequiresApproval}
-          drafts={journalDrafts}
-          accounts={accounts}
-          journals={journals}
-          stores={stores}
-          projects={projects}
-          departments={departments}
-        />
+        <div className="space-y-6">
+          <OpeningBalanceWizard
+            orgId={orgId}
+            currency={currency}
+            canManage={canPostLedger}
+            accounts={accounts}
+          />
+          <ManualJournalTab
+            orgId={orgId}
+            currency={currency}
+            canManage={canPostLedger}
+            jeRequiresApproval={jeRequiresApproval}
+            drafts={journalDrafts}
+            accounts={accounts}
+            journals={journals}
+            stores={stores}
+            projects={projects}
+            departments={departments}
+          />
+        </div>
       )}
 
       {tab === "periods" && (
         <FiscalPeriodsTab
-          orgId={orgId}
           currency={currency}
           canManage={canPostLedger}
           fiscalYear={fiscalYear}
@@ -846,6 +1075,30 @@ export function FinancialsClient({
         />
       )}
 
+      {tab === "treasury" && (
+        <TreasuryTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          asOf={to}
+          bankAccounts={bankAccounts}
+          cashPosition={treasuryCashPosition}
+          forecast={treasuryForecast}
+          transfers={treasuryTransfers}
+        />
+      )}
+
+      {tab === "fx" && (
+        <FxCurrenciesTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          asOf={to}
+          exchangeRates={exchangeRates}
+          revaluationRuns={fxRevaluationRuns}
+        />
+      )}
+
       {tab === "tax" && (
         <TaxTab
           orgId={orgId}
@@ -855,6 +1108,12 @@ export function FinancialsClient({
           to={to}
           taxCodes={taxCodes}
           taxSummary={taxSummary}
+          complianceSettings={taxComplianceSettings}
+          vatLiability={vatLiability}
+          taxReturns={taxReturns}
+          einvoiceDocuments={einvoiceDocuments}
+          pendingEinvoices={pendingEinvoices}
+          withholdingRules={withholdingRules}
         />
       )}
 
@@ -867,6 +1126,34 @@ export function FinancialsClient({
           to={to}
           budgets={budgets}
           accounts={accounts}
+        />
+      )}
+
+      {tab === "fpa" && (
+        <FpaTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          asOf={to}
+          scenarios={fpaScenarios}
+          forecasts={fpaForecasts}
+          dashboard={fpaDashboard}
+          scenarioComparison={fpaComparison}
+        />
+      )}
+
+      {tab === "jobcost" && (
+        <JobCostTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          from={from}
+          to={to}
+          costCenters={costCenters}
+          projectsJobCost={projectsJobCost}
+          costCenterSummary={costCenterSummary}
+          accounts={accounts}
+          projects={projects}
         />
       )}
 
@@ -885,7 +1172,14 @@ export function FinancialsClient({
       )}
 
       {tab === "assets" && (
-        <FixedAssetsTab orgId={orgId} currency={currency} canManage={canPostLedger} assets={fixedAssets} />
+        <FixedAssetsTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          assets={fixedAssets}
+          faBooks={faBooks}
+          bookComparison={faBookComparison}
+        />
       )}
 
       {tab === "consolidation" && (
@@ -899,6 +1193,8 @@ export function FinancialsClient({
           myOrganizations={myOrganizations}
           consolidatedPnl={consolidatedPnl}
           consolidatedBs={consolidatedBs}
+          intercompanyRelationships={intercompanyRelationships}
+          intercompanyTransactions={intercompanyTransactions}
         />
       )}
 
@@ -907,10 +1203,46 @@ export function FinancialsClient({
           orgId={orgId}
           currency={currency}
           canManage={canPostLedger}
+          orgTimezone={orgTimezone}
           accounts={accounts}
           journals={journals}
           templates={recurringTemplates}
           invoiceReminders={invoiceReminders}
+          financialRules={financialRules}
+          financialSchedules={financialSchedules}
+        />
+      )}
+
+      {tab === "security" && (
+        <FinancialSecurityTab
+          orgId={orgId}
+          currency={currency}
+          canManage={canPostLedger}
+          settings={financialSecuritySettings}
+          sodRules={sodRules}
+          pendingApprovals={pendingFinancialApprovals}
+        />
+      )}
+
+      {tab === "performance" && (
+        <FinancialPerformanceTab
+          orgId={orgId}
+          canManage={canPostLedger}
+          settings={financialPerformanceSettings}
+          dashboard={performanceDashboard}
+        />
+      )}
+
+      {tab === "assistant" && (
+        <FinancialAssistantTab
+          orgId={orgId}
+          from={from}
+          to={to}
+          canManage={canPostLedger}
+          settings={financialAiSettings}
+          suggestedPrompts={financialAiPrompts}
+          insights={financialAiInsights}
+          initialMessages={[]}
         />
       )}
 

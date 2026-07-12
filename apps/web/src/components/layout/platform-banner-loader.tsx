@@ -8,23 +8,37 @@ import { PlatformBanner } from "@/components/layout/platform-banner";
 const CACHE_KEY = "nx_broadcast_v1";
 const CACHE_TTL_MS = 120_000;
 
+function readCachedBanner(): BroadcastBanner | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { banner: BroadcastBanner | null; ts: number };
+    if (Date.now() - parsed.ts < CACHE_TTL_MS) return parsed.banner;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function hasFreshCache(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { ts: number };
+    return Date.now() - parsed.ts < CACHE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 /** Loads broadcast banner client-side so tenant layout is not blocked on an extra RPC. */
 export function PlatformBannerLoader() {
-  const [banner, setBanner] = useState<BroadcastBanner | null>(null);
+  const [banner, setBanner] = useState<BroadcastBanner | null>(() => readCachedBanner());
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { banner: BroadcastBanner | null; ts: number };
-        if (Date.now() - parsed.ts < CACHE_TTL_MS) {
-          setBanner(parsed.banner);
-          return;
-        }
-      }
-    } catch {
-      /* ignore */
-    }
+    if (hasFreshCache()) return;
 
     let cancelled = false;
     const supabase = createClient();
