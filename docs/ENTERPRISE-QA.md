@@ -23,9 +23,9 @@ Living document for go-live readiness. Update after each audit sprint.
 | Module | Pages | Integration | E2E | UAT |
 |--------|------:|:-----------:|:---:|:---:|
 | Financials | 1 (+25 tabs) | ✅ | ✅ scroll + area nav | 📋 checklist |
-| POS / Sales | 4 | ⚠️ | ✅ login + cash sale | 📋 checklist |
-| Invoicing | 1 | ⚠️ | ✅ create + post to ledger | 📋 checklist |
-| Purchasing | 1 | ⚠️ | ✅ P2P create + receive | 📋 checklist |
+| POS / Sales | 4 | ✅ register + catalog | ✅ login + cash sale | 📋 checklist |
+| Invoicing | 1 | ✅ draft create + open list | ✅ create + post to ledger | 📋 checklist |
+| Purchasing | 1 | ✅ AP list + PO create | ✅ P2P create + receive | 📋 checklist |
 | Permissions | — | ✅ unit | ✅ manager + cashier redirect | 📋 checklist |
 | All other tenant apps | 40+ | ⚠️ | ✅ load smoke | 📋 checklist |
 
@@ -68,9 +68,9 @@ Run on preprod with a manager account. Check each box only after live verificati
 - [ ] Manager can open all of the above
 
 ### Ops
-- [ ] `/api/health` returns healthy
-- [ ] Process-queue cron returns 200 with `CRON_SECRET`
-- [ ] Hard-refresh preprod after each `deploy:live`
+- [x] `/api/health` returns healthy — 2026-07-12 post-merge deploy (`healthy`, HTTP 200)
+- [x] Process-queue cron returns 200 with `CRON_SECRET` — ledger pending 0; GH Actions green after secret sync
+- [x] Hard-refresh preprod after each `deploy:live` — `main` @ `f02c57b` aliased to `nexus-erp-preprod.vercel.app`
 
 ## P0 / P1 complete
 
@@ -82,6 +82,11 @@ Run on preprod with a manager account. Check each box only after live verificati
 - [x] Pilot UAT checklist documented
 - [ ] Optional: Upstash keys in local `.env.local` (already on Vercel)
 - [x] Commit / PR hardening branch ([#11](https://github.com/Miki-256/NexusERP/pull/11))
+
+## Ops notes (2026-07-12)
+
+- Post-merge deploy + health/cron verified on preprod.
+- `stale_rollup_orgs` false positives (empty orgs / dormant sales) fixed in migration `00172` (applied remote 2026-07-12) — detector only flags orgs whose rollup lags completed sales.
 
 ## Remaining after pilot gate
 
