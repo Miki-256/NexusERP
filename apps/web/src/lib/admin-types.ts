@@ -7,6 +7,26 @@ export type PlatformAdminContext = {
   canManageAdmins: boolean;
 };
 
+export type OrgHealthGrade = "healthy" | "watch" | "critical" | "offboarded";
+
+export type OrgHealth = {
+  organization_id: string;
+  score: number;
+  grade: OrgHealthGrade;
+  factors: { code: string; impact: number; detail: string }[];
+  signals: {
+    status: string;
+    offboarded_at: string | null;
+    active_members: number;
+    ledger_queue_pending: number;
+    ledger_queue_failed: number;
+    unposted_sales: number;
+    webhook_pending: number;
+    last_sale_at: string | null;
+  };
+  generated_at: string;
+};
+
 export type AdminOrg = {
   id: string;
   name: string;
@@ -16,6 +36,8 @@ export type AdminOrg = {
   member_count: number;
   created_at: string;
   owner_email?: string | null;
+  offboarded_at?: string | null;
+  health?: OrgHealth;
 };
 
 export type PendingOrg = AdminOrg & { owner_email: string | null };
@@ -50,7 +72,11 @@ export type OrgDetail = {
     tax_rate: number;
     created_at: string;
     updated_at: string;
+    offboarded_at?: string | null;
+    offboard_reason?: string | null;
+    offboarded_by?: string | null;
   };
+  health?: OrgHealth;
   members: {
     member_id: string;
     user_id: string;
@@ -230,9 +256,91 @@ export type MaintenanceMode = {
   block_signup: boolean;
 };
 
+export type DualControlSettings = {
+  enabled: boolean;
+  actions: string[];
+  solo_admin_bypass: boolean;
+};
+
+export type OpsSloThresholds = {
+  ledger_queue_pending: number;
+  ledger_queue_failed: number;
+  payment_webhook_pending: number;
+  unposted_completed_sales: number;
+  notification_deliveries_failed: number;
+  heartbeat_stale_minutes: number;
+};
+
+export type OpsSloSettings = {
+  enabled: boolean;
+  webhook_url: string;
+  notify_slack: boolean;
+  cooldown_minutes: number;
+  thresholds: OpsSloThresholds;
+};
+
+export type OpsSloCheck = {
+  key: string;
+  label?: string;
+  current: number;
+  threshold: number;
+  breached: boolean;
+  last_success_at?: string | null;
+};
+
+export type OpsSloStatus = {
+  settings: {
+    enabled: boolean;
+    webhook_configured: boolean;
+    notify_slack: boolean;
+    cooldown_minutes: number;
+    thresholds: OpsSloThresholds;
+  };
+  preview: {
+    breached_count: number;
+    checks: OpsSloCheck[];
+    evaluated_at: string;
+  };
+  recent_alerts: {
+    id: string;
+    alert_type: string;
+    severity: string;
+    title: string;
+    detail: string;
+    status: string;
+    created_at: string;
+    completed_at: string | null;
+    error: string | null;
+  }[];
+  generated_at: string;
+};
+
 export type PlatformSettings = {
   broadcast_banner: BroadcastBanner;
   maintenance_mode: MaintenanceMode;
+  dual_control?: DualControlSettings;
+};
+
+export type AdminApproval = {
+  id: string;
+  action_type: "org.suspend" | "org.export" | "org.offboard";
+  organization_id: string;
+  organization_name: string;
+  payload: Record<string, unknown>;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | "cancelled" | "executed" | "expired";
+  requested_by: string;
+  requested_by_email: string;
+  requested_at: string;
+  reviewed_by: string | null;
+  reviewed_by_email: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  executed_at: string | null;
+  expires_at: string;
+  can_review: boolean;
+  can_cancel: boolean;
+  download_path: string | null;
 };
 
 export type PlatformStats = {
@@ -286,6 +394,18 @@ export type PlatformFeatureFlag = {
   updated_at: string;
 };
 
+export type OrgFeatureFlagRow = {
+  key: string;
+  label: string;
+  description: string | null;
+  global_enabled: boolean;
+  override_enabled: boolean | null;
+  effective_enabled: boolean;
+  has_override: boolean;
+  note: string | null;
+  updated_at: string;
+};
+
 export type PlatformHealth = {
   generated_at: string;
   table_counts: Record<string, number>;
@@ -308,15 +428,91 @@ export type PlatformHealth = {
   ops?: {
     ledger_queue_pending: number;
     ledger_queue_failed: number;
+    ledger_queue_oldest_at?: string | null;
     payment_webhook_queue_pending: number;
+    payment_webhook_oldest_at?: string | null;
+    refund_ledger_pending?: number;
+    refund_ledger_failed?: number;
+    notification_deliveries_pending?: number;
+    notification_deliveries_failed?: number;
+    notification_events_unprocessed?: number;
+    hr_webhook_pending?: number;
+    hr_webhook_failed?: number;
+    stale_rollup_orgs?: number;
+    unposted_completed_sales?: number;
     ledger_queue_errors: {
       sale_id: string;
       organization_id: string;
+      organization_name?: string | null;
       attempts: number;
       last_error: string | null;
       enqueued_at: string;
     }[];
+    org_ledger_backlog?: {
+      organization_id: string;
+      organization_name: string | null;
+      pending: number;
+      failed: number;
+      oldest_enqueued_at: string | null;
+    }[];
+    org_unposted_sales?: {
+      organization_id: string;
+      organization_name: string | null;
+      unposted: number;
+      auto_post_enabled: boolean;
+    }[];
+    process_queue_heartbeat?: {
+      key: string;
+      last_success_at: string;
+      updated_at: string;
+      last_ok: boolean;
+      last_result?: Record<string, unknown>;
+    } | null;
   };
+};
+
+export type ActiveSupportSession = {
+  session_id: string;
+  organization_id: string;
+  organization_name: string;
+  reason: string;
+  started_at: string;
+  expires_at: string;
+  membership_id: string | null;
+};
+
+export type OrgOpsDetail = {
+  organization_id: string;
+  organization_name: string;
+  organization_status: string;
+  counts: {
+    ledger_queue: number;
+    webhook_queue: number;
+    unposted_sales: number;
+  };
+  ledger_queue: {
+    sale_id: string;
+    attempts: number;
+    last_error: string | null;
+    enqueued_at: string;
+    receipt_no?: string | null;
+    total?: number | null;
+    created_at?: string;
+  }[];
+  webhook_queue: {
+    id: string;
+    reference: string;
+    provider: string;
+    amount: number | null;
+    created_at: string;
+  }[];
+  unposted_sales: {
+    sale_id: string;
+    receipt_no: string | null;
+    total: number | null;
+    created_at: string;
+  }[];
+  generated_at: string;
 };
 
 export const ROLE_LABELS: Record<PlatformAdminRole, string> = {

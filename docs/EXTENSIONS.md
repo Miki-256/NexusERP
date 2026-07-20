@@ -52,6 +52,8 @@ This document describes where to plug in subscriptions, offline mode, payment we
 2. Match webhook `reference` to `payments.reference`; set `status` from `pending` → `completed` or `failed`.
 3. Optional: create sale in `pending` state until webhook confirms (v1.1 manager approval flow).
 
+**Arifpay (Telebirr aggregator):** see [ARIFPAY.md](./ARIFPAY.md) — checkout session + DirectPay + `/api/webhooks/arifpay/[organizationId]`.
+
 **Do not** replace manual cashier confirmation in v1 until reconciliation UI exists.
 
 ---

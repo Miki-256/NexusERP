@@ -90,6 +90,19 @@ function methodSupportsOverpayTip(method: PaymentMethodId): boolean {
   return method === "cash" || method === "mobile_money" || method === "bank_transfer";
 }
 
+/** Cash / mobile / bank: amount received + change given → tip when tips enabled and not split. */
+function usesReceivedChangeUi(
+  method: PaymentMethodId,
+  tipsEnabled: boolean,
+  paymentCount: number
+): boolean {
+  return tipsEnabled && paymentCount === 0 && methodSupportsOverpayTip(method);
+}
+
+function receivedLabel(method: PaymentMethodId): string {
+  return method === "cash" ? "Cash received" : "Amount received";
+}
+
 /** Tip from explicit presets plus any payment above the merchandise total. */
 function resolveSaleTip(
   orderTotal: number,
@@ -214,12 +227,16 @@ export function PaymentModal({
   const [changeGivenInput, setChangeGivenInput] = useState("");
   const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("");
   const [giftCardHint, setGiftCardHint] = useState<string | null>(null);
+  const [arifpayEnabled, setArifpayEnabled] = useState(false);
+  const [arifpayBusy, setArifpayBusy] = useState(false);
+  const [arifpayHint, setArifpayHint] = useState<string | null>(null);
   const offline = useOfflineOptional();
   const checkoutOffline = offline ? !offline.online : !isBrowserOnline();
 
   const cashReceivedNum = parseFloat(cashTendered);
   const cashChangeNum = parseFloat(changeGivenInput);
-  const autoTipFromCash = useMemo(() => {
+  const receivedChangeUi = usesReceivedChangeUi(method, tipsEnabled, payments.length);
+  const autoTipFromReceived = useMemo(() => {
     if (
       !tipsEnabled ||
       !Number.isFinite(cashReceivedNum) ||
@@ -235,13 +252,13 @@ export function PaymentModal({
   const amountReceivedNum = parseFloat(amount);
 
   const tipFromOverpayPreview = useMemo(() => {
-    if (!tipsEnabled || !methodSupportsOverpayTip(method) || method === "cash") return 0;
+    if (!tipsEnabled || !methodSupportsOverpayTip(method) || receivedChangeUi) return 0;
     if (!Number.isFinite(amountReceivedNum) || amountReceivedNum <= total) return 0;
     return roundMoney(amountReceivedNum - total);
-  }, [tipsEnabled, method, amountReceivedNum, total]);
+  }, [tipsEnabled, method, receivedChangeUi, amountReceivedNum, total]);
 
   const displayTip = tipsEnabled
-    ? Math.max(tipAmount, method === "cash" ? autoTipFromCash : tipFromOverpayPreview)
+    ? Math.max(tipAmount, receivedChangeUi ? autoTipFromReceived : tipFromOverpayPreview)
     : 0;
   const displayPayTotal = total + displayTip;
 
@@ -285,11 +302,29 @@ export function PaymentModal({
   }, []);
 
   useEffect(() => {
-    if (!tipsEnabled || method !== "cash" || payments.length > 0) return;
-    setTipAmount(autoTipFromCash);
-    setCustomTipInput(autoTipFromCash > 0 ? String(autoTipFromCash) : "");
+    if (typeof window === "undefined") return;
+    const flag = process.env.NEXT_PUBLIC_ARIFPAY_ENABLED;
+    if (flag !== "1" && flag !== "true") return;
+    let cancelled = false;
+    void fetch("/api/payments/arifpay/telebirr")
+      .then((r) => r.json())
+      .then((data: { configured?: boolean }) => {
+        if (!cancelled) setArifpayEnabled(Boolean(data.configured));
+      })
+      .catch(() => {
+        if (!cancelled) setArifpayEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tipsEnabled || !receivedChangeUi) return;
+    setTipAmount(autoTipFromReceived);
+    setCustomTipInput(autoTipFromReceived > 0 ? String(autoTipFromReceived) : "");
     setActiveTipPct(null);
-  }, [autoTipFromCash, tipsEnabled, method, payments.length]);
+  }, [autoTipFromReceived, tipsEnabled, receivedChangeUi]);
 
   useEffect(() => {
     pushDisplay("checkout");
@@ -334,8 +369,70 @@ export function PaymentModal({
     setChangeGivenInput("");
   }
 
-  function fillExactCash() {
-    if (tipsEnabled && method === "cash" && payments.length === 0) {
+  async function requestArifpayTelebirr() {
+    setArifpayHint(null);
+    setError(null);
+    if (checkoutOffline) {
+      setError("Telebirr push requires an internet connection");
+      return;
+    }
+    const payAmount = receivedChangeUi
+      ? displayPayTotal
+      : parseFloat(amount) || remaining || payTotal;
+    if (!(payAmount > 0)) {
+      setError("Enter a valid payment amount first");
+      return;
+    }
+    if (!phone.trim()) {
+      setError("Customer phone is required for Telebirr");
+      return;
+    }
+
+    setArifpayBusy(true);
+    try {
+      const res = await fetch("/api/payments/arifpay/telebirr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          amount: payAmount,
+          phone: phone.trim(),
+          itemName: `POS ${registerId.slice(0, 8)}`,
+          currency,
+          directPay: true,
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        reference?: string;
+        sessionId?: string;
+        message?: string;
+        directPayError?: string | null;
+      };
+      if (!res.ok) {
+        setError(data.error ?? "Could not start Telebirr payment");
+        return;
+      }
+      if (data.reference) setReference(data.reference);
+      setProvider("telebirr");
+      setArifpayHint(
+        [
+          data.message,
+          data.directPayError ? `Push note: ${data.directPayError}` : null,
+          data.sessionId ? `Session: ${data.sessionId}` : null,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+    } catch {
+      setError("Could not reach Arifpay");
+    } finally {
+      setArifpayBusy(false);
+    }
+  }
+
+  function fillExactReceived() {
+    if (receivedChangeUi) {
       setCashTendered(String(total));
       setChangeGivenInput("0");
       setError(null);
@@ -376,9 +473,29 @@ export function PaymentModal({
   }
 
   function buildMobilePaymentFromInputs(): PaymentRow | null {
+    if (!reference.trim()) return null;
+
+    if (tipsEnabled && payments.length === 0) {
+      const received = parseFloat(cashTendered);
+      const change = parseFloat(changeGivenInput) || 0;
+      if (!Number.isFinite(received)) return null;
+      if (changeGivenInput.trim() === "" || !Number.isFinite(change)) return null;
+      if (received < change + total - 0.01) return null;
+      const tip = Math.max(0, roundMoney(received - change - total));
+      const saleTotal = total + tip;
+      return {
+        method: "mobile_money",
+        amount: saleTotal,
+        cashTendered: received,
+        changeGiven: change,
+        provider,
+        reference: reference.trim(),
+        phone: phone || undefined,
+      };
+    }
+
     const received = parseFloat(amount);
     if (!Number.isFinite(received) || received <= 0) return null;
-    if (!reference.trim()) return null;
 
     const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
     if (received < minPay - 0.01) return null;
@@ -393,9 +510,28 @@ export function PaymentModal({
   }
 
   function buildBankPaymentFromInputs(): PaymentRow | null {
+    if (!reference.trim()) return null;
+
+    if (tipsEnabled && payments.length === 0) {
+      const received = parseFloat(cashTendered);
+      const change = parseFloat(changeGivenInput) || 0;
+      if (!Number.isFinite(received)) return null;
+      if (changeGivenInput.trim() === "" || !Number.isFinite(change)) return null;
+      if (received < change + total - 0.01) return null;
+      const tip = Math.max(0, roundMoney(received - change - total));
+      const saleTotal = total + tip;
+      return {
+        method: "bank_transfer",
+        amount: saleTotal,
+        cashTendered: received,
+        changeGiven: change,
+        reference: reference.trim(),
+        bankName: bankName || undefined,
+      };
+    }
+
     const received = parseFloat(amount);
     if (!Number.isFinite(received) || received <= 0) return null;
-    if (!reference.trim()) return null;
 
     const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
     if (received < minPay - 0.01) return null;
@@ -412,15 +548,13 @@ export function PaymentModal({
   const remaining = Math.max(0, payTotal - paid);
   const totalChange = payments.reduce((s, p) => s + (p.changeGiven ?? 0), 0);
   const previewChange =
-    tipsEnabled && method === "cash" && payments.length === 0
+    receivedChangeUi
       ? cashChangeNum || 0
       : method === "cash" && cashTendered
         ? Math.max(0, parseFloat(cashTendered) - (parseFloat(amount) || remaining || payTotal))
         : 0;
-  const cashCoversOrder =
-    !tipsEnabled ||
-    method !== "cash" ||
-    payments.length > 0 ||
+  const tenderCoversOrder =
+    !receivedChangeUi ||
     (!Number.isFinite(cashReceivedNum) && !Number.isFinite(cashChangeNum)) ||
     cashReceivedNum - cashChangeNum >= total - 0.01;
 
@@ -540,40 +674,41 @@ export function PaymentModal({
       if (!row) {
         setError(
           tipsEnabled && payments.length === 0
-            ? "Cash received must cover the order total plus change given"
+            ? "Amount received must cover the order total plus change given"
             : "Enter a valid cash amount"
         );
         return;
       }
       setPayments([...payments, row]);
     } else if (method === "mobile_money") {
-      if (!reference.trim()) {
-        setError("Transaction reference is required");
-        return;
-      }
-      const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
-      if (tipsEnabled && payments.length === 0 && amt >= minPay - 0.01) {
-        setPayments([
-          ...payments,
-          {
-            method: "mobile_money",
-            amount: amt,
-            provider,
-            reference: reference.trim(),
-            phone: phone || undefined,
-          },
-        ]);
-      } else if (amt > remaining + 0.01) {
-        setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
-        return;
-      } else if (amt < minPay - 0.01) {
-        setError(
-          tipsEnabled && tipAmount > 0
-            ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
-            : `Minimum payment is ${formatCurrency(minPay, currency)}`
-        );
-        return;
+      if (tipsEnabled && payments.length === 0) {
+        const row = buildMobilePaymentFromInputs();
+        if (!row) {
+          setError(
+            !reference.trim()
+              ? "Transaction reference is required"
+              : "Amount received must cover the order total plus change given"
+          );
+          return;
+        }
+        setPayments([...payments, row]);
       } else {
+        if (!reference.trim()) {
+          setError("Transaction reference is required");
+          return;
+        }
+        const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+        if (amt > remaining + 0.01) {
+          setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
+          return;
+        } else if (amt < minPay - 0.01) {
+          setError(
+            tipsEnabled && tipAmount > 0
+              ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
+              : `Minimum payment is ${formatCurrency(minPay, currency)}`
+          );
+          return;
+        }
         setPayments([
           ...payments,
           {
@@ -586,32 +721,34 @@ export function PaymentModal({
         ]);
       }
     } else {
-      if (!reference.trim()) {
-        setError("Transfer reference is required");
-        return;
-      }
-      const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
-      if (tipsEnabled && payments.length === 0 && amt >= minPay - 0.01) {
-        setPayments([
-          ...payments,
-          {
-            method: "bank_transfer",
-            amount: amt,
-            reference: reference.trim(),
-            bankName: bankName || undefined,
-          },
-        ]);
-      } else if (amt > remaining + 0.01) {
-        setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
-        return;
-      } else if (amt < minPay - 0.01) {
-        setError(
-          tipsEnabled && tipAmount > 0
-            ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
-            : `Minimum payment is ${formatCurrency(minPay, currency)}`
-        );
-        return;
+      if (tipsEnabled && payments.length === 0) {
+        const row = buildBankPaymentFromInputs();
+        if (!row) {
+          setError(
+            !reference.trim()
+              ? "Transfer reference is required"
+              : "Amount received must cover the order total plus change given"
+          );
+          return;
+        }
+        setPayments([...payments, row]);
       } else {
+        if (!reference.trim()) {
+          setError("Transfer reference is required");
+          return;
+        }
+        const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
+        if (amt > remaining + 0.01) {
+          setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
+          return;
+        } else if (amt < minPay - 0.01) {
+          setError(
+            tipsEnabled && tipAmount > 0
+              ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
+              : `Minimum payment is ${formatCurrency(minPay, currency)}`
+          );
+          return;
+        }
         setPayments([
           ...payments,
           {
@@ -641,7 +778,7 @@ export function PaymentModal({
       if (!cashRow) {
         setError(
           tipsEnabled
-            ? "Enter cash received and change given. Received must cover order total plus change."
+            ? "Enter amount received and change given. Received must cover order total plus change."
             : "Enter cash tendered"
         );
         return;
@@ -654,8 +791,8 @@ export function PaymentModal({
         setError(
           !reference.trim()
             ? "Transaction reference is required"
-            : tipsEnabled && tipAmount > 0
-              ? `Enter amount received (min ${formatCurrency(minPay, currency)}) and transaction ID`
+            : tipsEnabled
+              ? "Enter amount received, change given, and transaction ID. Received must cover order plus change."
               : `Enter amount received (min ${formatCurrency(minPay, currency)}) and transaction ID`
         );
         return;
@@ -668,7 +805,9 @@ export function PaymentModal({
         setError(
           !reference.trim()
             ? "Transfer reference is required"
-            : `Enter amount received (min ${formatCurrency(minPay, currency)}) and reference`
+            : tipsEnabled
+              ? "Enter amount received, change given, and reference. Received must cover order plus change."
+              : `Enter amount received (min ${formatCurrency(minPay, currency)}) and reference`
         );
         return;
       }
@@ -720,6 +859,8 @@ export function PaymentModal({
         return {
           method: "mobile_money",
           amount: p.amount,
+          cashTendered: p.cashTendered,
+          changeGiven: p.changeGiven,
           provider: p.provider,
           reference: p.reference,
           phone: p.phone,
@@ -728,6 +869,8 @@ export function PaymentModal({
       return {
         method: "bank_transfer",
         amount: p.amount,
+        cashTendered: p.cashTendered,
+        changeGiven: p.changeGiven,
         reference: p.reference,
         bankName: p.bankName,
       };
@@ -919,7 +1062,9 @@ export function PaymentModal({
             )}
           </div>
 
-          {tipsEnabled && method !== "cash" && !["store_credit", "on_account", "gift_card", "loyalty"].includes(method) && (
+          {tipsEnabled &&
+            !receivedChangeUi &&
+            !["store_credit", "on_account", "gift_card", "loyalty"].includes(method) && (
             <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -980,25 +1125,25 @@ export function PaymentModal({
           {/* Total */}
           <div className="mb-4 rounded-xl bg-pos-primary-soft-8 px-4 py-4 text-center ring-1 ring-pos-primary/10">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              {tipsEnabled && method === "cash" ? "Order total" : "Amount due"}
+              {tipsEnabled && receivedChangeUi ? "Order total" : "Amount due"}
             </p>
             <p className="pos-heading mt-1 text-3xl font-bold tabular-nums text-pos-primary">
-              {formatCurrency(tipsEnabled && method === "cash" ? total : displayPayTotal, currency)}
+              {formatCurrency(tipsEnabled && receivedChangeUi ? total : displayPayTotal, currency)}
             </p>
-            {tipsEnabled && method === "cash" && autoTipFromCash > 0 && (
+            {tipsEnabled && receivedChangeUi && autoTipFromReceived > 0 && (
               <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
-                Tip (auto): {formatCurrency(autoTipFromCash, currency)} · Total due{" "}
-                {formatCurrency(total + autoTipFromCash, currency)}
+                Tip (auto): {formatCurrency(autoTipFromReceived, currency)} · Total due{" "}
+                {formatCurrency(total + autoTipFromReceived, currency)}
               </p>
             )}
-            {tipsEnabled && method !== "cash" && displayTip > 0 && (
+            {tipsEnabled && !receivedChangeUi && displayTip > 0 && (
               <p className="mt-1 text-xs text-slate-600">
                 Order {formatCurrency(total, currency)} + tip {formatCurrency(displayTip, currency)}
               </p>
             )}
             {tipsEnabled &&
               methodSupportsOverpayTip(method) &&
-              method !== "cash" &&
+              !receivedChangeUi &&
               tipFromOverpayPreview > tipAmount && (
                 <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
                   Tip from overpayment: {formatCurrency(tipFromOverpayPreview, currency)}
@@ -1014,7 +1159,7 @@ export function PaymentModal({
                 Change: {formatCurrency(totalChange || previewChange, currency)}
               </p>
             )}
-            {tipsEnabled && method === "cash" && !cashCoversOrder && (
+            {tipsEnabled && receivedChangeUi && !tenderCoversOrder && (
               <p className="mt-2 text-xs font-medium text-red-600">
                 Received must cover order ({formatCurrency(total, currency)}) plus change
               </p>
@@ -1032,7 +1177,13 @@ export function PaymentModal({
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => setMethod(m.id)}
+                  onClick={() => {
+                    setMethod(m.id);
+                    setCashTendered("");
+                    setChangeGivenInput("");
+                    setAmount("");
+                    setError(null);
+                  }}
                   className={cn(
                     "pos-payment-card flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl border-2 border-slate-200 bg-white p-2 text-center cursor-pointer",
                     method === m.id && "active"
@@ -1166,7 +1317,7 @@ export function PaymentModal({
 
           {/* Payment details — primary path */}
           <div className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-            {method !== "cash" && (
+            {!receivedChangeUi && method !== "cash" && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-xs">
@@ -1271,7 +1422,7 @@ export function PaymentModal({
                 </p>
               </div>
             )}
-            {method === "cash" && tipsEnabled && payments.length === 0 && (
+            {receivedChangeUi && (
               <div className="space-y-3 rounded-lg border border-amber-200/80 bg-amber-50/60 p-3">
                 <p className="text-xs leading-relaxed text-slate-600">
                   Enter what the customer gave and the change returned. Any amount left over after
@@ -1279,13 +1430,13 @@ export function PaymentModal({
                 </p>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs">Cash received</Label>
+                    <Label className="text-xs">{receivedLabel(method)}</Label>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs font-semibold"
-                      onClick={fillExactCash}
+                      onClick={fillExactReceived}
                     >
                       Exact order
                     </Button>
@@ -1298,6 +1449,7 @@ export function PaymentModal({
                     value={cashTendered}
                     onChange={(e) => setCashTendered(e.target.value)}
                     className="h-10"
+                    aria-label={receivedLabel(method)}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1310,6 +1462,7 @@ export function PaymentModal({
                     value={changeGivenInput}
                     onChange={(e) => setChangeGivenInput(e.target.value)}
                     className="h-10"
+                    aria-label="Change given"
                   />
                 </div>
                 {Number.isFinite(cashReceivedNum) && Number.isFinite(cashChangeNum) && (
@@ -1320,17 +1473,17 @@ export function PaymentModal({
                         {formatCurrency(cashReceivedNum - cashChangeNum, currency)}
                       </span>
                     </div>
-                    {autoTipFromCash > 0 && (
+                    {autoTipFromReceived > 0 && (
                       <div className="mt-1 flex justify-between font-semibold text-emerald-700">
                         <span>Tip (auto)</span>
-                        <span className="tabular-nums">{formatCurrency(autoTipFromCash, currency)}</span>
+                        <span className="tabular-nums">{formatCurrency(autoTipFromReceived, currency)}</span>
                       </div>
                     )}
                   </div>
                 )}
               </div>
             )}
-            {method === "cash" && (!tipsEnabled || payments.length > 0) && (
+            {method === "cash" && !receivedChangeUi && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-xs">Cash tendered</Label>
@@ -1339,7 +1492,7 @@ export function PaymentModal({
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs font-semibold"
-                    onClick={fillExactCash}
+                    onClick={fillExactReceived}
                   >
                     Exact amount
                   </Button>
@@ -1371,9 +1524,31 @@ export function PaymentModal({
                   <Input value={reference} onChange={(e) => setReference(e.target.value)} className="h-11" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Phone (optional)</Label>
+                  <Label className="text-xs">
+                    Phone {arifpayEnabled && provider === "telebirr" ? "*" : "(optional)"}
+                  </Label>
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-11" />
                 </div>
+                {arifpayEnabled && provider === "telebirr" && (
+                  <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                    <p className="text-[11px] leading-relaxed text-emerald-900">
+                      Push a Telebirr approval request via Arifpay. After the customer approves, complete
+                      the sale with the filled reference (pending webhook confirms payment).
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-full border-emerald-300 bg-white font-semibold text-emerald-900"
+                      disabled={arifpayBusy || loading || checkoutOffline}
+                      onClick={() => void requestArifpayTelebirr()}
+                    >
+                      {arifpayBusy ? "Requesting Telebirr…" : "Request Telebirr via Arifpay"}
+                    </Button>
+                    {arifpayHint && (
+                      <p className="text-[11px] leading-relaxed text-emerald-800">{arifpayHint}</p>
+                    )}
+                  </div>
+                )}
               </>
             )}
             {method === "bank_transfer" && (

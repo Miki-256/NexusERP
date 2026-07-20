@@ -8,6 +8,86 @@ npm run setup:launch-ops
 
 ---
 
+## 0. Super-admin Health (recommended daily)
+
+**URL:** `/admin/health` on the live app
+
+After migrations `00174`–`00175` and a recent deploy, platform admins with **write** (super_admin / support) can:
+
+| Control | Purpose |
+|---------|---------|
+| **Drain queues now** | Runs the same worker as the 5-min process-queue cron (ledger, refunds, webhooks, notifications, HR webhooks, maintenance) and records a heartbeat |
+| **Retry** on ledger errors | Re-posts a single failed sale→GL queue row |
+| **Post up to 100** on unposted-by-org | Batch-posts historical completed sales missing journal entries for that tenant |
+| Queue cards | Ledger, payment webhooks, refund ledger, notifications, HR webhooks, stale rollups, unposted sales |
+| Org tables | Ledger backlog and unposted completed sales by tenant (with auto-post flag) |
+
+Security role is **read-only** on this page (no Drain / Retry).
+
+If the amber banner says queues need attention: click **Drain queues now**, then **Refresh**. If heartbeat stays stale (>15 min), fix the GitHub Actions cron (section 1).
+
+### Support L4 (tenant workspace + org inspect)
+
+Requires migration `00178`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Inspect** | Health org backlog / unposted tables | Per-tenant ledger queue, webhook queue, unposted sales sample; Retry / Post up to 100 |
+| **Ops inspector** | Admin → Organization detail | Same drill-down embedded on the org page |
+| **Open tenant workspace** | Admin → Organization detail | Temporary **manager** membership (max 4h), reason required (≥8 chars), platform-audited; amber banner with **End support session** |
+
+Rules:
+
+- Only `super_admin` / `support` (write roles) can start/end sessions
+- Suspended orgs cannot be opened
+- Ending (or expiry) removes/restores the temporary membership
+- Every start/end/expire writes `support.session_*` to platform audit
+
+### Per-tenant module overrides (L5)
+
+Requires migration `00179`.
+
+On **Admin → Organization**, use **Module overrides** to enable/disable modules for one tenant without changing the global flags page. Effective access = org override (if set) → global flag → plan modules. Tenant navigation already filters via `get_org_enabled_app_ids`.
+
+### Governance — dual control (L5)
+
+Requires migration `00180`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Approvals** | `/admin/approvals` | Second write admin approves/rejects suspend & export |
+| **Dual control settings** | Admin → Settings | Enable/disable; choose actions; solo-admin bypass |
+| **Suspend / Export** | Org detail | Reason required; queues approval when dual control applies |
+| **Audit filters** | Admin → Audit | Server-side actor, prefix (org/support/governance), date range |
+
+With **solo_admin_bypass** (default on), a single write admin can still act immediately. With two+ write admins, suspend/export/offboard need a different reviewer.
+
+### Tenant health & offboarding (L6)
+
+Requires migration `00181`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Health score** | Admin → Organizations / org detail | 0–100 score from queues, unposted sales, inactivity, status |
+| **Offboard** | Org detail | Suspend + deactivate members + end support sessions; dual-control aware |
+| **Offboarded filter** | Organizations list | Find closed tenants |
+
+Offboarding does **not** hard-delete data (export first if needed).
+
+### Ops SLO alerts (L7)
+
+Requires migration `00182`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Ops SLOs panel** | Admin → Health | Live threshold checks vs current queue depths / heartbeat |
+| **Ops SLO settings** | Admin → Settings | Enable alerts, Slack/webhook URL, thresholds, cooldown |
+| **Cron dispatch** | process-queue worker | Evaluates SLOs, enqueues alerts, POSTs webhook |
+
+Default: **disabled**. Enable after setting a webhook. Alerts dedupe per type for the cooldown window (default 60m).
+
+---
+
 ## 1. Five-minute process-queue cron (GitHub Actions)
 
 **Workflow:** `.github/workflows/cron-process-queue.yml` (every 5 min)
@@ -38,6 +118,8 @@ CRON_SECRET=your-secret APP_URL=https://nexus-erp-preprod.vercel.app npm run cro
 ```
 
 Or: **Actions** → **Process webhook queue** → **Run workflow** → should succeed.
+
+Prefer verifying from **Admin → Health** after a drain: heartbeat should show a recent success time.
 
 ---
 

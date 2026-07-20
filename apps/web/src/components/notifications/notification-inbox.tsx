@@ -69,8 +69,11 @@ export function NotificationInbox({ organizationId }: { organizationId: string }
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
-        <DropdownMenuLabel className="flex items-center justify-between gap-2">
+      <DropdownMenuContent
+        align="end"
+        className="flex w-80 max-h-[min(28rem,calc(100dvh-4.5rem))] flex-col overflow-hidden p-0"
+      >
+        <DropdownMenuLabel className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5">
           <span>Notifications</span>
           {unread > 0 && (
             <button
@@ -83,42 +86,46 @@ export function NotificationInbox({ organizationId }: { organizationId: string }
             </button>
           )}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {loading ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-          </div>
-        ) : items.length === 0 ? (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">No notifications yet.</p>
-        ) : (
-          items.map((item) => (
-            <DropdownMenuItem key={item.id} asChild className="cursor-pointer items-start p-0">
-              <Link
-                href={item.link ?? "/communications"}
-                onClick={() => {
-                  if (!item.read_at) void markRead(item.id);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "block w-full px-2 py-2.5",
-                  !item.read_at && "bg-primary/5"
-                )}
-              >
-                <p className="text-sm font-medium leading-snug">{item.title}</p>
-                <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.body}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  {new Date(item.created_at).toLocaleString()}
-                </p>
-              </Link>
-            </DropdownMenuItem>
-          ))
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/communications" className="w-full justify-center text-center text-sm font-medium">
-            Open Notification Center
-          </Link>
-        </DropdownMenuItem>
+        <DropdownMenuSeparator className="my-0 shrink-0" />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          ) : items.length === 0 ? (
+            <p className="px-2 py-6 text-center text-sm text-muted-foreground">No notifications yet.</p>
+          ) : (
+            items.map((item) => (
+              <DropdownMenuItem key={item.id} asChild className="cursor-pointer items-start p-0">
+                <Link
+                  href={item.link ?? "/communications"}
+                  onClick={() => {
+                    if (!item.read_at) void markRead(item.id);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "block w-full px-2 py-2.5",
+                    !item.read_at && "bg-primary/5"
+                  )}
+                >
+                  <p className="text-sm font-medium leading-snug">{item.title}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.body}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {new Date(item.created_at).toLocaleString()}
+                  </p>
+                </Link>
+              </DropdownMenuItem>
+            ))
+          )}
+        </div>
+        <DropdownMenuSeparator className="my-0 shrink-0" />
+        <div className="shrink-0 p-1">
+          <DropdownMenuItem asChild>
+            <Link href="/communications" className="w-full justify-center text-center text-sm font-medium">
+              Open Notification Center
+            </Link>
+          </DropdownMenuItem>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

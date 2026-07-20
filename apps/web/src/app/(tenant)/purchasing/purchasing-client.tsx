@@ -36,9 +36,18 @@ import { deleteBlockedMessage } from "@/lib/delete-errors";
 import { PurchasingScmPanel } from "@/components/scm/purchasing-scm-panel";
 import { StandaloneBillForm } from "@/components/finance/standalone-bill-form";
 import { ApPaymentRunsTab, type OpenBillOption, type PaymentRunRow } from "@/components/finance/ap-payment-runs-tab";
+import { ProductVariantSearchSelect } from "@/components/purchasing/product-variant-search-select";
 import type { VendorRow, PORow, BillRow, VariantOption } from "./page";
 
 type Tab = "orders" | "planning" | "vendors" | "bills" | "payment_runs";
+
+function canCancelPo(status: PORow["status"]) {
+  return status === "draft" || status === "ordered";
+}
+
+function canReceivePo(status: PORow["status"]) {
+  return status === "ordered" || status === "partially_received";
+}
 
 function billBalanceDue(b: BillRow) {
   if (b.balance_due != null) return Number(b.balance_due);
@@ -280,6 +289,19 @@ export function PurchasingClient({
     router.refresh();
   }
 
+  async function cancelPO(id: string) {
+    setBusy(`cancel-${id}`);
+    const supabase = createClient();
+    const { error: err } = await supabase.rpc("cancel_purchase_order", {
+      p_po_id: id,
+      p_reason: "Cancelled by user",
+    });
+    setBusy("");
+    if (err) return toast({ title: "Cancel failed", description: err.message, variant: "destructive" });
+    toast({ title: "Purchase order cancelled" });
+    router.refresh();
+  }
+
   async function payBill(id: string, amount?: number, method?: typeof payMethod) {
     const bill = bills.find((b) => b.id === id);
     const balance = bill ? billBalanceDue(bill) : 0;
@@ -437,18 +459,12 @@ export function PurchasingClient({
                     <Label>Lines</Label>
                     {lines.map((l, i) => (
                       <div key={i} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
-                        <select
-                          className="h-10 rounded-md border px-3 text-sm"
+                        <ProductVariantSearchSelect
+                          variants={variants}
                           value={l.variantId}
-                          onChange={(e) => onPickVariant(i, e.target.value)}
-                        >
-                          <option value="">Select product…</option>
-                          {variants.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {variantLabel(v)}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(variantId) => onPickVariant(i, variantId)}
+                          placeholder="Search product…"
+                        />
                         <Input
                           type="number"
                           step="0.001"
@@ -539,15 +555,28 @@ export function PurchasingClient({
                       <MobileRecordCardRow label="Store">{relationName(po.stores) || "—"}</MobileRecordCardRow>
                       <MobileRecordCardRow label="Total">{money(po.total)}</MobileRecordCardRow>
                     </div>
-                    {canManage && po.status === "ordered" && (
-                      <Button
-                        size="sm"
-                        className="mt-3 w-full"
-                        disabled={busy === po.id}
-                        onClick={() => receivePO(po.id)}
-                      >
-                        {busy === po.id ? "…" : "Receive"}
-                      </Button>
+                    {canManage && (canReceivePo(po.status) || canCancelPo(po.status)) && (
+                      <div className="mt-3 flex flex-col gap-2">
+                        {canReceivePo(po.status) && (
+                          <Button
+                            size="sm"
+                            className="w-full"
+                            disabled={busy === po.id || busy === `cancel-${po.id}`}
+                            onClick={() => receivePO(po.id)}
+                          >
+                            {busy === po.id ? "…" : "Receive"}
+                          </Button>
+                        )}
+                        {canCancelPo(po.status) && (
+                          <ConfirmDeleteButton
+                            label="Cancel order"
+                            confirmLabel="Confirm cancel"
+                            message="Cancel this purchase order? This cannot be undone."
+                            disabled={busy === po.id || busy === `cancel-${po.id}`}
+                            onConfirm={() => cancelPO(po.id)}
+                          />
+                        )}
+                      </div>
                     )}
                   </MobileRecordCard>
                 ))
@@ -576,11 +605,30 @@ export function PurchasingClient({
                       <DataTableCell><StatusBadge status={po.status} /></DataTableCell>
                       <DataTableCell align="right" className="font-mono">{money(po.total)}</DataTableCell>
                       <DataTableCell align="right">
-                        {canManage && po.status === "ordered" ? (
-                          <Button size="sm" disabled={busy === po.id} onClick={() => receivePO(po.id)}>
-                            {busy === po.id ? "…" : "Receive"}
-                          </Button>
-                        ) : "—"}
+                        {canManage && (canReceivePo(po.status) || canCancelPo(po.status)) ? (
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            {canReceivePo(po.status) && (
+                              <Button
+                                size="sm"
+                                disabled={busy === po.id || busy === `cancel-${po.id}`}
+                                onClick={() => receivePO(po.id)}
+                              >
+                                {busy === po.id ? "…" : "Receive"}
+                              </Button>
+                            )}
+                            {canCancelPo(po.status) && (
+                              <ConfirmDeleteButton
+                                label="Cancel"
+                                confirmLabel="Confirm"
+                                message="Cancel this PO?"
+                                disabled={busy === po.id || busy === `cancel-${po.id}`}
+                                onConfirm={() => cancelPO(po.id)}
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
                       </DataTableCell>
                     </DataTableRow>
                   ))

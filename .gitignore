@@ -17,3 +17,5 @@ supabase/.temp
 .support/
 
 coverage/
+
+.venv-pptx/

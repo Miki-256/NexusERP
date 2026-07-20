@@ -20,6 +20,7 @@ const child = spawn("npx", ["--yes", ...args], {
 });
 
 let buffer = "";
+let fullLog = "";
 let ready = false;
 let exitTimer = null;
 let deploymentUrl = "";
@@ -51,7 +52,9 @@ function finish(ok) {
 }
 
 function onData(chunk, stream) {
-  buffer += chunk.toString();
+  const text = chunk.toString();
+  fullLog += text;
+  buffer += text;
   const lines = buffer.split(/\r?\n/);
   buffer = lines.pop() ?? "";
 
@@ -81,11 +84,16 @@ child.on("close", (code) => {
     process.exit(0);
   }
   if (code !== 0 && !token) {
-    console.error("");
-    console.error("Vercel auth required. Run one of:");
-    console.error("  npx vercel login");
-    console.error("  VERCEL_TOKEN=<token> npm run deploy:live");
-    console.error("  https://vercel.com/account/tokens");
+    const authLikely = /not authenticated|login required|No existing credentials|Unauthorized|invalid token/i.test(
+      fullLog + buffer
+    );
+    if (authLikely) {
+      console.error("");
+      console.error("Vercel auth required. Run one of:");
+      console.error("  npx vercel login");
+      console.error("  VERCEL_TOKEN=<token> npm run deploy:live");
+      console.error("  https://vercel.com/account/tokens");
+    }
   }
   process.exit(code ?? 1);
 });
