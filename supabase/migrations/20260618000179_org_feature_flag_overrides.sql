@@ -19,7 +19,7 @@ DROP POLICY IF EXISTS organization_feature_flags_select ON public.organization_f
 CREATE POLICY organization_feature_flags_select ON public.organization_feature_flags
   FOR SELECT USING (
     public.platform_admin_can_read()
-    OR organization_id IN (SELECT public.user_organization_ids())
+    OR public.user_has_org_access(organization_id)
   );
 
 CREATE OR REPLACE FUNCTION public.get_org_feature_flags(p_org_id UUID)
