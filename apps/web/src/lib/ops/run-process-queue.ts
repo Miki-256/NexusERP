@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { dispatchSecurityAlerts } from "@/lib/security-alert-dispatch";
+import { dispatchOpsSloAlerts } from "@/lib/ops/ops-alert-dispatch";
 import { dispatchHrWebhooks } from "@/lib/hr/webhook-dispatch";
 import { processNotificationPipeline } from "@/lib/notifications/worker";
 import { runNotificationSchedules } from "@/lib/notifications/schedule-runner";
@@ -10,6 +11,7 @@ export type ProcessQueueResult = {
   ledger_posts: Record<string, unknown> | null;
   refund_ledger_posts: Record<string, unknown> | null;
   security_alerts: { sent: number; failed: number };
+  ops_slo_alerts: { evaluated: boolean; enqueued: number; sent: number; failed: number };
   hr_webhooks: { sent: number; failed: number; claimed: number };
   notifications: {
     processed: number;
@@ -30,6 +32,7 @@ export type ProcessQueueResult = {
   storage_orphans_removed: number;
   error?: string;
   security_alert_error?: string;
+  ops_slo_alert_error?: string;
   hr_webhook_error?: string;
   notification_error?: string;
 };
@@ -82,6 +85,7 @@ export async function runProcessQueue(options?: {
       ledger_posts: null,
       refund_ledger_posts: null,
       security_alerts: { sent: 0, failed: 0 },
+      ops_slo_alerts: { evaluated: false, enqueued: 0, sent: 0, failed: 0 },
       hr_webhooks: { sent: 0, failed: 0, claimed: 0 },
       notifications: { processed: 0, sent: 0, failed: 0, events_expanded: null },
       scheduled_reports: { claimed: 0, deliveries_created: 0, errors: [] },
@@ -174,6 +178,14 @@ export async function runProcessQueue(options?: {
       alertError instanceof Error ? alertError.message : "Security alert dispatch failed";
   }
 
+  let opsSloAlerts = { evaluated: false, enqueued: 0, sent: 0, failed: 0 };
+  let opsSloAlertError: string | undefined;
+  try {
+    opsSloAlerts = await dispatchOpsSloAlerts(admin);
+  } catch (opsErr) {
+    opsSloAlertError = opsErr instanceof Error ? opsErr.message : "Ops SLO alert dispatch failed";
+  }
+
   let hrWebhooks = { sent: 0, failed: 0, claimed: 0 };
   let hrWebhookError: string | undefined;
   try {
@@ -233,11 +245,12 @@ export async function runProcessQueue(options?: {
   }
 
   const result: ProcessQueueResult = {
-    ok: !securityAlertError && !hrWebhookError && !notificationError,
+    ok: !securityAlertError && !opsSloAlertError && !hrWebhookError && !notificationError,
     processed: data,
     ledger_posts: ledgerPosts,
     refund_ledger_posts: refundLedgerPosts,
     security_alerts: securityAlerts,
+    ops_slo_alerts: opsSloAlerts,
     hr_webhooks: hrWebhooks,
     notifications,
     scheduled_reports: schedules,
@@ -252,6 +265,7 @@ export async function runProcessQueue(options?: {
     stale_rollup_orgs: staleRollupOrgs,
     storage_orphans_removed: storageOrphansRemoved,
     security_alert_error: securityAlertError,
+    ops_slo_alert_error: opsSloAlertError,
     hr_webhook_error: hrWebhookError,
     notification_error: notificationError,
   };

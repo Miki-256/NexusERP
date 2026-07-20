@@ -14,9 +14,10 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
-import type { PlatformHealth } from "@/lib/admin-types";
+import type { OpsSloStatus, PlatformHealth } from "@/lib/admin-types";
 import type { PlatformDependencyProbe } from "@/lib/ops/platform-deps";
 import { OrgOpsInspector } from "@/components/admin/org-ops-inspector";
+import { OpsSloPanel } from "@/components/admin/ops-slo-panel";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -59,6 +60,7 @@ export function HealthClient({
   canWrite,
   dependencies = [],
   securityPulse,
+  opsSlo = null,
 }: {
   data: PlatformHealth;
   canWrite: boolean;
@@ -68,6 +70,7 @@ export function HealthClient({
     security_events_7d: number;
     platform_audit_24h: number;
   };
+  opsSlo?: OpsSloStatus | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -378,6 +381,8 @@ export function HealthClient({
           />
         </div>
       )}
+
+      <OpsSloPanel status={opsSlo} />
 
       {dependencies.length > 0 && (
         <FormCard title="Platform dependencies" description="Environment configuration for this deployment (Level 3).">

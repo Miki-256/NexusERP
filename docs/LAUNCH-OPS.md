@@ -74,6 +74,18 @@ Requires migration `00181`.
 
 Offboarding does **not** hard-delete data (export first if needed).
 
+### Ops SLO alerts (L7)
+
+Requires migration `00182`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Ops SLOs panel** | Admin → Health | Live threshold checks vs current queue depths / heartbeat |
+| **Ops SLO settings** | Admin → Settings | Enable alerts, Slack/webhook URL, thresholds, cooldown |
+| **Cron dispatch** | process-queue worker | Evaluates SLOs, enqueues alerts, POSTs webhook |
+
+Default: **disabled**. Enable after setting a webhook. Alerts dedupe per type for the cooldown window (default 60m).
+
 ---
 
 ## 1. Five-minute process-queue cron (GitHub Actions)

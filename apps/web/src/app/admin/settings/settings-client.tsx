@@ -9,20 +9,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { FormCard } from "@/components/layout/form-card";
-import type { DualControlSettings, PlatformSettings } from "@/lib/admin-types";
+import type { DualControlSettings, OpsSloSettings, PlatformSettings } from "@/lib/admin-types";
 
 const DEFAULT_DUAL: DualControlSettings = {
   enabled: true,
-  actions: ["org.suspend", "org.export"],
+  actions: ["org.suspend", "org.export", "org.offboard"],
   solo_admin_bypass: true,
 };
 
 export function SettingsClient({
   settings,
+  opsSlo: initialOpsSlo,
   canWrite,
   canManageMaintenance,
 }: {
   settings: PlatformSettings;
+  opsSlo: OpsSloSettings;
   canWrite: boolean;
   canManageMaintenance: boolean;
 }) {
@@ -31,6 +33,7 @@ export function SettingsClient({
   const [banner, setBanner] = useState(settings.broadcast_banner);
   const [maintenance, setMaintenance] = useState(settings.maintenance_mode);
   const [dual, setDual] = useState<DualControlSettings>(settings.dual_control ?? DEFAULT_DUAL);
+  const [opsSlo, setOpsSlo] = useState<OpsSloSettings>(initialOpsSlo);
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -46,13 +49,33 @@ export function SettingsClient({
     const { error } = await supabase.rpc("admin_set_platform_settings", {
       p_settings: payload,
     });
-    setBusy(false);
     if (error) {
+      setBusy(false);
       toast({ title: "Save failed", description: error.message, variant: "destructive" });
       return;
     }
+
+    if (canManageMaintenance) {
+      const { error: sloError } = await supabase.rpc("admin_set_ops_slo_settings", {
+        p_settings: opsSlo,
+      });
+      if (sloError) {
+        setBusy(false);
+        toast({ title: "Ops SLO save failed", description: sloError.message, variant: "destructive" });
+        return;
+      }
+    }
+
+    setBusy(false);
     toast({ title: "Settings saved" });
     router.refresh();
+  }
+
+  function setThreshold(key: keyof OpsSloSettings["thresholds"], value: number) {
+    setOpsSlo({
+      ...opsSlo,
+      thresholds: { ...opsSlo.thresholds, [key]: value },
+    });
   }
 
   function toggleAction(action: string, on: boolean) {
@@ -207,8 +230,87 @@ export function SettingsClient({
         </div>
       </FormCard>
 
+      <FormCard
+        title="Ops SLO alerts"
+        description="When process-queue cron runs, breached thresholds enqueue webhook alerts (Slack-compatible). Cooldown prevents spam."
+      >
+        {!canManageMaintenance && (
+          <p className="mb-4 text-sm text-muted-foreground">Only Super Admins can change ops SLO settings.</p>
+        )}
+        <div className="space-y-4 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={opsSlo.enabled}
+              disabled={!canManageMaintenance}
+              onChange={(e) => setOpsSlo({ ...opsSlo, enabled: e.target.checked })}
+            />
+            Enable ops SLO evaluation & alerts
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={opsSlo.notify_slack}
+              disabled={!canManageMaintenance}
+              onChange={(e) => setOpsSlo({ ...opsSlo, notify_slack: e.target.checked })}
+            />
+            Slack-compatible payload (JSON text field)
+          </label>
+          <div className="space-y-2">
+            <Label htmlFor="opsWebhook">Webhook URL</Label>
+            <Input
+              id="opsWebhook"
+              value={opsSlo.webhook_url}
+              disabled={!canManageMaintenance}
+              onChange={(e) => setOpsSlo({ ...opsSlo, webhook_url: e.target.value })}
+              placeholder="https://hooks.slack.com/services/…"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="opsCooldown">Cooldown (minutes)</Label>
+            <Input
+              id="opsCooldown"
+              type="number"
+              min={5}
+              max={1440}
+              className="max-w-xs"
+              value={opsSlo.cooldown_minutes}
+              disabled={!canManageMaintenance}
+              onChange={(e) => setOpsSlo({ ...opsSlo, cooldown_minutes: Number(e.target.value) })}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["ledger_queue_pending", "Ledger pending"],
+                ["ledger_queue_failed", "Ledger failed"],
+                ["payment_webhook_pending", "Payment webhooks"],
+                ["unposted_completed_sales", "Unposted sales"],
+                ["notification_deliveries_failed", "Notif failures"],
+                ["heartbeat_stale_minutes", "Heartbeat stale (min)"],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key} className="space-y-1">
+                <Label htmlFor={key}>{label}</Label>
+                <Input
+                  id={key}
+                  type="number"
+                  min={0}
+                  value={opsSlo.thresholds[key]}
+                  disabled={!canManageMaintenance}
+                  onChange={(e) => setThreshold(key, Number(e.target.value))}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Live status: <Link href="/admin/health" className="text-primary hover:underline">Admin → Health</Link>
+          </p>
+        </div>
+      </FormCard>
+
       {(canWrite || canManageMaintenance) && (
-        <Button onClick={save} disabled={busy}>
+        <Button onClick={() => void save()} disabled={busy}>
           {busy ? "Saving…" : "Save settings"}
         </Button>
       )}

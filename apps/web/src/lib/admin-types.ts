@@ -262,6 +262,59 @@ export type DualControlSettings = {
   solo_admin_bypass: boolean;
 };
 
+export type OpsSloThresholds = {
+  ledger_queue_pending: number;
+  ledger_queue_failed: number;
+  payment_webhook_pending: number;
+  unposted_completed_sales: number;
+  notification_deliveries_failed: number;
+  heartbeat_stale_minutes: number;
+};
+
+export type OpsSloSettings = {
+  enabled: boolean;
+  webhook_url: string;
+  notify_slack: boolean;
+  cooldown_minutes: number;
+  thresholds: OpsSloThresholds;
+};
+
+export type OpsSloCheck = {
+  key: string;
+  label?: string;
+  current: number;
+  threshold: number;
+  breached: boolean;
+  last_success_at?: string | null;
+};
+
+export type OpsSloStatus = {
+  settings: {
+    enabled: boolean;
+    webhook_configured: boolean;
+    notify_slack: boolean;
+    cooldown_minutes: number;
+    thresholds: OpsSloThresholds;
+  };
+  preview: {
+    breached_count: number;
+    checks: OpsSloCheck[];
+    evaluated_at: string;
+  };
+  recent_alerts: {
+    id: string;
+    alert_type: string;
+    severity: string;
+    title: string;
+    detail: string;
+    status: string;
+    created_at: string;
+    completed_at: string | null;
+    error: string | null;
+  }[];
+  generated_at: string;
+};
+
 export type PlatformSettings = {
   broadcast_banner: BroadcastBanner;
   maintenance_mode: MaintenanceMode;
