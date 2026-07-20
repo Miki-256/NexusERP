@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,8 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
+import { OrgOpsInspector } from "@/components/admin/org-ops-inspector";
+import { startSupportSession } from "@/app/actions/support-session";
 import { formatAuditAction, type OrgDetail, type OrgPlanUsage, type PlatformPlan } from "@/lib/admin-types";
 import { formatPlanName } from "@/lib/format-plan";
 import { formatCurrency } from "@/lib/utils";
@@ -59,7 +61,34 @@ export function OrgDetailClient({
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [planBusy, setPlanBusy] = useState(false);
+  const [supportReason, setSupportReason] = useState("");
+  const [supportPending, startSupportTransition] = useTransition();
   const org = detail.organization;
+
+  function openTenantWorkspace(e: React.FormEvent) {
+    e.preventDefault();
+    if (supportReason.trim().length < 8) {
+      toast({
+        title: "Reason required",
+        description: "Enter at least 8 characters describing why you need access.",
+        variant: "destructive",
+      });
+      return;
+    }
+    startSupportTransition(async () => {
+      try {
+        await startSupportSession(org.id, supportReason.trim());
+      } catch (err) {
+        const digest = typeof err === "object" && err && "digest" in err ? String((err as { digest?: string }).digest) : "";
+        if (digest.startsWith("NEXT_REDIRECT")) throw err;
+        toast({
+          title: "Could not start support session",
+          description: err instanceof Error ? err.message : "Unknown error",
+          variant: "destructive",
+        });
+      }
+    });
+  }
 
   async function setStatus(status: "active" | "suspended" | "pending") {
     setBusy(true);
@@ -155,6 +184,38 @@ export function OrgDetailClient({
           )}
         </div>
       </div>
+
+      {canWrite && org.status !== "suspended" && (
+        <FormCard
+          title="Open tenant workspace"
+          description="Temporary manager access (up to 4 hours), fully audited. Use for support only."
+        >
+          <form onSubmit={openTenantWorkspace} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1 space-y-1">
+              <label htmlFor="supportReason" className="text-xs font-medium text-muted-foreground">
+                Reason (required, min 8 chars)
+              </label>
+              <Input
+                id="supportReason"
+                value={supportReason}
+                onChange={(e) => setSupportReason(e.target.value)}
+                placeholder="e.g. Investigate missing GL posts for ticket #123"
+                disabled={supportPending}
+              />
+            </div>
+            <Button type="submit" size="sm" disabled={supportPending}>
+              {supportPending ? "Opening…" : "Open workspace"}
+            </Button>
+          </form>
+        </FormCard>
+      )}
+
+      <OrgOpsInspector
+        organizationId={org.id}
+        organizationName={org.name}
+        canWrite={canWrite}
+        embedded
+      />
 
       {planUsage && (
         <FormCard title="Plan & usage" description={`Current plan: ${formatPlanName(planUsage.plan, planUsage.plan_name)}`}>

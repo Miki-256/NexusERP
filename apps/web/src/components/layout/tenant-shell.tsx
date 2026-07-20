@@ -12,6 +12,8 @@ import type { SerializedNavApp } from "@/lib/apps-registry";
 import type { WorkspaceSummary } from "@/lib/active-org";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { PlatformBannerLoader } from "@/components/layout/platform-banner-loader";
+import { SupportSessionBanner } from "@/components/layout/support-session-banner";
+import type { ActiveSupportSession } from "@/lib/admin-types";
 import { cn } from "@/lib/utils";
 
 const Sidebar = dynamic(
@@ -88,6 +90,7 @@ export function TenantShell({
   canManageTeam,
   accessibleAppIds,
   navApps,
+  supportSession = null,
   children,
 }: {
   orgName: string;
@@ -99,6 +102,7 @@ export function TenantShell({
   canManageTeam: boolean;
   accessibleAppIds: string[];
   navApps: SerializedNavApp[];
+  supportSession?: ActiveSupportSession | null;
   children: React.ReactNode;
 }) {
   return (
@@ -109,6 +113,7 @@ export function TenantShell({
           <Sidebar orgName={orgName} userId={userId} navApps={navApps} />
           <div className="flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <PlatformBannerLoader />
+            {supportSession && <SupportSessionBanner session={supportSession} />}
             <AppHeader
               orgName={orgName}
               activeOrganizationId={activeOrganizationId}

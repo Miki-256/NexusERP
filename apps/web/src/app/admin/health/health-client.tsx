@@ -16,6 +16,7 @@ import {
 } from "@/components/layout/data-table";
 import type { PlatformHealth } from "@/lib/admin-types";
 import type { PlatformDependencyProbe } from "@/lib/ops/platform-deps";
+import { OrgOpsInspector } from "@/components/admin/org-ops-inspector";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -71,6 +72,7 @@ export function HealthClient({
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [inspectOrg, setInspectOrg] = useState<{ id: string; name: string | null } | null>(null);
 
   const counts = data.table_counts ?? {};
   const countEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
@@ -217,6 +219,14 @@ export function HealthClient({
 
   return (
     <div className="space-y-6">
+      {inspectOrg && (
+        <OrgOpsInspector
+          organizationId={inspectOrg.id}
+          organizationName={inspectOrg.name}
+          canWrite={canWrite}
+          onClose={() => setInspectOrg(null)}
+        />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
@@ -397,6 +407,7 @@ export function HealthClient({
                 <DataTableHead className="text-right">Pending</DataTableHead>
                 <DataTableHead className="text-right">Failed</DataTableHead>
                 <DataTableHead>Oldest</DataTableHead>
+                <DataTableHead align="right">Inspect</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
                 {orgBacklog.map((row) => (
@@ -413,6 +424,21 @@ export function HealthClient({
                     <DataTableCell className="text-right">{row.failed}</DataTableCell>
                     <DataTableCell className="text-muted-foreground">
                       {row.oldest_enqueued_at ? new Date(row.oldest_enqueued_at).toLocaleString() : "—"}
+                    </DataTableCell>
+                    <DataTableCell align="right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setInspectOrg({
+                            id: row.organization_id,
+                            name: row.organization_name,
+                          })
+                        }
+                      >
+                        Inspect
+                      </Button>
                     </DataTableCell>
                   </DataTableRow>
                 ))}
@@ -433,7 +459,7 @@ export function HealthClient({
                 <DataTableHead>Organization</DataTableHead>
                 <DataTableHead className="text-right">Unposted</DataTableHead>
                 <DataTableHead>Auto-post</DataTableHead>
-                {canWrite && <DataTableHead align="right">Action</DataTableHead>}
+                <DataTableHead align="right">Actions</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
                 {orgUnposted.map((row) => (
@@ -454,19 +480,34 @@ export function HealthClient({
                         <span className="text-amber-800">Off</span>
                       )}
                     </DataTableCell>
-                    {canWrite && (
-                      <DataTableCell align="right">
+                    <DataTableCell align="right">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={busy !== null}
-                          onClick={() => void postUnpostedForOrg(row.organization_id, row.organization_name)}
+                          onClick={() =>
+                            setInspectOrg({
+                              id: row.organization_id,
+                              name: row.organization_name,
+                            })
+                          }
                         >
-                          {busy === `unposted-${row.organization_id}` ? "…" : "Post up to 100"}
+                          Inspect
                         </Button>
-                      </DataTableCell>
-                    )}
+                        {canWrite && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy !== null}
+                            onClick={() => void postUnpostedForOrg(row.organization_id, row.organization_name)}
+                          >
+                            {busy === `unposted-${row.organization_id}` ? "…" : "Post up to 100"}
+                          </Button>
+                        )}
+                      </div>
+                    </DataTableCell>
                   </DataTableRow>
                 ))}
               </DataTableBody>

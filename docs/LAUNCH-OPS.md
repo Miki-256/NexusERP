@@ -26,6 +26,23 @@ Security role is **read-only** on this page (no Drain / Retry).
 
 If the amber banner says queues need attention: click **Drain queues now**, then **Refresh**. If heartbeat stays stale (>15 min), fix the GitHub Actions cron (section 1).
 
+### Support L4 (tenant workspace + org inspect)
+
+Requires migration `00178`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Inspect** | Health org backlog / unposted tables | Per-tenant ledger queue, webhook queue, unposted sales sample; Retry / Post up to 100 |
+| **Ops inspector** | Admin → Organization detail | Same drill-down embedded on the org page |
+| **Open tenant workspace** | Admin → Organization detail | Temporary **manager** membership (max 4h), reason required (≥8 chars), platform-audited; amber banner with **End support session** |
+
+Rules:
+
+- Only `super_admin` / `support` (write roles) can start/end sessions
+- Suspended orgs cannot be opened
+- Ending (or expiry) removes/restores the temporary membership
+- Every start/end/expire writes `support.session_*` to platform audit
+
 ---
 
 ## 1. Five-minute process-queue cron (GitHub Actions)

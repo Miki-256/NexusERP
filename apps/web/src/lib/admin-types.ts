@@ -351,6 +351,50 @@ export type PlatformHealth = {
   };
 };
 
+export type ActiveSupportSession = {
+  session_id: string;
+  organization_id: string;
+  organization_name: string;
+  reason: string;
+  started_at: string;
+  expires_at: string;
+  membership_id: string | null;
+};
+
+export type OrgOpsDetail = {
+  organization_id: string;
+  organization_name: string;
+  organization_status: string;
+  counts: {
+    ledger_queue: number;
+    webhook_queue: number;
+    unposted_sales: number;
+  };
+  ledger_queue: {
+    sale_id: string;
+    attempts: number;
+    last_error: string | null;
+    enqueued_at: string;
+    receipt_no?: string | null;
+    total?: number | null;
+    created_at?: string;
+  }[];
+  webhook_queue: {
+    id: string;
+    reference: string;
+    provider: string;
+    amount: number | null;
+    created_at: string;
+  }[];
+  unposted_sales: {
+    sale_id: string;
+    receipt_no: string | null;
+    total: number | null;
+    created_at: string;
+  }[];
+  generated_at: string;
+};
+
 export const ROLE_LABELS: Record<PlatformAdminRole, string> = {
   super_admin: "Super Admin",
   support: "App Support",
