@@ -13,16 +13,24 @@ export default async function AdminOrganizationsPage({
   const params = await searchParams;
   const ctx = await getPlatformAdminContext();
   const supabase = await createClient();
-  const { data: orgs } = await supabase.rpc("admin_list_organizations");
+  const { data: orgs, error } = await supabase.rpc("admin_list_organizations_health");
+
+  let list: AdminOrg[] = [];
+  if (!error && Array.isArray(orgs)) {
+    list = orgs as AdminOrg[];
+  } else {
+    const { data: fallback } = await supabase.rpc("admin_list_organizations");
+    list = (fallback as AdminOrg[]) ?? [];
+  }
 
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
         title="Organizations"
-        description="Browse all tenants, filter by status, and open detail pages for review."
+        description="Browse tenants with health scores. Open a detail page for ops, overrides, and offboarding."
       />
       <OrganizationsClient
-        orgs={(orgs as AdminOrg[]) ?? []}
+        orgs={list}
         canWrite={!!ctx?.canWrite}
         initialStatus={params.status}
       />

@@ -7,6 +7,26 @@ export type PlatformAdminContext = {
   canManageAdmins: boolean;
 };
 
+export type OrgHealthGrade = "healthy" | "watch" | "critical" | "offboarded";
+
+export type OrgHealth = {
+  organization_id: string;
+  score: number;
+  grade: OrgHealthGrade;
+  factors: { code: string; impact: number; detail: string }[];
+  signals: {
+    status: string;
+    offboarded_at: string | null;
+    active_members: number;
+    ledger_queue_pending: number;
+    ledger_queue_failed: number;
+    unposted_sales: number;
+    webhook_pending: number;
+    last_sale_at: string | null;
+  };
+  generated_at: string;
+};
+
 export type AdminOrg = {
   id: string;
   name: string;
@@ -16,6 +36,8 @@ export type AdminOrg = {
   member_count: number;
   created_at: string;
   owner_email?: string | null;
+  offboarded_at?: string | null;
+  health?: OrgHealth;
 };
 
 export type PendingOrg = AdminOrg & { owner_email: string | null };
@@ -50,7 +72,11 @@ export type OrgDetail = {
     tax_rate: number;
     created_at: string;
     updated_at: string;
+    offboarded_at?: string | null;
+    offboard_reason?: string | null;
+    offboarded_by?: string | null;
   };
+  health?: OrgHealth;
   members: {
     member_id: string;
     user_id: string;
@@ -244,7 +270,7 @@ export type PlatformSettings = {
 
 export type AdminApproval = {
   id: string;
-  action_type: "org.suspend" | "org.export";
+  action_type: "org.suspend" | "org.export" | "org.offboard";
   organization_id: string;
   organization_name: string;
   payload: Record<string, unknown>;

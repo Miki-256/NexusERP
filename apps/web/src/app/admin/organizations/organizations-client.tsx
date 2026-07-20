@@ -18,8 +18,9 @@ import {
   DataTableRow,
 } from "@/components/layout/data-table";
 import type { AdminOrg } from "@/lib/admin-types";
+import { OrgHealthBadge } from "@/components/admin/org-health-badge";
 
-const FILTERS = ["all", "pending", "active", "suspended"] as const;
+const FILTERS = ["all", "pending", "active", "suspended", "offboarded"] as const;
 
 export function OrganizationsClient({
   orgs,
@@ -42,7 +43,10 @@ export function OrganizationsClient({
 
   const filtered = useMemo(() => {
     return orgs.filter((o) => {
-      const matchesStatus = status === "all" || o.status === status;
+      const isOffboarded = !!o.offboarded_at || o.health?.grade === "offboarded";
+      const matchesStatus =
+        status === "all" ||
+        (status === "offboarded" ? isOffboarded : o.status === status && !isOffboarded);
       const q = query.trim().toLowerCase();
       const matchesQuery = !q || o.name.toLowerCase().includes(q);
       return matchesStatus && matchesQuery;
@@ -126,6 +130,7 @@ export function OrganizationsClient({
           <DataTableHeader>
             <DataTableHead>Name</DataTableHead>
             <DataTableHead>Status</DataTableHead>
+            <DataTableHead>Health</DataTableHead>
             <DataTableHead>Plan</DataTableHead>
             <DataTableHead align="right">Members</DataTableHead>
             <DataTableHead>Created</DataTableHead>
@@ -133,7 +138,7 @@ export function OrganizationsClient({
           </DataTableHeader>
           <DataTableBody>
             {filtered.length === 0 ? (
-              <DataTableEmpty colSpan={6} message="No organizations match your filters." />
+              <DataTableEmpty colSpan={7} message="No organizations match your filters." />
             ) : (
               filtered.map((o) => (
                 <DataTableRow key={o.id}>
@@ -145,6 +150,13 @@ export function OrganizationsClient({
                   <DataTableCell>
                     <StatusBadge status={o.status} />
                   </DataTableCell>
+                  <DataTableCell>
+                    {o.health ? (
+                      <OrgHealthBadge score={o.health.score} grade={o.health.grade} compact />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </DataTableCell>
                   <DataTableCell className="capitalize text-muted-foreground">{o.plan}</DataTableCell>
                   <DataTableCell align="right">{o.member_count}</DataTableCell>
                   <DataTableCell className="text-muted-foreground">
@@ -155,23 +167,23 @@ export function OrganizationsClient({
                       <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
                         <Link href={`/admin/organizations/${o.id}`}>Open</Link>
                       </Button>
-                      {canWrite && o.status !== "active" && (
+                      {canWrite && o.status !== "active" && !o.offboarded_at && (
                         <Button
                           size="sm"
                           className="h-7 text-xs"
                           disabled={busy === o.id}
-                          onClick={() => setOrgStatus(o.id, "active")}
+                          onClick={() => void setOrgStatus(o.id, "active")}
                         >
                           Approve
                         </Button>
                       )}
-                      {canWrite && o.status !== "suspended" && (
+                      {canWrite && o.status !== "suspended" && !o.offboarded_at && (
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs text-red-600"
                           disabled={busy === o.id}
-                          onClick={() => setOrgStatus(o.id, "suspended")}
+                          onClick={() => void setOrgStatus(o.id, "suspended")}
                         >
                           Suspend
                         </Button>

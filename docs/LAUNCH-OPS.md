@@ -60,7 +60,19 @@ Requires migration `00180`.
 | **Suspend / Export** | Org detail | Reason required; queues approval when dual control applies |
 | **Audit filters** | Admin → Audit | Server-side actor, prefix (org/support/governance), date range |
 
-With **solo_admin_bypass** (default on), a single write admin can still act immediately. With two+ write admins, suspend/export need a different reviewer.
+With **solo_admin_bypass** (default on), a single write admin can still act immediately. With two+ write admins, suspend/export/offboard need a different reviewer.
+
+### Tenant health & offboarding (L6)
+
+Requires migration `00181`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Health score** | Admin → Organizations / org detail | 0–100 score from queues, unposted sales, inactivity, status |
+| **Offboard** | Org detail | Suspend + deactivate members + end support sessions; dual-control aware |
+| **Offboarded filter** | Organizations list | Find closed tenants |
+
+Offboarding does **not** hard-delete data (export first if needed).
 
 ---
 

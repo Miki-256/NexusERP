@@ -21,11 +21,12 @@ import {
 } from "@/components/layout/data-table";
 import { OrgOpsInspector } from "@/components/admin/org-ops-inspector";
 import { OrgFeatureFlagsPanel } from "@/components/admin/org-feature-flags-panel";
+import { OrgHealthBadge } from "@/components/admin/org-health-badge";
 import { startSupportSession } from "@/app/actions/support-session";
 import { formatAuditAction, type OrgDetail, type OrgPlanUsage, type PlatformPlan } from "@/lib/admin-types";
 import { formatPlanName } from "@/lib/format-plan";
 import { formatCurrency } from "@/lib/utils";
-import { Building2, DollarSign, Download, Store, Users } from "lucide-react";
+import { Activity, Building2, DollarSign, Download, Store, Users } from "lucide-react";
 
 function LimitCell({
   used,
@@ -179,6 +180,45 @@ export function OrgDetailClient({
     window.location.href = result.download_path ?? `/api/admin/organizations/${org.id}/export`;
   }
 
+  async function requestOffboard() {
+    if (!window.confirm("Offboard this organization? Members will be deactivated and the tenant suspended.")) {
+      return;
+    }
+    setBusy(true);
+    const supabase = createClient();
+    const reason = sensitiveReason.trim() || window.prompt("Reason for offboard (min 8 characters)") || "";
+    if (reason.trim().length < 8) {
+      setBusy(false);
+      toast({
+        title: "Reason required",
+        description: "Offboard requires a reason (dual-control may apply).",
+        variant: "destructive",
+      });
+      return;
+    }
+    const { data, error } = await supabase.rpc("admin_request_sensitive_action", {
+      p_action: "org.offboard",
+      p_org_id: org.id,
+      p_reason: reason.trim(),
+    });
+    setBusy(false);
+    if (error) {
+      toast({ title: "Offboard failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    const result = data as { status?: string };
+    if (result.status === "pending") {
+      toast({
+        title: "Offboard submitted for approval",
+        description: "A second write admin must approve on Approvals.",
+      });
+      router.push("/admin/approvals");
+      return;
+    }
+    toast({ title: "Organization offboarded" });
+    router.refresh();
+  }
+
   async function addNote(e: React.FormEvent) {
     e.preventDefault();
     if (!noteText.trim()) return;
@@ -216,25 +256,34 @@ export function OrgDetailClient({
   }
 
   const supportNotes = detail.support_notes ?? [];
+  const health = detail.health;
+  const isOffboarded = !!org.offboarded_at;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{org.name}</h1>
             <StatusBadge status={org.status} />
+            {health && <OrgHealthBadge score={health.score} grade={health.grade} />}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Created {new Date(org.created_at).toLocaleString()} · {org.currency} · {org.timezone}
           </p>
+          {isOffboarded && (
+            <p className="mt-1 text-sm text-amber-800">
+              Offboarded {new Date(org.offboarded_at!).toLocaleString()}
+              {org.offboard_reason ? ` · ${org.offboard_reason}` : ""}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          {canWrite && (
+          {canWrite && !isOffboarded && (
             <Input
               value={sensitiveReason}
               onChange={(e) => setSensitiveReason(e.target.value)}
-              placeholder="Reason for suspend/export (min 8 chars)"
+              placeholder="Reason for suspend/export/offboard (min 8 chars)"
               className="w-full sm:w-80"
             />
           )}
@@ -243,7 +292,7 @@ export function OrgDetailClient({
               <Download className="mr-1.5 h-4 w-4" />
               Export backup
             </Button>
-            {canWrite && (
+            {canWrite && !isOffboarded && (
               <>
                 {org.status !== "active" && (
                   <Button size="sm" disabled={busy} onClick={() => void setStatus("active")}>
@@ -266,13 +315,54 @@ export function OrgDetailClient({
                     Suspend
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-red-700"
+                  disabled={busy}
+                  onClick={() => void requestOffboard()}
+                >
+                  Offboard
+                </Button>
               </>
             )}
           </div>
         </div>
       </div>
 
-      {canWrite && org.status !== "suspended" && (
+      {health && (
+        <FormCard title="Tenant health" description="Ops signals that affect support priority.">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <OrgHealthBadge score={health.score} grade={health.grade} />
+            <p className="text-sm text-muted-foreground">
+              Last sale:{" "}
+              {health.signals.last_sale_at
+                ? new Date(health.signals.last_sale_at).toLocaleString()
+                : "never"}
+            </p>
+          </div>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Ledger queue" value={health.signals.ledger_queue_pending} icon={Activity} />
+            <StatCard label="Ledger failed" value={health.signals.ledger_queue_failed} icon={Activity} />
+            <StatCard label="Unposted sales" value={health.signals.unposted_sales} icon={DollarSign} />
+            <StatCard label="Webhook pending" value={health.signals.webhook_pending} icon={Activity} />
+          </div>
+          {health.factors.length > 0 ? (
+            <ul className="space-y-1 text-sm">
+              {health.factors.map((f) => (
+                <li key={f.code} className="flex justify-between gap-3 rounded-md border px-3 py-2">
+                  <span>{f.detail}</span>
+                  <span className="shrink-0 text-muted-foreground">{f.impact}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No health deductions — tenant looks healthy.</p>
+          )}
+        </FormCard>
+      )}
+
+      {canWrite && org.status !== "suspended" && !isOffboarded && (
         <FormCard
           title="Open tenant workspace"
           description="Temporary manager access (up to 4 hours), fully audited. Use for support only."

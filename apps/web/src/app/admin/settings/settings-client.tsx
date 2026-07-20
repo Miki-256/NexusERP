@@ -192,6 +192,15 @@ export function SettingsClient({
             />
             Require approval for org export
           </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={dual.actions.includes("org.offboard")}
+              disabled={!canManageMaintenance}
+              onChange={(e) => toggleAction("org.offboard", e.target.checked)}
+            />
+            Require approval for offboard
+          </label>
           <p className="text-xs text-muted-foreground">
             Pending requests appear under <Link href="/admin/approvals" className="text-primary hover:underline">Approvals</Link>.
           </p>
