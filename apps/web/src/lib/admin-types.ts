@@ -230,9 +230,38 @@ export type MaintenanceMode = {
   block_signup: boolean;
 };
 
+export type DualControlSettings = {
+  enabled: boolean;
+  actions: string[];
+  solo_admin_bypass: boolean;
+};
+
 export type PlatformSettings = {
   broadcast_banner: BroadcastBanner;
   maintenance_mode: MaintenanceMode;
+  dual_control?: DualControlSettings;
+};
+
+export type AdminApproval = {
+  id: string;
+  action_type: "org.suspend" | "org.export";
+  organization_id: string;
+  organization_name: string;
+  payload: Record<string, unknown>;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | "cancelled" | "executed" | "expired";
+  requested_by: string;
+  requested_by_email: string;
+  requested_at: string;
+  reviewed_by: string | null;
+  reviewed_by_email: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  executed_at: string | null;
+  expires_at: string;
+  can_review: boolean;
+  can_cancel: boolean;
+  download_path: string | null;
 };
 
 export type PlatformStats = {

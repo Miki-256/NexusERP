@@ -9,7 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { FormCard } from "@/components/layout/form-card";
-import type { PlatformSettings } from "@/lib/admin-types";
+import type { DualControlSettings, PlatformSettings } from "@/lib/admin-types";
+
+const DEFAULT_DUAL: DualControlSettings = {
+  enabled: true,
+  actions: ["org.suspend", "org.export"],
+  solo_admin_bypass: true,
+};
 
 export function SettingsClient({
   settings,
@@ -24,6 +30,7 @@ export function SettingsClient({
   const { toast } = useToast();
   const [banner, setBanner] = useState(settings.broadcast_banner);
   const [maintenance, setMaintenance] = useState(settings.maintenance_mode);
+  const [dual, setDual] = useState<DualControlSettings>(settings.dual_control ?? DEFAULT_DUAL);
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -31,7 +38,10 @@ export function SettingsClient({
     const supabase = createClient();
     const payload: Record<string, unknown> = {};
     if (canWrite) payload.broadcast_banner = banner;
-    if (canManageMaintenance) payload.maintenance_mode = maintenance;
+    if (canManageMaintenance) {
+      payload.maintenance_mode = maintenance;
+      payload.dual_control = dual;
+    }
 
     const { error } = await supabase.rpc("admin_set_platform_settings", {
       p_settings: payload,
@@ -43,6 +53,13 @@ export function SettingsClient({
     }
     toast({ title: "Settings saved" });
     router.refresh();
+  }
+
+  function toggleAction(action: string, on: boolean) {
+    const actions = new Set(dual.actions);
+    if (on) actions.add(action);
+    else actions.delete(action);
+    setDual({ ...dual, actions: Array.from(actions) });
   }
 
   return (
@@ -128,6 +145,56 @@ export function SettingsClient({
             />
             Block new signups during maintenance
           </label>
+        </div>
+      </FormCard>
+
+      <FormCard
+        title="Dual control"
+        description="Require a second write admin to approve suspend and org export. Solo-admin bypass keeps a single operator unblocked."
+      >
+        {!canManageMaintenance && (
+          <p className="mb-4 text-sm text-muted-foreground">Only Super Admins can change dual-control settings.</p>
+        )}
+        <div className="space-y-3 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={dual.enabled}
+              disabled={!canManageMaintenance}
+              onChange={(e) => setDual({ ...dual, enabled: e.target.checked })}
+            />
+            Enable dual control
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={dual.solo_admin_bypass}
+              disabled={!canManageMaintenance}
+              onChange={(e) => setDual({ ...dual, solo_admin_bypass: e.target.checked })}
+            />
+            Bypass when only one write admin exists
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={dual.actions.includes("org.suspend")}
+              disabled={!canManageMaintenance}
+              onChange={(e) => toggleAction("org.suspend", e.target.checked)}
+            />
+            Require approval for suspend
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={dual.actions.includes("org.export")}
+              disabled={!canManageMaintenance}
+              onChange={(e) => toggleAction("org.export", e.target.checked)}
+            />
+            Require approval for org export
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Pending requests appear under <Link href="/admin/approvals" className="text-primary hover:underline">Approvals</Link>.
+          </p>
         </div>
       </FormCard>
 

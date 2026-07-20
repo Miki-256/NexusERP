@@ -64,6 +64,7 @@ export function OrgDetailClient({
   const [planBusy, setPlanBusy] = useState(false);
   const [supportReason, setSupportReason] = useState("");
   const [supportPending, startSupportTransition] = useTransition();
+  const [sensitiveReason, setSensitiveReason] = useState("");
   const org = detail.organization;
 
   function openTenantWorkspace(e: React.FormEvent) {
@@ -94,6 +95,42 @@ export function OrgDetailClient({
   async function setStatus(status: "active" | "suspended" | "pending") {
     setBusy(true);
     const supabase = createClient();
+
+    if (status === "suspended") {
+      const reason = sensitiveReason.trim() || window.prompt("Reason for suspend (min 8 characters)") || "";
+      if (reason.trim().length < 8) {
+        setBusy(false);
+        toast({
+          title: "Reason required",
+          description: "Suspend requires a reason (and dual-control approval when enabled).",
+          variant: "destructive",
+        });
+        return;
+      }
+      const { data, error } = await supabase.rpc("admin_request_sensitive_action", {
+        p_action: "org.suspend",
+        p_org_id: org.id,
+        p_reason: reason.trim(),
+      });
+      setBusy(false);
+      if (error) {
+        toast({ title: "Suspend failed", description: error.message, variant: "destructive" });
+        return;
+      }
+      const result = data as { status?: string; dual_control?: boolean };
+      if (result.status === "pending") {
+        toast({
+          title: "Suspend submitted for approval",
+          description: "A second write admin must approve on Approvals.",
+        });
+        router.push("/admin/approvals");
+        return;
+      }
+      toast({ title: "Organization suspended" });
+      router.refresh();
+      return;
+    }
+
     const { error } = await supabase.rpc("admin_set_org_status", {
       p_org_id: org.id,
       p_status: status,
@@ -105,6 +142,41 @@ export function OrgDetailClient({
     }
     toast({ title: "Organization updated" });
     router.refresh();
+  }
+
+  async function requestExport() {
+    setBusy(true);
+    const supabase = createClient();
+    const reason = sensitiveReason.trim() || window.prompt("Reason for export (min 8 characters)") || "";
+    if (reason.trim().length < 8) {
+      setBusy(false);
+      toast({
+        title: "Reason required",
+        description: "Export requires a reason when dual control is active.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const { data, error } = await supabase.rpc("admin_request_sensitive_action", {
+      p_action: "org.export",
+      p_org_id: org.id,
+      p_reason: reason.trim(),
+    });
+    setBusy(false);
+    if (error) {
+      toast({ title: "Export request failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    const result = data as { status?: string; download_path?: string; dual_control?: boolean };
+    if (result.status === "pending") {
+      toast({
+        title: "Export submitted for approval",
+        description: "After approval, download from Approvals.",
+      });
+      router.push("/admin/approvals");
+      return;
+    }
+    window.location.href = result.download_path ?? `/api/admin/organizations/${org.id}/export`;
   }
 
   async function addNote(e: React.FormEvent) {
@@ -157,32 +229,46 @@ export function OrgDetailClient({
             Created {new Date(org.created_at).toLocaleString()} · {org.currency} · {org.timezone}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" asChild>
-            <a href={`/api/admin/organizations/${org.id}/export`}>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          {canWrite && (
+            <Input
+              value={sensitiveReason}
+              onChange={(e) => setSensitiveReason(e.target.value)}
+              placeholder="Reason for suspend/export (min 8 chars)"
+              className="w-full sm:w-80"
+            />
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={busy || !canWrite} onClick={() => void requestExport()}>
               <Download className="mr-1.5 h-4 w-4" />
               Export backup
-            </a>
-          </Button>
-          {canWrite && (
-            <>
-            {org.status !== "active" && (
-              <Button size="sm" disabled={busy} onClick={() => setStatus("active")}>
-                Approve
-              </Button>
+            </Button>
+            {canWrite && (
+              <>
+                {org.status !== "active" && (
+                  <Button size="sm" disabled={busy} onClick={() => void setStatus("active")}>
+                    Approve
+                  </Button>
+                )}
+                {org.status === "active" && (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void setStatus("pending")}>
+                    Mark pending
+                  </Button>
+                )}
+                {org.status !== "suspended" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600"
+                    disabled={busy}
+                    onClick={() => void setStatus("suspended")}
+                  >
+                    Suspend
+                  </Button>
+                )}
+              </>
             )}
-            {org.status === "active" && (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => setStatus("pending")}>
-                Mark pending
-              </Button>
-            )}
-            {org.status !== "suspended" && (
-              <Button size="sm" variant="outline" className="text-red-600" disabled={busy} onClick={() => setStatus("suspended")}>
-                Suspend
-              </Button>
-            )}
-            </>
-          )}
+          </div>
         </div>
       </div>
 

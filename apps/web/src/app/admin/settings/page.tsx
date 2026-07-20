@@ -12,6 +12,11 @@ const DEFAULTS: PlatformSettings = {
     message: "Nexus ERP is temporarily unavailable for maintenance.",
     block_signup: true,
   },
+  dual_control: {
+    enabled: true,
+    actions: ["org.suspend", "org.export"],
+    solo_admin_bypass: true,
+  },
 };
 
 export default async function AdminSettingsPage() {
@@ -23,13 +28,18 @@ export default async function AdminSettingsPage() {
   const settings: PlatformSettings = {
     broadcast_banner: { ...DEFAULTS.broadcast_banner, ...raw.broadcast_banner },
     maintenance_mode: { ...DEFAULTS.maintenance_mode, ...raw.maintenance_mode },
+    dual_control: {
+      ...DEFAULTS.dual_control!,
+      ...raw.dual_control,
+      actions: raw.dual_control?.actions ?? DEFAULTS.dual_control!.actions,
+    },
   };
 
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
         title="Platform settings"
-        description="Broadcast messages to all tenants and enable maintenance mode."
+        description="Broadcast messages, maintenance mode, and dual-control governance."
       />
       <SettingsClient
         settings={settings}

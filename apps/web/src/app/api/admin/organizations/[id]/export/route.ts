@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
@@ -18,8 +18,11 @@ export async function GET(
   }
 
   const { id } = await params;
+  const approvalId = request.nextUrl.searchParams.get("approval_id");
+
   const { data, error } = await supabase.rpc("admin_export_organization", {
     p_org_id: id,
+    p_approval_id: approvalId,
   });
 
   if (error) {

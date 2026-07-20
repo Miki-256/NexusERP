@@ -52,6 +52,38 @@ export function OrganizationsClient({
   async function setOrgStatus(orgId: string, next: AdminOrg["status"]) {
     setBusy(orgId);
     const supabase = createClient();
+
+    if (next === "suspended") {
+      const reason = window.prompt("Reason for suspend (min 8 characters)") || "";
+      if (reason.trim().length < 8) {
+        setBusy(null);
+        toast({
+          title: "Reason required",
+          description: "Suspend requires a reason (dual-control may apply).",
+          variant: "destructive",
+        });
+        return;
+      }
+      const { data, error } = await supabase.rpc("admin_request_sensitive_action", {
+        p_action: "org.suspend",
+        p_org_id: orgId,
+        p_reason: reason.trim(),
+      });
+      setBusy(null);
+      if (error) {
+        toast({ title: "Suspend failed", description: error.message, variant: "destructive" });
+        return;
+      }
+      if ((data as { status?: string } | null)?.status === "pending") {
+        toast({ title: "Suspend submitted for approval" });
+        router.push("/admin/approvals");
+        return;
+      }
+      toast({ title: "Organization suspended" });
+      router.refresh();
+      return;
+    }
+
     const { error } = await supabase.rpc("admin_set_org_status", {
       p_org_id: orgId,
       p_status: next,

@@ -49,6 +49,19 @@ Requires migration `00179`.
 
 On **Admin → Organization**, use **Module overrides** to enable/disable modules for one tenant without changing the global flags page. Effective access = org override (if set) → global flag → plan modules. Tenant navigation already filters via `get_org_enabled_app_ids`.
 
+### Governance — dual control (L5)
+
+Requires migration `00180`.
+
+| Control | Where | Purpose |
+|---------|--------|---------|
+| **Approvals** | `/admin/approvals` | Second write admin approves/rejects suspend & export |
+| **Dual control settings** | Admin → Settings | Enable/disable; choose actions; solo-admin bypass |
+| **Suspend / Export** | Org detail | Reason required; queues approval when dual control applies |
+| **Audit filters** | Admin → Audit | Server-side actor, prefix (org/support/governance), date range |
+
+With **solo_admin_bypass** (default on), a single write admin can still act immediately. With two+ write admins, suspend/export need a different reviewer.
+
 ---
 
 ## 1. Five-minute process-queue cron (GitHub Actions)

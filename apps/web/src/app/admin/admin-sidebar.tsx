@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Building2,
+  CheckSquare,
   ClipboardList,
   CreditCard,
   Flag,
@@ -22,6 +23,7 @@ import { ROLE_LABELS, type PlatformAdminRole } from "@/lib/admin-types";
 const NAV = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/organizations", label: "Organizations", icon: Building2 },
+  { href: "/admin/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/admin/support", label: "Support lookup", icon: Headphones },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/security", label: "Security", icon: ShieldAlert },
