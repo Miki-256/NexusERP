@@ -8,6 +8,26 @@ npm run setup:launch-ops
 
 ---
 
+## 0. Super-admin Health (recommended daily)
+
+**URL:** `/admin/health` on the live app
+
+After migrations `00174`–`00175` and a recent deploy, platform admins with **write** (super_admin / support) can:
+
+| Control | Purpose |
+|---------|---------|
+| **Drain queues now** | Runs the same worker as the 5-min process-queue cron (ledger, refunds, webhooks, notifications, HR webhooks, maintenance) and records a heartbeat |
+| **Retry** on ledger errors | Re-posts a single failed sale→GL queue row |
+| **Post up to 100** on unposted-by-org | Batch-posts historical completed sales missing journal entries for that tenant |
+| Queue cards | Ledger, payment webhooks, refund ledger, notifications, HR webhooks, stale rollups, unposted sales |
+| Org tables | Ledger backlog and unposted completed sales by tenant (with auto-post flag) |
+
+Security role is **read-only** on this page (no Drain / Retry).
+
+If the amber banner says queues need attention: click **Drain queues now**, then **Refresh**. If heartbeat stays stale (>15 min), fix the GitHub Actions cron (section 1).
+
+---
+
 ## 1. Five-minute process-queue cron (GitHub Actions)
 
 **Workflow:** `.github/workflows/cron-process-queue.yml` (every 5 min)
@@ -38,6 +58,8 @@ CRON_SECRET=your-secret APP_URL=https://nexus-erp-preprod.vercel.app npm run cro
 ```
 
 Or: **Actions** → **Process webhook queue** → **Run workflow** → should succeed.
+
+Prefer verifying from **Admin → Health** after a drain: heartbeat should show a recent success time.
 
 ---
 

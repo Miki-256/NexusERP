@@ -6,7 +6,7 @@ import type { OpenBillOption, PaymentRunRow } from "@/components/finance/ap-paym
 export type VendorRow = { id: string; name: string; phone: string | null; email: string | null; is_active: boolean };
 export type PORow = {
   id: string;
-  status: "draft" | "ordered" | "received" | "cancelled";
+  status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
   order_date: string;
   total: number;
   vendors: { name: string } | { name: string }[] | null;
@@ -28,6 +28,8 @@ export type BillRow = {
 export type VariantOption = {
   id: string;
   name: string;
+  sku: string | null;
+  barcode: string | null;
   cost_price: number | null;
   products: { name: string } | { name: string }[] | null;
 };
@@ -56,9 +58,10 @@ export default async function PurchasingPage() {
         .limit(100),
       supabase
         .from("product_variants")
-        .select("id, name, cost_price, products(name)")
+        .select("id, name, sku, barcode, cost_price, products(name)")
         .eq("organization_id", orgId)
         .eq("is_active", true)
+        .order("name")
         .limit(500),
       supabase.rpc("list_vendor_open_bills", { p_org_id: orgId, p_limit: 100, p_offset: 0 }),
       supabase.rpc("list_payment_runs", { p_org_id: orgId }),

@@ -19,6 +19,7 @@ import { CategoryNav } from "./category-nav";
 import { CartPanel } from "./cart-panel";
 import { ShiftStatsBar } from "./shift-stats-bar";
 import { PosSyncBadge } from "./pos-sync-badge";
+import { PosRegisterSwitcher } from "./pos-register-switcher";
 import {
   PaymentModal,
   BarcodeScannerModal,
@@ -1031,9 +1032,12 @@ export function PosScreen({
           {onStaffSignOut && (
             <Button variant="ghost" className="mt-4 w-full text-slate-500 hover:text-slate-900" onClick={onStaffSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
-              Switch
+              Switch staff
             </Button>
           )}
+          <div className="mt-2 flex justify-center">
+            <PosRegisterSwitcher registerId={registerId} registerName={registerName} tone="onLight" />
+          </div>
         </div>
       </main>
     );
@@ -1108,6 +1112,7 @@ export function PosScreen({
             <DoorClosed className="h-4 w-4 sm:mr-1.5" aria-hidden />
             <span className="hidden sm:inline">Close shift</span>
           </Button>
+          <PosRegisterSwitcher registerId={registerId} registerName={registerName} />
           {onStaffSignOut && (
             <Button
               variant="outline"
@@ -1117,7 +1122,7 @@ export function PosScreen({
               aria-label="Switch staff user"
             >
               <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
-              Switch
+              Switch staff
             </Button>
           )}
         </div>

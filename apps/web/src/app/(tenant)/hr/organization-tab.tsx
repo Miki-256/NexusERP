@@ -24,9 +24,12 @@ const UNIT_TYPES: OrgUnitType[] = [
 ];
 
 function buildTree(units: OrgUnitRow[]): (OrgUnitRow & { depth: number })[] {
+  const ids = new Set(units.map((u) => u.id));
   const byParent = new Map<string | null, OrgUnitRow[]>();
   for (const u of units) {
-    const key = u.parent_id;
+    // Treat missing/inactive parents as roots so synced departments still render.
+    const rawParent = u.parent_id ?? null;
+    const key = rawParent && ids.has(rawParent) ? rawParent : null;
     if (!byParent.has(key)) byParent.set(key, []);
     byParent.get(key)!.push(u);
   }
@@ -76,7 +79,7 @@ export function OrganizationTab({
       toast({ title: "Could not load org units", description: error.message, variant: "destructive" });
       setUnits([]);
     } else {
-      setUnits((data as OrgUnitRow[]) ?? []);
+      setUnits(Array.isArray(data) ? (data as OrgUnitRow[]) : []);
     }
     setLoading(false);
   }, [organizationId, toast]);

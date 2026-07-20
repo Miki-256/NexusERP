@@ -1114,6 +1114,26 @@ export interface Database {
         };
         Returns: undefined;
       };
+      admin_get_platform_health: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      admin_retry_sale_ledger_post: {
+        Args: { p_sale_id: string };
+        Returns: Json;
+      };
+      admin_post_unposted_sales_batch: {
+        Args: { p_org_id: string; p_limit?: number };
+        Returns: Json;
+      };
+      admin_platform_security_pulse: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      list_pos_store_registers: {
+        Args: { p_register_id: string };
+        Returns: Json;
+      };
       admin_platform_stats: {
         Args: Record<string, never>;
         Returns: {
@@ -1546,6 +1566,13 @@ export interface Database {
           p_expected_date: string | null;
           p_notes: string | null;
           p_lines: Json;
+        };
+        Returns: string;
+      };
+      cancel_purchase_order: {
+        Args: {
+          p_po_id: string;
+          p_reason?: string | null;
         };
         Returns: string;
       };

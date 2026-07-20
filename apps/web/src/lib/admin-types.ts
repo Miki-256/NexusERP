@@ -308,14 +308,46 @@ export type PlatformHealth = {
   ops?: {
     ledger_queue_pending: number;
     ledger_queue_failed: number;
+    ledger_queue_oldest_at?: string | null;
     payment_webhook_queue_pending: number;
+    payment_webhook_oldest_at?: string | null;
+    refund_ledger_pending?: number;
+    refund_ledger_failed?: number;
+    notification_deliveries_pending?: number;
+    notification_deliveries_failed?: number;
+    notification_events_unprocessed?: number;
+    hr_webhook_pending?: number;
+    hr_webhook_failed?: number;
+    stale_rollup_orgs?: number;
+    unposted_completed_sales?: number;
     ledger_queue_errors: {
       sale_id: string;
       organization_id: string;
+      organization_name?: string | null;
       attempts: number;
       last_error: string | null;
       enqueued_at: string;
     }[];
+    org_ledger_backlog?: {
+      organization_id: string;
+      organization_name: string | null;
+      pending: number;
+      failed: number;
+      oldest_enqueued_at: string | null;
+    }[];
+    org_unposted_sales?: {
+      organization_id: string;
+      organization_name: string | null;
+      unposted: number;
+      auto_post_enabled: boolean;
+    }[];
+    process_queue_heartbeat?: {
+      key: string;
+      last_success_at: string;
+      updated_at: string;
+      last_ok: boolean;
+      last_result?: Record<string, unknown>;
+    } | null;
   };
 };
 
