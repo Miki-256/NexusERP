@@ -65,4 +65,39 @@ describe("financial AI tools", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/valid JSON/);
   });
+
+  it("dispatches suggest_draft_journal_entry", async () => {
+    const supabase = {
+      rpc: vi.fn().mockResolvedValue({
+        data: { journal_entry_id: "00000000-0000-0000-0000-000000000099", status: "draft" },
+        error: null,
+      }),
+    };
+    const result = await executeFinancialAiTool({
+      supabase,
+      orgId: "00000000-0000-0000-0000-000000000001",
+      defaultFrom: "2026-01-01",
+      defaultTo: "2026-01-31",
+      conversationId: "00000000-0000-0000-0000-000000000010",
+      call: {
+        id: "c2",
+        name: "suggest_draft_journal_entry",
+        arguments: JSON.stringify({
+          memo: "Accrue rent",
+          lines: [
+            { account_code: "5100", debit: 1000, credit: 0 },
+            { account_code: "2000", debit: 0, credit: 1000 },
+          ],
+        }),
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "create_ai_journal_entry_draft",
+      expect.objectContaining({
+        p_org_id: "00000000-0000-0000-0000-000000000001",
+        p_conversation_id: "00000000-0000-0000-0000-000000000010",
+      })
+    );
+  });
 });

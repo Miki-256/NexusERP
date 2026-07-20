@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
         orgId,
         from,
         to,
+        conversationId: convId,
         supabase,
       });
       answer = result.answer;

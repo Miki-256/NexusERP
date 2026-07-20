@@ -1,8 +1,6 @@
-/** Read-only finance tools the AI assistant may invoke (L3). */
+/** Finance tools the AI assistant may invoke (L3 read + L6 draft JE). */
 
 import { z } from "zod";
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const FINANCIAL_AI_TOOL_NAMES = [
   "get_pnl",
@@ -13,6 +11,8 @@ export const FINANCIAL_AI_TOOL_NAMES = [
   "get_treasury",
   "get_executive_dashboard",
   "get_period_snapshot",
+  "get_chart_of_accounts",
+  "suggest_draft_journal_entry",
 ] as const;
 
 export type FinancialAiToolName = (typeof FINANCIAL_AI_TOOL_NAMES)[number];
@@ -108,6 +108,49 @@ export const FINANCIAL_AI_TOOLS: FinancialAiToolDefinition[] = [
       parameters: { type: "object", properties: periodProps },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_chart_of_accounts",
+      description: "List active GL accounts (code, name, type) before suggesting a journal entry.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "suggest_draft_journal_entry",
+      description:
+        "Create a DRAFT journal entry suggestion for manager approval. Never posts. Use only when the user explicitly asks to draft/suggest a journal entry. Lines must balance. Prefer account_code from get_chart_of_accounts.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Entry date YYYY-MM-DD" },
+          memo: { type: "string", description: "Journal memo / explanation" },
+          journal_code: {
+            type: "string",
+            description: "Journal code, default GEN",
+          },
+          lines: {
+            type: "array",
+            description: "Balanced lines (min 2)",
+            items: {
+              type: "object",
+              properties: {
+                account_code: { type: "string" },
+                accountId: { type: "string" },
+                debit: { type: "number" },
+                credit: { type: "number" },
+                description: { type: "string" },
+              },
+              required: ["debit", "credit"],
+            },
+          },
+        },
+        required: ["memo", "lines"],
+      },
+    },
+  },
 ];
 
 export type FinancialAiToolCall = {
@@ -131,11 +174,23 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 };
 
+const lineSchema = z.object({
+  account_code: z.string().optional(),
+  accountId: z.string().uuid().optional(),
+  debit: z.number().nonnegative(),
+  credit: z.number().nonnegative(),
+  description: z.string().optional(),
+});
+
 const argsSchema = z
   .object({
-    from: isoDate.optional(),
-    to: isoDate.optional(),
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     mode: z.enum(["gl", "operational"]).optional(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    memo: z.string().max(500).optional(),
+    journal_code: z.string().max(32).optional(),
+    lines: z.array(lineSchema).min(2).max(40).optional(),
   })
   .passthrough();
 
@@ -156,9 +211,10 @@ export async function executeFinancialAiTool(params: {
   orgId: string;
   defaultFrom: string;
   defaultTo: string;
+  conversationId?: string | null;
   call: FinancialAiToolCall;
 }): Promise<FinancialAiToolResult> {
-  const { supabase, orgId, defaultFrom, defaultTo, call } = params;
+  const { supabase, orgId, defaultFrom, defaultTo, conversationId, call } = params;
 
   if (!isFinancialAiToolName(call.name)) {
     return {
@@ -252,6 +308,41 @@ export async function executeFinancialAiTool(params: {
           p_to: to,
         });
         break;
+      case "get_chart_of_accounts": {
+        result = await supabase.rpc("list_accounts", { p_org_id: orgId });
+        if (!result.error && Array.isArray(result.data)) {
+          const slim = (result.data as { code?: string; name?: string; type?: string; is_active?: boolean; id?: string }[])
+            .filter((a) => a.is_active !== false)
+            .map((a) => ({ id: a.id, code: a.code, name: a.name, type: a.type }))
+            .slice(0, 200);
+          return {
+            toolCallId: call.id,
+            name: call.name,
+            ok: true,
+            data: slim,
+          };
+        }
+        break;
+      }
+      case "suggest_draft_journal_entry": {
+        if (!parsedArgs.lines?.length) {
+          return {
+            toolCallId: call.id,
+            name: call.name,
+            ok: false,
+            error: "lines are required",
+          };
+        }
+        result = await supabase.rpc("create_ai_journal_entry_draft", {
+          p_org_id: orgId,
+          p_date: parsedArgs.date ?? defaultTo,
+          p_memo: parsedArgs.memo ?? "AI suggested journal entry",
+          p_lines: parsedArgs.lines,
+          p_journal_code: parsedArgs.journal_code ?? "GEN",
+          p_conversation_id: conversationId ?? null,
+        });
+        break;
+      }
     }
 
     if (result.error) {

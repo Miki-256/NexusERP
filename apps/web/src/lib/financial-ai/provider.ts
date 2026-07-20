@@ -147,16 +147,20 @@ export async function completeFinancialAiChatWithTools(params: {
   orgId: string;
   from: string;
   to: string;
+  conversationId?: string | null;
   supabase: RpcClient;
 }): Promise<{ answer: string; source: "openai"; toolsUsed: string[] }> {
   const systemPrompt = `You are NexusERP Financial Assistant for NexusERP.
-Use the baseline financial context JSON and, when needed, call read-only tools for fresher or deeper figures.
+Use the baseline financial context JSON and, when needed, call tools for fresher figures or draft journal suggestions.
 Rules:
-- Never invent balances, invoices, or journal entries.
-- Prefer tools for follow-ups that need a specific report (P&L, aging, treasury, etc.).
+- Never invent balances, invoices, or posted journal entries.
+- Prefer read tools for report follow-ups (P&L, aging, treasury, etc.).
+- Only call suggest_draft_journal_entry when the user explicitly asks to draft/suggest a journal entry.
+- Draft JE tool always creates a DRAFT awaiting manager approval — never claims it is posted.
+- Resolve account codes via get_chart_of_accounts before drafting.
 - Cite numbers with the org currency from context/tools.
 - If a tool errors or data is missing, say so clearly.
-- Keep answers concise and actionable.`;
+- Keep answers concise and actionable. Include the Manual JE link when a draft is created.`;
 
   const messages: FinancialAiChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -202,6 +206,7 @@ Rules:
         orgId: params.orgId,
         defaultFrom: params.from,
         defaultTo: params.to,
+        conversationId: params.conversationId,
         call,
       });
       toolsUsed.push(call.name);

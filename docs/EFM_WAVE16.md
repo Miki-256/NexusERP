@@ -1,10 +1,11 @@
 # EFM Wave 16 — AI Financial Assistant
 
-**Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase; L4 needs `00184`.  
+**Status:** Complete (code) — Wave 16 base `00162`–`00163`; L4–L6 migrations `00184`–`00186`.  
 **L2 (conversation UX):** shipped — multi-turn context, sidebar history, period chips, insight deep-links.  
 **L3 (tool loop):** shipped in app — OpenAI may call read-only finance RPCs before answering.  
 **L4 (export / retention):** shipped — markdown export/copy, conversation deep-links, retention days + manager purge.  
-**L5 (scheduled purge):** shipped — `run_financial_ai_retention_purge` via daily process-queue cron (`00185`).
+**L5 (scheduled purge):** shipped — `run_financial_ai_retention_purge` via daily process-queue cron (`00185`).  
+**L6 (shared + draft JE):** shipped — org-shared conversations; `suggest_draft_journal_entry` → always-draft JE for Wave 14 approval (`00186`).
 
 Wave 16 adds an AI financial assistant: conversational Q&A over live GL/treasury/aging context, rule-based insights, optional OpenAI integration, and conversation history.
 
@@ -135,9 +136,23 @@ Migration: `20260618000184_efm_ai_assistant_l4.sql` (updates `get`/`update_finan
 
 Migration: `20260618000185_efm_ai_assistant_l5_retention_cron.sql`.
 
-## Next (L6+)
+## L6 — Shared chats + draft JE suggestions
 
-- Optional write tools behind dual-control (draft JE suggestions only)
-- Shared / team conversations (beyond owner + manager read)
+| Capability | Behavior |
+|------------|----------|
+| Share with org | `visibility` = `private` \| `org`; sidebar lists own + org-shared; members can continue shared threads |
+| `set_financial_ai_conversation_visibility` | Owner toggles share |
+| `get_chart_of_accounts` tool | Slim active COA for drafting |
+| `suggest_draft_journal_entry` tool | Calls `create_ai_journal_entry_draft` — **always** `draft`, `source_type=ai_suggestion` |
+| Approval | Existing Manual JE / Wave 14 `approve_journal_entry` (SoD + dual-control unchanged) |
+
+Migration: `20260618000186_efm_ai_assistant_l6.sql`.
+
+Managers only can create AI drafts (`user_can_manage`). AI never auto-posts.
+
+## Next
+
+- Richer draft UX (inline approve from assistant)
+- Multi-user presence on shared threads
 
 See `docs/EFM_ROADMAP.md`.

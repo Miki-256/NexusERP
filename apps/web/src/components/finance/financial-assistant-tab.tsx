@@ -17,7 +17,7 @@ import {
   downloadTextFile,
   formatFinancialAiTranscript,
 } from "@/lib/financial-ai/export";
-import { Bot, Copy, Download, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
+import { Bot, Copy, Download, Loader2, MessageSquarePlus, Share2, Sparkles, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type FinancialAiSettings = {
@@ -49,7 +49,12 @@ export type FinancialAiMessage = {
   id: string;
   role: string;
   content: string;
-  metadata?: { source?: string; tools_used?: string[] };
+  metadata?: {
+    source?: string;
+    tools_used?: string[];
+    journal_entry_id?: string;
+    approve_path?: string;
+  };
   created_at?: string;
 };
 
@@ -58,6 +63,8 @@ export type FinancialAiConversationSummary = {
   title: string;
   period_from?: string | null;
   period_to?: string | null;
+  visibility?: "private" | "org";
+  is_owner?: boolean;
   updated_at?: string;
   message_count?: number;
 };
@@ -124,10 +131,13 @@ export function FinancialAssistantTab({
   const [busy, setBusy] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [threadVisibility, setThreadVisibility] = useState<"private" | "org">("private");
+  const [isThreadOwner, setIsThreadOwner] = useState(true);
   const deepLinkOpened = useRef(false);
 
-  const activeTitle =
-    conversations.find((c) => c.id === conversationId)?.title?.trim() || "Financial Q&A";
+  const activeConversation = conversations.find((c) => c.id === conversationId);
+  const activeTitle = activeConversation?.title?.trim() || "Financial Q&A";
+  const activeVisibility = activeConversation?.visibility ?? threadVisibility;
 
   function syncConversationQuery(nextId: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -221,10 +231,14 @@ export function FinancialAssistantTab({
       id: string;
       period_from?: string | null;
       period_to?: string | null;
+      visibility?: "private" | "org";
+      is_owner?: boolean;
       messages?: FinancialAiMessage[];
     };
     setConversationId(thread.id);
     setMessages(thread.messages ?? []);
+    setThreadVisibility(thread.visibility === "org" ? "org" : "private");
+    setIsThreadOwner(thread.is_owner !== false);
     if (!opts?.skipUrlSync) {
       syncConversationQuery(thread.id);
     }
@@ -452,7 +466,33 @@ export function FinancialAssistantTab({
   function newConversation() {
     setConversationId(null);
     setMessages([]);
+    setThreadVisibility("private");
+    setIsThreadOwner(true);
     syncConversationQuery(null);
+  }
+
+  async function toggleShareWithOrg() {
+    if (!conversationId || !isThreadOwner) return;
+    const next = activeVisibility === "org" ? "private" : "org";
+    setBusy(true);
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("set_financial_ai_conversation_visibility", {
+      p_conversation_id: conversationId,
+      p_visibility: next,
+    });
+    setBusy(false);
+    if (error) {
+      toast({ title: "Share update failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    const visibility = (data as { visibility?: "private" | "org" })?.visibility ?? next;
+    setThreadVisibility(visibility);
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conversationId ? { ...c, visibility } : c))
+    );
+    toast({
+      title: visibility === "org" ? "Shared with organization" : "Conversation is private",
+    });
   }
 
   const severityClass = (severity: string) => {
@@ -589,6 +629,16 @@ export function FinancialAssistantTab({
               <Copy className="mr-2 h-4 w-4" />
               Copy
             </Button>
+            <Button
+              type="button"
+              variant={activeVisibility === "org" ? "default" : "outline"}
+              size="sm"
+              disabled={busy || !conversationId || !isThreadOwner}
+              onClick={() => void toggleShareWithOrg()}
+            >
+              <Share2 className="mr-2 h-4 w-4" />
+              {activeVisibility === "org" ? "Shared with org" : "Share with org"}
+            </Button>
             <Button type="button" variant="outline" size="sm" disabled={busy} onClick={newConversation}>
               <MessageSquarePlus className="mr-2 h-4 w-4" />
               New chat
@@ -648,6 +698,7 @@ export function FinancialAssistantTab({
                         >
                           <p className="truncate text-sm font-medium">{c.title || "Untitled"}</p>
                           <p className="truncate text-xs text-muted-foreground">
+                            {c.visibility === "org" ? "Shared · " : ""}
                             {c.message_count ?? 0} msgs
                             {c.period_from && c.period_to ? ` · ${c.period_from}` : ""}
                           </p>
@@ -724,6 +775,17 @@ export function FinancialAssistantTab({
                             : null}
                         </p>
                       )}
+                      {m.role === "assistant" &&
+                        m.metadata?.tools_used?.includes("suggest_draft_journal_entry") && (
+                          <p className="mt-2">
+                            <Link
+                              href="/financials?tab=journal"
+                              className="text-xs font-medium underline underline-offset-2"
+                            >
+                              Review draft in Manual JE
+                            </Link>
+                          </p>
+                        )}
                     </div>
                   </div>
                 ))
