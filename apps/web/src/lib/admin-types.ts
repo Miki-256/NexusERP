@@ -286,6 +286,18 @@ export type PlatformFeatureFlag = {
   updated_at: string;
 };
 
+export type OrgFeatureFlagRow = {
+  key: string;
+  label: string;
+  description: string | null;
+  global_enabled: boolean;
+  override_enabled: boolean | null;
+  effective_enabled: boolean;
+  has_override: boolean;
+  note: string | null;
+  updated_at: string;
+};
+
 export type PlatformHealth = {
   generated_at: string;
   table_counts: Record<string, number>;

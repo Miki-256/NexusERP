@@ -43,6 +43,12 @@ Rules:
 - Ending (or expiry) removes/restores the temporary membership
 - Every start/end/expire writes `support.session_*` to platform audit
 
+### Per-tenant module overrides (L5)
+
+Requires migration `00179`.
+
+On **Admin → Organization**, use **Module overrides** to enable/disable modules for one tenant without changing the global flags page. Effective access = org override (if set) → global flag → plan modules. Tenant navigation already filters via `get_org_enabled_app_ids`.
+
 ---
 
 ## 1. Five-minute process-queue cron (GitHub Actions)

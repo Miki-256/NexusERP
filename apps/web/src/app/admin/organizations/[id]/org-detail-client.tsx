@@ -20,6 +20,7 @@ import {
   DataTableRow,
 } from "@/components/layout/data-table";
 import { OrgOpsInspector } from "@/components/admin/org-ops-inspector";
+import { OrgFeatureFlagsPanel } from "@/components/admin/org-feature-flags-panel";
 import { startSupportSession } from "@/app/actions/support-session";
 import { formatAuditAction, type OrgDetail, type OrgPlanUsage, type PlatformPlan } from "@/lib/admin-types";
 import { formatPlanName } from "@/lib/format-plan";
@@ -216,6 +217,8 @@ export function OrgDetailClient({
         canWrite={canWrite}
         embedded
       />
+
+      <OrgFeatureFlagsPanel organizationId={org.id} canWrite={canWrite} />
 
       {planUsage && (
         <FormCard title="Plan & usage" description={`Current plan: ${formatPlanName(planUsage.plan, planUsage.plan_name)}`}>
