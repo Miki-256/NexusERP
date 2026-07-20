@@ -2218,6 +2218,14 @@ export interface Database {
           p_financial_ai_enabled?: boolean | null;
           p_financial_ai_provider?: string | null;
           p_financial_ai_model?: string | null;
+          p_financial_ai_retention_days?: number | null;
+        };
+        Returns: Json;
+      };
+      purge_financial_ai_history: {
+        Args: {
+          p_org_id: string;
+          p_older_than_days?: number | null;
         };
         Returns: Json;
       };

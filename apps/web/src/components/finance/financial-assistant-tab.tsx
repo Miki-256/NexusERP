@@ -12,13 +12,19 @@ import { ReportSection } from "@/components/finance/report-section";
 import { dateRangeForPreset, type DatePreset } from "@/lib/finance-dates";
 import { replaceTenantUrl } from "@/lib/tenant-scroll";
 import type { FinancialShellTab } from "@/lib/finance/financial-shell-config";
-import { Bot, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
+import {
+  conversationExportFilename,
+  downloadTextFile,
+  formatFinancialAiTranscript,
+} from "@/lib/financial-ai/export";
+import { Bot, Copy, Download, Loader2, MessageSquarePlus, Sparkles, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type FinancialAiSettings = {
   financial_ai_enabled: boolean;
   financial_ai_provider: string;
   financial_ai_model: string;
+  financial_ai_retention_days?: number;
   llm_configured_note?: string;
 };
 
@@ -118,6 +124,30 @@ export function FinancialAssistantTab({
   const [busy, setBusy] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
+  const deepLinkOpened = useRef(false);
+
+  const activeTitle =
+    conversations.find((c) => c.id === conversationId)?.title?.trim() || "Financial Q&A";
+
+  function syncConversationQuery(nextId: string | null) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "assistant");
+    if (nextId) params.set("conversation", nextId);
+    else params.delete("conversation");
+    startTransition(() => {
+      replaceTenantUrl(router, pathname, params);
+    });
+  }
+
+  function conversationDeepLink(id: string | null) {
+    if (typeof window === "undefined" || !id) return undefined;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "assistant");
+    params.set("conversation", id);
+    params.set("from", from);
+    params.set("to", to);
+    return `${window.location.origin}${pathname}?${params.toString()}`;
+  }
 
   async function loadConversations() {
     const supabase = createClient();
@@ -143,17 +173,35 @@ export function FinancialAssistantTab({
     setInsights(initialInsights);
   }, [initialInsights]);
 
+  useEffect(() => {
+    setSettings((prev) => ({
+      ...prev,
+      ...initialSettings,
+      financial_ai_retention_days: initialSettings.financial_ai_retention_days ?? prev.financial_ai_retention_days ?? 90,
+    }));
+  }, [initialSettings]);
+
+  useEffect(() => {
+    if (deepLinkOpened.current) return;
+    const id = searchParams.get("conversation");
+    if (!id) return;
+    deepLinkOpened.current = true;
+    void openConversation(id, { skipUrlSync: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open deep link once
+  }, [orgId, searchParams]);
+
   function applyPeriod(nextFrom: string, nextTo: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", "assistant");
     params.set("from", nextFrom);
     params.set("to", nextTo);
+    if (conversationId) params.set("conversation", conversationId);
     startTransition(() => {
       replaceTenantUrl(router, pathname, params);
     });
   }
 
-  async function openConversation(id: string) {
+  async function openConversation(id: string, opts?: { skipUrlSync?: boolean }) {
     if (busy || loadingThread) return;
     setLoadingThread(true);
     const supabase = createClient();
@@ -177,6 +225,9 @@ export function FinancialAssistantTab({
     };
     setConversationId(thread.id);
     setMessages(thread.messages ?? []);
+    if (!opts?.skipUrlSync) {
+      syncConversationQuery(thread.id);
+    }
     if (thread.period_from && thread.period_to && (thread.period_from !== from || thread.period_to !== to)) {
       applyPeriod(thread.period_from, thread.period_to);
     }
@@ -200,6 +251,7 @@ export function FinancialAssistantTab({
     if (conversationId === id) {
       setConversationId(null);
       setMessages([]);
+      syncConversationQuery(null);
     }
     setConversations((prev) => prev.filter((c) => c.id !== id));
     toast({ title: "Chat deleted" });
@@ -215,6 +267,7 @@ export function FinancialAssistantTab({
       p_financial_ai_enabled: settings.financial_ai_enabled,
       p_financial_ai_provider: settings.financial_ai_provider,
       p_financial_ai_model: settings.financial_ai_model,
+      p_financial_ai_retention_days: settings.financial_ai_retention_days ?? 90,
     });
     setBusy(false);
     if (error) {
@@ -224,6 +277,83 @@ export function FinancialAssistantTab({
     setSettings(data as FinancialAiSettings);
     toast({ title: "Assistant settings saved" });
     router.refresh();
+  }
+
+  async function purgeHistory() {
+    if (!canManage) return;
+    const days = settings.financial_ai_retention_days ?? 90;
+    if (days <= 0) {
+      toast({
+        title: "Set retention days first",
+        description: "Retention is unlimited (0). Choose a positive day count, save, then purge.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (
+      !window.confirm(
+        `Delete AI conversations and insights older than ${days} days for this organization?`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("purge_financial_ai_history", {
+      p_org_id: orgId,
+    });
+    setBusy(false);
+    if (error) {
+      toast({ title: "Purge failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    const result = data as {
+      deleted_conversations?: number;
+      deleted_insights?: number;
+    };
+    toast({
+      title: "History purged",
+      description: `Removed ${result.deleted_conversations ?? 0} chats and ${result.deleted_insights ?? 0} insights.`,
+    });
+    void loadConversations();
+    if (conversationId) {
+      setConversationId(null);
+      setMessages([]);
+      syncConversationQuery(null);
+    }
+    router.refresh();
+  }
+
+  function exportConversation() {
+    const md = formatFinancialAiTranscript({
+      title: activeTitle,
+      from,
+      to,
+      messages,
+      deepLink: conversationDeepLink(conversationId),
+    });
+    downloadTextFile(conversationExportFilename(activeTitle, conversationId), md);
+    toast({ title: "Exported markdown transcript" });
+  }
+
+  async function shareConversation() {
+    const md = formatFinancialAiTranscript({
+      title: activeTitle,
+      from,
+      to,
+      messages,
+      deepLink: conversationDeepLink(conversationId),
+    });
+    try {
+      await navigator.clipboard.writeText(md);
+      toast({ title: "Copied transcript + link" });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Clipboard permission denied",
+        variant: "destructive",
+      });
+    }
   }
 
   async function refreshInsights() {
@@ -285,6 +415,7 @@ export function FinancialAssistantTab({
 
       if (json.conversationId) {
         setConversationId(json.conversationId);
+        syncConversationQuery(json.conversationId);
       }
 
       setMessages((prev) => [
@@ -321,6 +452,7 @@ export function FinancialAssistantTab({
   function newConversation() {
     setConversationId(null);
     setMessages([]);
+    syncConversationQuery(null);
   }
 
   const severityClass = (severity: string) => {
@@ -332,7 +464,7 @@ export function FinancialAssistantTab({
   return (
     <div className="space-y-6">
       {canManage && (
-        <ReportSection title="Assistant settings" subtitle="Enable AI Q&A and choose provider">
+        <ReportSection title="Assistant settings" subtitle="Enable AI Q&A, provider, and retention">
           <form onSubmit={saveSettings} className="grid gap-4 md:grid-cols-3">
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -365,11 +497,32 @@ export function FinancialAssistantTab({
                 onChange={(e) => setSettings((s) => ({ ...s, financial_ai_model: e.target.value }))}
               />
             </div>
-            <div className="md:col-span-3">
+            <div>
+              <Label htmlFor="ai-retention">Retention (days)</Label>
+              <Input
+                id="ai-retention"
+                type="number"
+                min={0}
+                max={3650}
+                value={settings.financial_ai_retention_days ?? 90}
+                disabled={busy}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    financial_ai_retention_days: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">0 keeps history forever</p>
+            </div>
+            <div className="md:col-span-3 flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={busy}>
                 Save settings
               </Button>
-              <p className="mt-2 text-sm text-muted-foreground">{settings.llm_configured_note}</p>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => void purgeHistory()}>
+                Purge older than retention
+              </Button>
+              <p className="w-full text-sm text-muted-foreground">{settings.llm_configured_note}</p>
             </div>
           </form>
         </ReportSection>
@@ -415,10 +568,32 @@ export function FinancialAssistantTab({
         title="Ask your finances"
         subtitle="Multi-turn Q&A over live GL, treasury, and aging data for the selected period"
         actions={
-          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={newConversation}>
-            <MessageSquarePlus className="mr-2 h-4 w-4" />
-            New chat
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || messages.length === 0}
+              onClick={exportConversation}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || messages.length === 0}
+              onClick={() => void shareConversation()}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              Copy
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={newConversation}>
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              New chat
+            </Button>
+          </div>
         }
       >
         <div className={cn("mb-4 flex flex-wrap gap-1.5", isPending && "opacity-80")}>

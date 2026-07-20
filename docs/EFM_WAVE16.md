@@ -1,8 +1,9 @@
 # EFM Wave 16 — AI Financial Assistant
 
-**Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase.  
+**Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase; L4 needs `00184`.  
 **L2 (conversation UX):** shipped — multi-turn context, sidebar history, period chips, insight deep-links.  
-**L3 (tool loop):** shipped in app — OpenAI may call read-only finance RPCs before answering (no new migration).
+**L3 (tool loop):** shipped in app — OpenAI may call read-only finance RPCs before answering.  
+**L4 (export / retention):** shipped — markdown export/copy, conversation deep-links, retention days + manager purge.
 
 Wave 16 adds an AI financial assistant: conversational Q&A over live GL/treasury/aging context, rule-based insights, optional OpenAI integration, and conversation history.
 
@@ -111,10 +112,22 @@ When org provider is `openai` and an API key is configured, the chat API runs `c
 
 Internal (non-LLM) answers still use `resolve_financial_ai_question` only.
 
-## Next (L4+)
+## L4 — Export, share, retention
 
-- Export / share conversation
-- Org-level retention / admin purge of AI history
+| Capability | Behavior |
+|------------|----------|
+| Export | Download current thread as markdown (`.md`) |
+| Copy / share | Clipboard transcript includes deep link |
+| Deep link | `/financials?tab=assistant&conversation=<uuid>&from=&to=` |
+| Retention | Org column `financial_ai_retention_days` (default 90; `0` = keep forever) |
+| Purge | Manager RPC `purge_financial_ai_history` deletes old conversations + insights |
+
+Migration: `20260618000184_efm_ai_assistant_l4.sql` (updates `get`/`update_financial_ai_settings`, adds purge).
+
+## Next (L5+)
+
 - Optional write tools behind dual-control (draft JE suggestions only)
+- Scheduled retention job (cron calling purge with org defaults)
+- Shared / team conversations (beyond owner + manager read)
 
 See `docs/EFM_ROADMAP.md`.
