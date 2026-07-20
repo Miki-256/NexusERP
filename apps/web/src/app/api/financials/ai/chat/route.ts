@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { ACTIVE_ORG_COOKIE } from "@/lib/active-org";
 import { getMemberPermissions } from "@/lib/org-context";
 import { clientIp, rateLimitResponse } from "@/lib/rate-limit";
 import { rateLimitDistributed } from "@/lib/rate-limit-distributed";
-import { completeFinancialAiChat, getFinancialAiApiKey } from "@/lib/financial-ai/provider";
+import {
+  completeFinancialAiChatWithTools,
+  getFinancialAiApiKey,
+} from "@/lib/financial-ai/provider";
 
 const chatSchema = z.object({
   orgId: z.string().uuid(),
@@ -69,8 +70,10 @@ export async function POST(request: NextRequest) {
 
   let convId = conversationId;
   if (!convId) {
+    const title = message.trim().slice(0, 72) || "Financial Q&A";
     const { data: created, error: createError } = await supabase.rpc("create_financial_ai_conversation", {
       p_org_id: orgId,
+      p_title: title,
       p_from: from,
       p_to: to,
     });
@@ -89,9 +92,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: userMsgError.message }, { status: 500 });
   }
 
+  /** Prior turns for multi-turn LLM (includes the user message just appended). */
+  let historyForLlm: { role: "user" | "assistant"; content: string }[] = [
+    { role: "user", content: message },
+  ];
+  const { data: thread } = await supabase.rpc("get_financial_ai_conversation", {
+    p_conversation_id: convId,
+  });
+  if (thread && typeof thread === "object") {
+    const msgs = (thread as { messages?: { role?: string; content?: string }[] }).messages ?? [];
+    historyForLlm = msgs
+      .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content as string,
+      }))
+      .slice(-12);
+    if (historyForLlm.length === 0) {
+      historyForLlm = [{ role: "user", content: message }];
+    }
+  }
+
   let answer: string;
   let source: string;
   let context: unknown;
+  let toolsUsed: string[] = [];
 
   const useLlm =
     aiSettings.financial_ai_provider === "openai" && Boolean(getFinancialAiApiKey());
@@ -108,13 +133,18 @@ export async function POST(request: NextRequest) {
     context = ctx;
 
     try {
-      const result = await completeFinancialAiChat({
+      const result = await completeFinancialAiChatWithTools({
         model: aiSettings.financial_ai_model ?? "gpt-4o-mini",
-        messages: [{ role: "user", content: message }],
+        messages: historyForLlm,
         context: ctx,
+        orgId,
+        from,
+        to,
+        supabase,
       });
       answer = result.answer;
       source = result.source;
+      toolsUsed = result.toolsUsed;
     } catch (err) {
       const fallback = await supabase.rpc("resolve_financial_ai_question", {
         p_org_id: orgId,
@@ -151,7 +181,7 @@ export async function POST(request: NextRequest) {
     p_conversation_id: convId,
     p_role: "assistant",
     p_content: answer,
-    p_metadata: { source },
+    p_metadata: { source, tools_used: toolsUsed },
   });
   if (assistantError) {
     return NextResponse.json({ error: assistantError.message }, { status: 500 });
@@ -162,6 +192,7 @@ export async function POST(request: NextRequest) {
     message: assistantMsg,
     answer,
     source,
+    toolsUsed,
     contextAvailable: Boolean(context),
   });
 }

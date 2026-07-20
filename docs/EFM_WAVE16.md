@@ -1,6 +1,8 @@
 # EFM Wave 16 — AI Financial Assistant
 
-**Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase.
+**Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase.  
+**L2 (conversation UX):** shipped — multi-turn context, sidebar history, period chips, insight deep-links.  
+**L3 (tool loop):** shipped in app — OpenAI may call read-only finance RPCs before answering (no new migration).
 
 Wave 16 adds an AI financial assistant: conversational Q&A over live GL/treasury/aging context, rule-based insights, optional OpenAI integration, and conversation history.
 
@@ -75,8 +77,44 @@ npm run typecheck
 - **Financials → Assistant** — chat, suggested prompts, insights panel, manager settings
 - Deep link: `/financials?tab=assistant&from=…&to=…`
 
-## Next
+## L2 — Conversation UX
 
-EFM functional waves 0–17 are code-complete. Extend Fiori shell patterns to other tenant apps as needed.
+| Capability | Behavior |
+|------------|----------|
+| Conversation sidebar | `list_financial_ai_conversations` / `get` / `delete`; reopen prior threads |
+| Multi-turn LLM | Chat API loads last ~12 user/assistant turns via `get_financial_ai_conversation` before calling the provider |
+| Period chips | MTD / Last month / Quarter / YTD in the assistant (updates `from`/`to` query params) |
+| Insight deep-links | `low_margin` / `high_opex_ratio` → P&L; `ar_overdue` → Aging; `negative_cash` → Treasury |
+| New chat titles | First message (trimmed) used as conversation title on create |
+
+## L3 — Read tools + tool loop
+
+When org provider is `openai` and an API key is configured, the chat API runs `completeFinancialAiChatWithTools`:
+
+| Piece | Location | Notes |
+|-------|----------|-------|
+| Tool schemas | `lib/financial-ai/tools.ts` | 8 read-only tools |
+| Executor | same | Calls existing SECURITY DEFINER RPCs under the user session |
+| Loop | `lib/financial-ai/provider.ts` | Max 3 tool rounds, truncated payloads |
+| Metadata | message `tools_used` + API `toolsUsed` | Shown under assistant replies |
+
+| Tool | RPC |
+|------|-----|
+| `get_pnl` | `profit_and_loss` |
+| `get_balance_sheet` | `balance_sheet` |
+| `get_cash_flow` | `cash_flow` |
+| `get_ar_aging` | `accounts_receivable_aging` |
+| `get_ap_aging` | `accounts_payable_aging` |
+| `get_treasury` | `get_treasury_cash_position` |
+| `get_executive_dashboard` | `get_executive_financial_dashboard` |
+| `get_period_snapshot` | `build_financial_ai_context` |
+
+Internal (non-LLM) answers still use `resolve_financial_ai_question` only.
+
+## Next (L4+)
+
+- Export / share conversation
+- Org-level retention / admin purge of AI history
+- Optional write tools behind dual-control (draft JE suggestions only)
 
 See `docs/EFM_ROADMAP.md`.
