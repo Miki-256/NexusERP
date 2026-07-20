@@ -2229,6 +2229,10 @@ export interface Database {
         };
         Returns: Json;
       };
+      run_financial_ai_retention_purge: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
       list_financial_ai_suggested_prompts: {
         Args: { p_org_id: string };
         Returns: Json;

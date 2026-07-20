@@ -3,7 +3,8 @@
 **Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase; L4 needs `00184`.  
 **L2 (conversation UX):** shipped — multi-turn context, sidebar history, period chips, insight deep-links.  
 **L3 (tool loop):** shipped in app — OpenAI may call read-only finance RPCs before answering.  
-**L4 (export / retention):** shipped — markdown export/copy, conversation deep-links, retention days + manager purge.
+**L4 (export / retention):** shipped — markdown export/copy, conversation deep-links, retention days + manager purge.  
+**L5 (scheduled purge):** shipped — `run_financial_ai_retention_purge` via daily process-queue cron (`00185`).
 
 Wave 16 adds an AI financial assistant: conversational Q&A over live GL/treasury/aging context, rule-based insights, optional OpenAI integration, and conversation history.
 
@@ -124,10 +125,19 @@ Internal (non-LLM) answers still use `resolve_financial_ai_question` only.
 
 Migration: `20260618000184_efm_ai_assistant_l4.sql` (updates `get`/`update_financial_ai_settings`, adds purge).
 
-## Next (L5+)
+## L5 — Scheduled retention
+
+| Piece | Notes |
+|-------|-------|
+| RPC | `run_financial_ai_retention_purge()` — service_role only; skips orgs with retention `0` |
+| Cron | Invoked from `runProcessQueue` (daily `/api/webhooks/process-queue`) |
+| Response | `financial_ai_retention` summary on process-queue JSON |
+
+Migration: `20260618000185_efm_ai_assistant_l5_retention_cron.sql`.
+
+## Next (L6+)
 
 - Optional write tools behind dual-control (draft JE suggestions only)
-- Scheduled retention job (cron calling purge with org defaults)
 - Shared / team conversations (beyond owner + manager read)
 
 See `docs/EFM_ROADMAP.md`.

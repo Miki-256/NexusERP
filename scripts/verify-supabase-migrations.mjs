@@ -368,6 +368,7 @@ const CHECKS = [
   { rpc: "resolve_financial_ai_question", migration: "00163", body: { p_org_id: ZERO_UUID, p_question: "revenue", p_from: "2026-01-01", p_to: "2026-01-31" } },
   { rpc: "list_financial_ai_insights", migration: "00163", body: { p_org_id: ZERO_UUID } },
   { rpc: "purge_financial_ai_history", migration: "00184", body: { p_org_id: ZERO_UUID, p_older_than_days: 90 } },
+  { rpc: "run_financial_ai_retention_purge", migration: "00185", body: {} },
   { rpc: "get_financial_shell_preferences", migration: "00165", body: { p_org_id: ZERO_UUID } },
   { rpc: "list_financial_launchpad_tiles", migration: "00165", body: { p_org_id: ZERO_UUID } },
 ];
@@ -490,6 +491,7 @@ const RPC_MIGRATION_FILE = {
   get_financial_ai_settings: "20260618000184_efm_ai_assistant_l4.sql",
   update_financial_ai_settings: "20260618000184_efm_ai_assistant_l4.sql",
   purge_financial_ai_history: "20260618000184_efm_ai_assistant_l4.sql",
+  run_financial_ai_retention_purge: "20260618000185_efm_ai_assistant_l5_retention_cron.sql",
   list_financial_ai_suggested_prompts: "20260618000163_efm_wave16_ai_assistant_rpcs.sql",
   build_financial_ai_context: "20260618000163_efm_wave16_ai_assistant_rpcs.sql",
   resolve_financial_ai_question: "20260618000163_efm_wave16_ai_assistant_rpcs.sql",

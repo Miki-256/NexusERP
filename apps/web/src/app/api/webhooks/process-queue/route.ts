@@ -67,6 +67,7 @@ async function processQueue(request: Request) {
       summaries_refreshed: result.summaries_refreshed,
       db_activity_log_pruned: result.db_activity_log_pruned,
       sales_archived: result.sales_archived,
+      financial_ai_retention: result.financial_ai_retention,
       queue_depth: result.queue_depth,
       stale_rollup_orgs: result.stale_rollup_orgs,
       storage_orphans_removed: result.storage_orphans_removed,
