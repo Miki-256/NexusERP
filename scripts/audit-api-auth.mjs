@@ -63,7 +63,11 @@ for (const { file, route } of routes) {
   }
 
   if (route.startsWith("/api/webhooks/") && route !== "/api/webhooks/whatsapp") {
-    if (!text.includes("verifyInternalSecret") && !text.includes("verifyWhatsAppWebhookSignature")) {
+    if (
+      !text.includes("verifyInternalSecret") &&
+      !text.includes("verifyWhatsAppWebhookSignature") &&
+      !text.includes("verifyArifpayNotifyAuth")
+    ) {
       issues.push(`${rel} (${route}): webhook route missing verifyInternalSecret`);
     }
   }

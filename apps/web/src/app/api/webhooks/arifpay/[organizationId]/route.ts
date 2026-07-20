@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { parseArifpayNotify } from "@/lib/payments/arifpay";
+import { parseArifpayNotify, verifyArifpayNotifyAuth } from "@/lib/payments/arifpay";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,10 @@ function adminClient() {
  * URL embeds organization id: /api/webhooks/arifpay/:organizationId
  */
 export async function POST(request: Request, ctx: Ctx) {
+  if (!verifyArifpayNotifyAuth(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { organizationId } = await ctx.params;
   if (!/^[0-9a-f-]{36}$/i.test(organizationId)) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });

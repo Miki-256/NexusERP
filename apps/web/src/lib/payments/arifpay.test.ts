@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   normalizeEthiopiaPhone,
   parseArifpayNotify,
+  verifyArifpayNotifyAuth,
 } from "@/lib/payments/arifpay";
+
+afterEach(() => {
+  delete process.env.ARIFPAY_WEBHOOK_SECRET;
+});
 
 describe("normalizeEthiopiaPhone", () => {
   it("converts local 09… to 251…", () => {
@@ -45,5 +50,23 @@ describe("parseArifpayNotify", () => {
       paymentStatus: "FAILED",
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("verifyArifpayNotifyAuth", () => {
+  it("accepts matching webhook secret header", () => {
+    process.env.ARIFPAY_WEBHOOK_SECRET = "s3cret";
+    const req = new Request("https://example.com/hook", {
+      headers: { "x-arifpay-webhook-secret": "s3cret" },
+    });
+    expect(verifyArifpayNotifyAuth(req)).toBe(true);
+  });
+
+  it("rejects wrong webhook secret", () => {
+    process.env.ARIFPAY_WEBHOOK_SECRET = "s3cret";
+    const req = new Request("https://example.com/hook", {
+      headers: { "x-arifpay-webhook-secret": "nope" },
+    });
+    expect(verifyArifpayNotifyAuth(req)).toBe(false);
   });
 });

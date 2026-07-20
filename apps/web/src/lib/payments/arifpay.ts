@@ -179,6 +179,28 @@ export type ArifpayNotifyParse = {
   rawStatus: string | null;
 };
 
+/**
+ * Auth for Arifpay → Nexus notify webhooks.
+ * Prefer `ARIFPAY_WEBHOOK_SECRET` (header `x-arifpay-webhook-secret` or `x-webhook-secret`).
+ * Without a secret, only non-production sandbox is allowed.
+ */
+export function verifyArifpayNotifyAuth(request: Request): boolean {
+  const secret = env("ARIFPAY_WEBHOOK_SECRET");
+  if (secret) {
+    const header =
+      request.headers.get("x-arifpay-webhook-secret")?.trim() ||
+      request.headers.get("x-webhook-secret")?.trim() ||
+      "";
+    return header.length > 0 && header === secret;
+  }
+
+  if (process.env.NODE_ENV === "production" && !isArifpaySandbox()) {
+    return false;
+  }
+
+  return isArifpayConfigured();
+}
+
 /** Best-effort parse of Arifpay notify / callback payloads (shapes vary by product version). */
 export function parseArifpayNotify(body: unknown): ArifpayNotifyParse {
   const obj = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;

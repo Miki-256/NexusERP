@@ -32,6 +32,9 @@ ARIFPAY_API_KEY=
 ARIFPAY_BENEFICIARY_ACCOUNT=   # merchant settlement account number
 ARIFPAY_BENEFICIARY_BANK=      # bank code from Arifpay (e.g. AWINETAA)
 
+# Required for production notify auth (send as x-arifpay-webhook-secret)
+ARIFPAY_WEBHOOK_SECRET=
+
 # Defaults
 ARIFPAY_SANDBOX=true           # set false for production
 # ARIFPAY_BASE_URL=https://gateway.arifpay.net/v0
