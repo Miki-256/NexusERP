@@ -2218,6 +2218,33 @@ export interface Database {
           p_financial_ai_enabled?: boolean | null;
           p_financial_ai_provider?: string | null;
           p_financial_ai_model?: string | null;
+          p_financial_ai_retention_days?: number | null;
+        };
+        Returns: Json;
+      };
+      purge_financial_ai_history: {
+        Args: {
+          p_org_id: string;
+          p_older_than_days?: number | null;
+        };
+        Returns: Json;
+      };
+      run_financial_ai_retention_purge: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      set_financial_ai_conversation_visibility: {
+        Args: { p_conversation_id: string; p_visibility: string };
+        Returns: Json;
+      };
+      create_ai_journal_entry_draft: {
+        Args: {
+          p_org_id: string;
+          p_date: string;
+          p_memo: string;
+          p_lines: Json;
+          p_journal_code?: string | null;
+          p_conversation_id?: string | null;
         };
         Returns: Json;
       };
@@ -2261,6 +2288,7 @@ export interface Database {
           p_title?: string | null;
           p_from?: string | null;
           p_to?: string | null;
+          p_visibility?: string | null;
         };
         Returns: Json;
       };

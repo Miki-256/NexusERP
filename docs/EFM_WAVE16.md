@@ -1,6 +1,11 @@
 # EFM Wave 16 — AI Financial Assistant
 
-**Status:** Complete (code) — apply migrations `00162` → `00163` on Supabase.
+**Status:** Complete (code) — Wave 16 base `00162`–`00163`; L4–L6 migrations `00184`–`00186`.  
+**L2 (conversation UX):** shipped — multi-turn context, sidebar history, period chips, insight deep-links.  
+**L3 (tool loop):** shipped in app — OpenAI may call read-only finance RPCs before answering.  
+**L4 (export / retention):** shipped — markdown export/copy, conversation deep-links, retention days + manager purge.  
+**L5 (scheduled purge):** shipped — `run_financial_ai_retention_purge` via daily process-queue cron (`00185`).  
+**L6 (shared + draft JE):** shipped — org-shared conversations; `suggest_draft_journal_entry` → always-draft JE for Wave 14 approval (`00186`).
 
 Wave 16 adds an AI financial assistant: conversational Q&A over live GL/treasury/aging context, rule-based insights, optional OpenAI integration, and conversation history.
 
@@ -75,8 +80,79 @@ npm run typecheck
 - **Financials → Assistant** — chat, suggested prompts, insights panel, manager settings
 - Deep link: `/financials?tab=assistant&from=…&to=…`
 
+## L2 — Conversation UX
+
+| Capability | Behavior |
+|------------|----------|
+| Conversation sidebar | `list_financial_ai_conversations` / `get` / `delete`; reopen prior threads |
+| Multi-turn LLM | Chat API loads last ~12 user/assistant turns via `get_financial_ai_conversation` before calling the provider |
+| Period chips | MTD / Last month / Quarter / YTD in the assistant (updates `from`/`to` query params) |
+| Insight deep-links | `low_margin` / `high_opex_ratio` → P&L; `ar_overdue` → Aging; `negative_cash` → Treasury |
+| New chat titles | First message (trimmed) used as conversation title on create |
+
+## L3 — Read tools + tool loop
+
+When org provider is `openai` and an API key is configured, the chat API runs `completeFinancialAiChatWithTools`:
+
+| Piece | Location | Notes |
+|-------|----------|-------|
+| Tool schemas | `lib/financial-ai/tools.ts` | 8 read-only tools |
+| Executor | same | Calls existing SECURITY DEFINER RPCs under the user session |
+| Loop | `lib/financial-ai/provider.ts` | Max 3 tool rounds, truncated payloads |
+| Metadata | message `tools_used` + API `toolsUsed` | Shown under assistant replies |
+
+| Tool | RPC |
+|------|-----|
+| `get_pnl` | `profit_and_loss` |
+| `get_balance_sheet` | `balance_sheet` |
+| `get_cash_flow` | `cash_flow` |
+| `get_ar_aging` | `accounts_receivable_aging` |
+| `get_ap_aging` | `accounts_payable_aging` |
+| `get_treasury` | `get_treasury_cash_position` |
+| `get_executive_dashboard` | `get_executive_financial_dashboard` |
+| `get_period_snapshot` | `build_financial_ai_context` |
+
+Internal (non-LLM) answers still use `resolve_financial_ai_question` only.
+
+## L4 — Export, share, retention
+
+| Capability | Behavior |
+|------------|----------|
+| Export | Download current thread as markdown (`.md`) |
+| Copy / share | Clipboard transcript includes deep link |
+| Deep link | `/financials?tab=assistant&conversation=<uuid>&from=&to=` |
+| Retention | Org column `financial_ai_retention_days` (default 90; `0` = keep forever) |
+| Purge | Manager RPC `purge_financial_ai_history` deletes old conversations + insights |
+
+Migration: `20260618000184_efm_ai_assistant_l4.sql` (updates `get`/`update_financial_ai_settings`, adds purge).
+
+## L5 — Scheduled retention
+
+| Piece | Notes |
+|-------|-------|
+| RPC | `run_financial_ai_retention_purge()` — service_role only; skips orgs with retention `0` |
+| Cron | Invoked from `runProcessQueue` (daily `/api/webhooks/process-queue`) |
+| Response | `financial_ai_retention` summary on process-queue JSON |
+
+Migration: `20260618000185_efm_ai_assistant_l5_retention_cron.sql`.
+
+## L6 — Shared chats + draft JE suggestions
+
+| Capability | Behavior |
+|------------|----------|
+| Share with org | `visibility` = `private` \| `org`; sidebar lists own + org-shared; members can continue shared threads |
+| `set_financial_ai_conversation_visibility` | Owner toggles share |
+| `get_chart_of_accounts` tool | Slim active COA for drafting |
+| `suggest_draft_journal_entry` tool | Calls `create_ai_journal_entry_draft` — **always** `draft`, `source_type=ai_suggestion` |
+| Approval | Existing Manual JE / Wave 14 `approve_journal_entry` (SoD + dual-control unchanged) |
+
+Migration: `20260618000186_efm_ai_assistant_l6.sql`.
+
+Managers only can create AI drafts (`user_can_manage`). AI never auto-posts.
+
 ## Next
 
-EFM functional waves 0–17 are code-complete. Extend Fiori shell patterns to other tenant apps as needed.
+- Richer draft UX (inline approve from assistant)
+- Multi-user presence on shared threads
 
 See `docs/EFM_ROADMAP.md`.

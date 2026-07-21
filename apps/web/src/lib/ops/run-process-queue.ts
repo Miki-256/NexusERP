@@ -27,6 +27,7 @@ export type ProcessQueueResult = {
   summaries_refreshed: number | null;
   db_activity_log_pruned: number | null;
   sales_archived: number | null;
+  financial_ai_retention: Record<string, unknown> | null;
   queue_depth: { pending?: number; oldest_pending?: string } | null;
   stale_rollup_orgs: number | null;
   storage_orphans_removed: number;
@@ -96,6 +97,7 @@ export async function runProcessQueue(options?: {
       summaries_refreshed: null,
       db_activity_log_pruned: null,
       sales_archived: null,
+      financial_ai_retention: null,
       queue_depth: null,
       stale_rollup_orgs: null,
       storage_orphans_removed: 0,
@@ -157,6 +159,12 @@ export async function runProcessQueue(options?: {
   });
   if (Array.isArray(staleData)) {
     staleRollupOrgs = staleData.length;
+  }
+
+  let financialAiRetention: Record<string, unknown> | null = null;
+  const { data: aiRetentionData } = await admin.rpc("run_financial_ai_retention_purge");
+  if (aiRetentionData && typeof aiRetentionData === "object") {
+    financialAiRetention = aiRetentionData as Record<string, unknown>;
   }
 
   let storageOrphansRemoved = 0;
@@ -261,6 +269,7 @@ export async function runProcessQueue(options?: {
     summaries_refreshed: summariesRefreshed,
     db_activity_log_pruned: prunedLogs,
     sales_archived: salesArchived,
+    financial_ai_retention: financialAiRetention,
     queue_depth: queueDepth,
     stale_rollup_orgs: staleRollupOrgs,
     storage_orphans_removed: storageOrphansRemoved,
