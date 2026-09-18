@@ -464,6 +464,7 @@ export function PurchasingClient({
                           value={l.variantId}
                           onChange={(variantId) => onPickVariant(i, variantId)}
                           placeholder="Search product…"
+                          organizationId={organizationId}
                         />
                         <Input
                           type="number"
