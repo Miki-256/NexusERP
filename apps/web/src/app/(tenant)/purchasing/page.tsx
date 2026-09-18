@@ -93,7 +93,6 @@ export default async function PurchasingPage() {
         balance_due: Math.max(Number(b.amount) - Number(b.amount_paid ?? 0), 0),
       }))}
       variants={[]}
-      productUoms={[]}
       openBills={openBills}
       paymentRuns={(paymentRuns as PaymentRunRow[]) ?? []}
     />

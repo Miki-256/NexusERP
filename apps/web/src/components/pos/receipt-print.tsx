@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { printHtmlDocument } from "@/lib/print-document";
 import { createClient } from "@/lib/supabase/client";
 import { isEscPosEnabled, printEscPosReceipt } from "@/lib/pos/escpos-print";
 import { getPosAutoPrint } from "@/lib/pos/pos-preferences";
+import { DEFAULT_ORG_TIMEZONE, formatOrgDateTimeFull } from "@/lib/finance-dates";
 
 type ReceiptProps = {
   sale: {
@@ -25,6 +27,9 @@ type ReceiptProps = {
     quantity: number;
     unit_price: number;
     line_total: number;
+    tax_amount?: number | null;
+    discount_amount?: number | null;
+    uom_code?: string | null;
   }[];
   payments: {
     method: string;
@@ -44,6 +49,7 @@ type ReceiptProps = {
   pollPaymentStatus?: boolean;
   autoPrint?: boolean;
   registerId?: string;
+  timeZone?: string;
   onPaymentsUpdate?: (payments: ReceiptProps["payments"]) => void;
 };
 
@@ -60,12 +66,21 @@ export function ReceiptPrint({
   pollPaymentStatus = false,
   autoPrint = false,
   registerId,
+  timeZone = DEFAULT_ORG_TIMEZONE,
   onPaymentsUpdate,
 }: ReceiptProps) {
+  const t = useTranslations("pos");
   const [escposMsg, setEscposMsg] = useState<string | null>(null);
   const [livePayments, setLivePayments] = useState(payments);
   const receiptRef = useRef<HTMLDivElement>(null);
   const autoPrintedRef = useRef(false);
+
+  function lineExTax(line: ReceiptProps["lines"][number]): number {
+    const tax = Number(line.tax_amount ?? 0);
+    if (tax > 0) return Math.round((Number(line.line_total) - tax) * 100) / 100;
+    const disc = Number(line.discount_amount ?? 0);
+    return Math.round((Number(line.unit_price) * Number(line.quantity) - disc) * 100) / 100;
+  }
 
   useEffect(() => {
     setLivePayments(payments);
@@ -92,7 +107,7 @@ export function ReceiptPrint({
     }, 5000);
 
     return () => clearInterval(id);
-  }, [pollPaymentStatus, saleId, sessionToken]);
+  }, [pollPaymentStatus, saleId, sessionToken, onPaymentsUpdate]);
 
   useEffect(() => {
     if (!isEscPosEnabled()) return;
@@ -102,6 +117,7 @@ export function ReceiptPrint({
       currency,
       receiptNo: sale.receipt_no,
       createdAt: sale.created_at,
+      timeZone,
       lines,
       subtotal: sale.subtotal,
       tax: sale.tax_amount,
@@ -115,14 +131,14 @@ export function ReceiptPrint({
       })),
       footer,
     }).then((r) => {
-      if (!r.ok) setEscposMsg(r.message ?? "ESC/POS print failed");
+      if (!r.ok) setEscposMsg(r.message ?? t("escPosPrintFailed"));
     });
-  }, [sale, lines, payments, orgName, storeName, currency, footer]);
+  }, [sale, lines, payments, orgName, storeName, currency, footer, t, timeZone]);
 
   function handlePrint() {
     const html = receiptRef.current?.innerHTML;
     if (html) {
-      printHtmlDocument(`Receipt ${sale.receipt_no}`, html);
+      printHtmlDocument(t("receiptDocTitle", { number: sale.receipt_no }), html);
       return;
     }
     window.print();
@@ -141,7 +157,7 @@ export function ReceiptPrint({
   return (
     <div>
       <Button onClick={handlePrint} className="no-print mb-4">
-        Print receipt
+        {t("printReceipt")}
       </Button>
       {escposMsg && (
         <p className="no-print mb-2 text-xs text-amber-700">{escposMsg}</p>
@@ -153,12 +169,12 @@ export function ReceiptPrint({
         <p className="text-center font-bold">{orgName}</p>
         <p className="text-center">{storeName}</p>
         <p className="text-center text-[10px]">
-          {new Date(sale.created_at).toLocaleString()}
+          {formatOrgDateTimeFull(sale.created_at, timeZone)}
         </p>
         <p className="text-center">#{sale.receipt_no}</p>
         {sale.status === "pending_sync" && (
           <p className="mt-1 text-center text-[10px] font-semibold text-amber-700">
-            Pending sync — will update when online
+            {t("pendingSyncNote")}
           </p>
         )}
         <hr className="my-2 border-dashed border-black" />
@@ -171,36 +187,38 @@ export function ReceiptPrint({
                   ? ` (${line.variant_name})`
                   : ""}
               </span>
-              <span>{formatCurrency(line.line_total, currency)}</span>
+              <span>{formatCurrency(lineExTax(line), currency)}</span>
             </div>
             <div className="text-[10px] text-gray-600">
-              {line.quantity} × {formatCurrency(line.unit_price, currency)}
+              {line.quantity}
+              {line.uom_code ? ` ${line.uom_code}` : ""} ×{" "}
+              {formatCurrency(line.unit_price, currency)}
             </div>
           </div>
         ))}
         <hr className="my-2 border-dashed border-black" />
         <div className="flex justify-between">
-          <span>Subtotal</span>
+          <span>{t("subtotal")}</span>
           <span>{formatCurrency(sale.subtotal, currency)}</span>
         </div>
         <div className="flex justify-between">
-          <span>Tax</span>
+          <span>{t("tax")}</span>
           <span>{formatCurrency(sale.tax_amount, currency)}</span>
         </div>
         {sale.discount_amount > 0 && (
           <div className="flex justify-between">
-            <span>Discount</span>
+            <span>{t("discount")}</span>
             <span>-{formatCurrency(sale.discount_amount, currency)}</span>
           </div>
         )}
         {(sale.tip_amount ?? 0) > 0 && (
           <div className="flex justify-between">
-            <span>Tip</span>
+            <span>{t("tip")}</span>
             <span>{formatCurrency(sale.tip_amount!, currency)}</span>
           </div>
         )}
         <div className="flex justify-between font-bold">
-          <span>TOTAL</span>
+          <span>{t("totalUpper")}</span>
           <span>{formatCurrency(sale.total, currency)}</span>
         </div>
         <hr className="my-2 border-dashed border-black" />
@@ -214,18 +232,18 @@ export function ReceiptPrint({
               <span>{formatCurrency(p.amount, currency)}</span>
             </div>
             {p.method === "mobile_money" && p.status === "pending" && !p.webhook_confirmed_at && (
-              <p className="text-[10px] text-amber-700">Awaiting provider confirmation</p>
+              <p className="text-[10px] text-amber-700">{t("awaitingProviderConfirmation")}</p>
             )}
             {p.webhook_confirmed_at && (
               <p className="text-[10px] text-emerald-700">
-                Confirmed {new Date(p.webhook_confirmed_at).toLocaleTimeString()}
+                {t("confirmedAt", { time: new Date(p.webhook_confirmed_at).toLocaleTimeString() })}
               </p>
             )}
           </div>
         ))}
         {livePayments.some((p) => p.change_given) && (
           <div className="flex justify-between">
-            <span>Change</span>
+            <span>{t("changeLabel")}</span>
             <span>
               {formatCurrency(
                 livePayments.find((p) => p.change_given)?.change_given ?? 0,
@@ -237,7 +255,7 @@ export function ReceiptPrint({
         {footer && (
           <p className="mt-4 text-center text-[10px]">{footer}</p>
         )}
-        <p className="mt-2 text-center text-[10px]">Thank you!</p>
+        <p className="mt-2 text-center text-[10px]">{t("thankYou")}</p>
       </div>
     </div>
   );
