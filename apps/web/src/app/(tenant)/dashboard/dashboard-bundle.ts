@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   calendarDateInTimeZone,
-  monthToDate,
+  monthToDateInTimeZone,
   utcDayRangeForCalendarDate,
 } from "@/lib/finance-dates";
+import { fetchPostedGlMtdPnl } from "@/lib/finance/posted-gl-mtd";
 
 export type DashboardBundle = {
   today_stats?: Record<string, number>;
@@ -47,6 +48,7 @@ function normalizeTodayStats(raw: Record<string, unknown> | null | undefined): R
     cash_total: asNumber(raw?.cash_total),
     mobile_total: asNumber(raw?.mobile_total),
     bank_total: asNumber(raw?.bank_total),
+    tips_total: asNumber(raw?.tips_total),
   };
 }
 
@@ -67,25 +69,46 @@ async function fetchTodayStatsLive(
   const ymd = calendarDateInTimeZone(new Date(), timeZone);
   const { from, to } = utcDayRangeForCalendarDate(ymd, timeZone);
 
-  const [salesRes, paymentsRes] = await Promise.all([
+  const { data: liveRaw } = await supabase.rpc("dashboard_today_stats_live", {
+    p_organization_id: orgId,
+    p_from: from,
+    p_to: to,
+  });
+
+  const live = (liveRaw ?? null) as Record<string, number> | null;
+  if (live && (asNumber(live.sales_total) > 0 || asNumber(live.transaction_count) > 0)) {
+    return {
+      sales_total: asNumber(live.sales_total),
+      tips_total: asNumber(live.tips_total),
+      transaction_count: asNumber(live.transaction_count),
+      cash_total: asNumber(live.cash_total),
+      mobile_total: asNumber(live.mobile_total),
+      bank_total: asNumber(live.bank_total),
+    };
+  }
+
+  // Fallback if aggregate RPC not yet applied
+  const [salesFallback, paymentsFallback] = await Promise.all([
     supabase
       .from("sales")
-      .select("total")
+      .select("total, tip_amount")
       .eq("organization_id", orgId)
       .eq("status", "completed")
       .gte("created_at", from)
-      .lte("created_at", to),
+      .lte("created_at", to)
+      .limit(5000),
     supabase
       .from("payments")
       .select("amount, method, sales!inner(status)")
       .eq("organization_id", orgId)
       .eq("sales.status", "completed")
       .gte("created_at", from)
-      .lte("created_at", to),
+      .lte("created_at", to)
+      .limit(5000),
   ]);
 
-  const sales = salesRes.data ?? [];
-  const payments = paymentsRes.data ?? [];
+  const sales = salesFallback.data ?? [];
+  const payments = paymentsFallback.data ?? [];
 
   let cash = 0;
   let mobile = 0;
@@ -99,6 +122,7 @@ async function fetchTodayStatsLive(
 
   return {
     sales_total: sales.reduce((sum, row) => sum + asNumber(row.total), 0),
+    tips_total: sales.reduce((sum, row) => sum + asNumber(row.tip_amount), 0),
     transaction_count: sales.length,
     cash_total: cash,
     mobile_total: mobile,
@@ -148,7 +172,7 @@ export async function loadDashboardBundle(
   }
 
   const bundle = (data ?? {}) as DashboardBundle;
-  const mtd = monthToDate();
+  const mtd = monthToDateInTimeZone(timeZone);
 
   bundle.today_stats = await resolveTodayStats(
     supabase,
@@ -171,11 +195,14 @@ export async function loadDashboardBundle(
   }
 
   if (options.includeAccounting && !bundle.mtd_pnl) {
-    const { data: pnl } = await supabase.rpc("profit_and_loss", {
-      p_org_id: orgId,
-      p_from: bundle.mtd_from,
-      p_to: bundle.mtd_to,
+    const { from, to, pnl } = await fetchPostedGlMtdPnl(supabase, {
+      orgId,
+      timeZone,
+      from: bundle.mtd_from,
+      to: bundle.mtd_to,
     });
+    bundle.mtd_from = from;
+    bundle.mtd_to = to;
     bundle.mtd_pnl = (pnl ?? {}) as DashboardBundle["mtd_pnl"];
   }
 

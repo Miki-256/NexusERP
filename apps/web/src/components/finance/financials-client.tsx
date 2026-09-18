@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { formatPeriod } from "@/lib/finance-dates";
 import { createClient } from "@/lib/supabase/client";
+import { useLocale, useTranslations } from "next-intl";
+import { localeToBcp47, type AppLocale } from "@/i18n/config";
 import {
   getTenantMainElement,
   refreshPreservingTenantScroll,
@@ -17,6 +19,7 @@ import { StatCard } from "@/components/layout/stat-card";
 import { DateRangeToolbar } from "@/components/finance/date-range-toolbar";
 import { ExportCsvButton } from "@/components/finance/export-csv-button";
 import { LedgerEntriesTab } from "@/components/finance/ledger-entries-tab";
+import { TransactionFlowTab } from "@/components/finance/transaction-flow-tab";
 import { ChartOfAccountsTab, type AccountRow } from "@/components/finance/chart-of-accounts-tab";
 import { ManualJournalTab, type JournalDraft } from "@/components/finance/manual-journal-tab";
 import { OpeningBalanceWizard } from "@/components/finance/opening-balance-wizard";
@@ -106,7 +109,7 @@ import {
   FinanceDonutChart,
   PnlWaterfallChart,
   TrendAreaChart,
-} from "@/components/charts/finance-charts";
+} from "@/components/charts/finance-charts-lazy";
 import {
   DataTable,
   DataTableBody,
@@ -190,6 +193,8 @@ export function FinancialsClient({
   pnlMode,
   canPostLedger,
   unpostedCount: initialUnpostedCount,
+  posAutoPostSales = false,
+  periodTips = 0,
   accounts,
   journals,
   arAging,
@@ -276,6 +281,8 @@ export function FinancialsClient({
   pnlMode: "operational" | "gl";
   canPostLedger: boolean;
   unpostedCount: number;
+  posAutoPostSales?: boolean;
+  periodTips?: number;
   accounts: AccountRow[];
   journals: { id: string; code: string; name: string }[];
   arAging: ArAging;
@@ -363,6 +370,9 @@ export function FinancialsClient({
   paymentMix: { name: string; value: number }[];
   expenseByCategory: { name: string; value: number }[];
 }) {
+  const t = useTranslations("finance");
+  const tCommon = useTranslations("common");
+  const locale = useLocale() as AppLocale;
   const defaultTab: Tab = shellPreferences.show_launchpad ? "home" : "overview";
   const resolvedInitialTab =
     initialTab && isFinancialShellTab(initialTab) ? initialTab : defaultTab;
@@ -379,9 +389,17 @@ export function FinancialsClient({
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
-  const money = (n: number | undefined) => formatCurrency(n ?? 0, currency);
+  const money = (n: number | undefined) => formatCurrency(n ?? 0, currency, localeToBcp47(locale));
   const period = formatPeriod(from, to);
   const compact = shellPrefs.density === "compact";
+
+  // Presentation: default compact density under lg until the user toggles.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.innerWidth < 1024) {
+      setShellPrefs((p) => (p.density === "compact" ? p : { ...p, density: "compact" }));
+    }
+  }, []);
 
   function navigateShell(nextArea: FinancialShellAreaId, nextTab: Tab, refetchArea = false) {
     const main = getTenantMainElement();
@@ -391,8 +409,7 @@ export function FinancialsClient({
     const params = new URLSearchParams(window.location.search);
     params.set("from", from);
     params.set("to", to);
-    if (pnlMode === "gl") params.set("pnl", "gl");
-    else params.delete("pnl");
+    params.set("pnl", pnlMode === "operational" ? "operational" : "gl");
     params.set("tab", nextTab);
     params.set("area", nextArea);
 
@@ -430,8 +447,8 @@ export function FinancialsClient({
     const params = new URLSearchParams(window.location.search);
     params.set("from", from);
     params.set("to", to);
-    if (mode === "gl") params.set("pnl", "gl");
-    else params.delete("pnl");
+    // Always persist mode: hub default is GL; omitting pnl must not flip to operational.
+    params.set("pnl", mode);
     replaceTenantUrl(router, pathname, params);
   }
 
@@ -445,7 +462,7 @@ export function FinancialsClient({
     });
     setPosting(false);
     if (error) {
-      toast({ title: "Posting failed", description: error.message, variant: "destructive" });
+      toast({ title: t("postFailed"), description: error.message, variant: "destructive" });
       return;
     }
     const result = data as {
@@ -459,24 +476,19 @@ export function FinancialsClient({
     const firstError = result?.first_error?.trim() || null;
     setUnpostedCount(remaining);
     toast({
-      title: posted > 0 ? `Posted ${posted} sale${posted === 1 ? "" : "s"} to ledger` : "No sales posted",
+      title: posted > 0 ? t("postedToast", { count: posted }) : t("noSalesPosted"),
       description:
         posted === 0 && firstError
           ? firstError
           : remaining > 0
-            ? `${remaining} completed sale${remaining === 1 ? "" : "s"} still waiting to post.${
-                firstError ? ` ${firstError}` : ""
-              }`
-            : "All eligible sales are on the ledger.",
+            ? `${t("remainingWaiting", { count: remaining })}${firstError ? ` ${firstError}` : ""}`
+            : t("allSalesPosted"),
       variant: posted === 0 ? "destructive" : undefined,
     });
     if (posted > 0) refreshPreservingTenantScroll(router);
   }
 
-  const pnlModeLabel =
-    pnlMode === "gl"
-      ? "General ledger (posted journal entries)"
-      : "Operational (sales rollups + expenses)";
+  const pnlModeLabel = pnlMode === "gl" ? t("pnlModeGl") : t("pnlModeOperational");
 
   const PnlModeToggle = (
     <div className="flex flex-wrap items-center gap-2">
@@ -486,7 +498,7 @@ export function FinancialsClient({
         variant={pnlMode === "operational" ? "default" : "outline"}
         onClick={() => setPnlMode("operational")}
       >
-        Operational
+        {t("operational")}
       </Button>
       <Button
         type="button"
@@ -494,7 +506,7 @@ export function FinancialsClient({
         variant={pnlMode === "gl" ? "default" : "outline"}
         onClick={() => setPnlMode("gl")}
       >
-        GL only
+        {t("glOnly")}
       </Button>
     </div>
   );
@@ -503,13 +515,17 @@ export function FinancialsClient({
   const totalCredits = useMemo(() => trial.reduce((s, r) => s + Number(r.credit), 0), [trial]);
 
   const pnlRows = [
-    { label: "Revenue", value: money(pnl.revenue), bold: true },
-    { label: "Cost of Goods Sold", value: `(${money(pnl.cogs)})`, indent: true },
-    { label: "Gross Profit", value: money(pnl.gross_profit), bold: true, border: true },
-    { label: "Operating Expenses", value: `(${money(pnl.operating_expenses)})`, indent: true },
-    { label: "Net Profit", value: money(pnl.net_profit), bold: true, border: true },
+    { label: tCommon("revenue"), value: money(pnl.revenue), bold: true },
+    { label: t("costOfGoodsSold"), value: `(${money(pnl.cogs)})`, indent: true },
+    { label: tCommon("grossProfit"), value: money(pnl.gross_profit), bold: true, border: true },
     {
-      label: "Tax collected (liability, not revenue)",
+      label: tCommon("operatingExpenses"),
+      value: `(${money(pnl.operating_expenses)})`,
+      indent: true,
+    },
+    { label: tCommon("netProfit"), value: money(pnl.net_profit), bold: true, border: true },
+    {
+      label: t("taxCollectedNote"),
       value: money(pnl.tax_collected),
       muted: true,
     },
@@ -517,21 +533,21 @@ export function FinancialsClient({
 
   const pnlComparativeRows = [
     {
-      label: "Revenue",
+      label: tCommon("revenue"),
       current: money(pnl.revenue),
       prior: money(pnlPrior.revenue),
       variance: money(pnlVariance.revenue ?? 0),
       bold: true,
     },
     {
-      label: "Cost of Goods Sold",
+      label: t("costOfGoodsSold"),
       current: `(${money(pnl.cogs)})`,
       prior: `(${money(pnlPrior.cogs)})`,
       variance: money(pnlVariance.cogs ?? 0),
       indent: true,
     },
     {
-      label: "Gross Profit",
+      label: tCommon("grossProfit"),
       current: money(pnl.gross_profit),
       prior: money(pnlPrior.gross_profit),
       variance: money(pnlVariance.gross_profit ?? 0),
@@ -539,14 +555,14 @@ export function FinancialsClient({
       border: true,
     },
     {
-      label: "Operating Expenses",
+      label: tCommon("operatingExpenses"),
       current: `(${money(pnl.operating_expenses)})`,
       prior: `(${money(pnlPrior.operating_expenses)})`,
       variance: money(pnlVariance.operating_expenses ?? 0),
       indent: true,
     },
     {
-      label: "Net Profit",
+      label: tCommon("netProfit"),
       current: money(pnl.net_profit),
       prior: money(pnlPrior.net_profit),
       variance: money(pnlVariance.net_profit ?? 0),
@@ -557,7 +573,7 @@ export function FinancialsClient({
 
   const bsComparativeRows = [
     {
-      label: "Total Assets",
+      label: t("totalAssets"),
       current: money(bs?.total_assets),
       prior: money(bsPrior?.total_assets),
       variance: money(bsVariance.total_assets ?? 0),
@@ -565,7 +581,7 @@ export function FinancialsClient({
       border: true,
     },
     {
-      label: "Total Liabilities",
+      label: t("totalLiabilities"),
       current: money(bs?.total_liabilities),
       prior: money(bsPrior?.total_liabilities),
       variance: money(bsVariance.total_liabilities ?? 0),
@@ -573,7 +589,7 @@ export function FinancialsClient({
       border: true,
     },
     {
-      label: "Total Equity",
+      label: t("totalEquity"),
       current: money(bs?.total_equity),
       prior: money(bsPrior?.total_equity),
       variance: money(bsVariance.total_equity ?? 0),
@@ -583,30 +599,30 @@ export function FinancialsClient({
   ];
 
   const bsRows = [
-    { label: "Assets", section: true as const },
+    { label: tCommon("assets"), section: true as const },
     ...(bs?.assets ?? []).map((l) => ({
       label: l.name,
       value: money(l.amount),
       indent: true,
     })),
-    { label: "Total Assets", value: money(bs?.total_assets), bold: true, border: true },
-    { label: "Liabilities", section: true as const },
+    { label: t("totalAssets"), value: money(bs?.total_assets), bold: true, border: true },
+    { label: tCommon("liabilities"), section: true as const },
     ...(bs?.liabilities ?? []).map((l) => ({
       label: l.name,
       value: money(l.amount),
       indent: true,
     })),
-    { label: "Total Liabilities", value: money(bs?.total_liabilities), bold: true, border: true },
-    { label: "Equity", section: true as const },
+    { label: t("totalLiabilities"), value: money(bs?.total_liabilities), bold: true, border: true },
+    { label: tCommon("equity"), section: true as const },
     ...(bs?.equity ?? []).map((l) => ({
       label: l.name,
       value: money(l.amount),
       indent: true,
     })),
-    { label: "Current Earnings", value: money(bs?.current_earnings), indent: true },
-    { label: "Total Equity", value: money(bs?.total_equity), bold: true, border: true },
+    { label: t("currentEarnings"), value: money(bs?.current_earnings), indent: true },
+    { label: t("totalEquity"), value: money(bs?.total_equity), bold: true, border: true },
     {
-      label: "Liabilities + Equity",
+      label: t("liabilitiesPlusEquity"),
       value: money(bs?.total_liabilities_and_equity),
       bold: true,
       border: true,
@@ -614,12 +630,14 @@ export function FinancialsClient({
   ];
 
   const cfRows = [
-    { label: "Opening Cash", value: money(cf?.opening_cash) },
-    { label: "Cash Inflows", value: money(cf?.inflows), indent: true },
-    { label: "Cash Outflows", value: `(${money(cf?.outflows)})`, indent: true },
-    { label: "Net Change", value: money(cf?.net_change), bold: true, border: true },
-    { label: "Closing Cash", value: money(cf?.closing_cash), bold: true, border: true },
-    ...((cf?.by_source?.length ?? 0) > 0 ? [{ label: "By source", section: true as const }] : []),
+    { label: t("openingCash"), value: money(cf?.opening_cash) },
+    { label: t("cashInflows"), value: money(cf?.inflows), indent: true },
+    { label: t("cashOutflows"), value: `(${money(cf?.outflows)})`, indent: true },
+    { label: t("netChange"), value: money(cf?.net_change), bold: true, border: true },
+    { label: t("closingCash"), value: money(cf?.closing_cash), bold: true, border: true },
+    ...((cf?.by_source?.length ?? 0) > 0
+      ? [{ label: t("bySource"), section: true as const }]
+      : []),
     ...(cf?.by_source ?? []).map((s) => ({
       label: s.source,
       value: money(s.net),
@@ -631,27 +649,27 @@ export function FinancialsClient({
     <div className={cn(PAGE_SHELL, compact && "financial-shell-compact space-y-4")}>
       <PageHeader
         breadcrumb={<FinancialShellBreadcrumb area={area} tab={tab} />}
-        title="Financial Management"
-        description={`Enterprise financial hub · ${period} · ${currency}`}
+        title={t("pageTitle")}
+        description={t("pageDescription", { period, currency })}
         action={
           <Button type="button" size="sm" variant="outline" onClick={() => void toggleDensity()}>
-            {compact ? "Cozy density" : "Compact density"}
+            {compact ? t("cozyDensity") : t("compactDensity")}
           </Button>
         }
       />
 
-      <DateRangeToolbar from={from} to={to} className="rounded-xl border border-border/60 bg-muted/20 p-4" />
+      <DateRangeToolbar from={from} to={to} timeZone={orgTimezone} className="rounded-lg border border-border/60 bg-muted/20 p-2.5 sm:p-3" />
 
       {canPostLedger && unpostedCount > 0 && (
-        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="flex gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
             <div>
               <p className="font-medium text-amber-950">
-                {unpostedCount} completed sale{unpostedCount === 1 ? "" : "s"} not on the ledger
+                {t("unpostedTitle", { count: unpostedCount })}
               </p>
               <p className="mt-1 text-sm text-amber-900/80">
-                Post sales to sync the general ledger with POS activity, or enable auto-post in Settings.
+                {posAutoPostSales ? t("unpostedAutoPostHint") : t("unpostedManualHint")}
               </p>
             </div>
           </div>
@@ -659,12 +677,12 @@ export function FinancialsClient({
             {posting ? (
               <>
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                Posting…
+                {t("posting")}
               </>
             ) : (
               <>
                 <BookOpen className="mr-1.5 h-4 w-4" />
-                Post {unpostedCount} to ledger
+                {t("postToLedger", { count: unpostedCount })}
               </>
             )}
           </Button>
@@ -686,13 +704,21 @@ export function FinancialsClient({
           onSelectTab={(nextTab) => navigateShell(areaForTab(nextTab), nextTab)}
           compact={compact}
           kpis={[
-            { label: "Revenue", value: money(pnl.revenue), sub: `${pnl.gross_margin_pct ?? 0}% gross margin` },
-            { label: "Net profit", value: money(pnl.net_profit), sub: `${pnl.net_margin_pct ?? 0}% net margin` },
-            { label: "Closing cash", value: money(cf?.closing_cash) },
             {
-              label: "Ledger",
-              value: bs?.balanced ? "Balanced" : "Review",
-              sub: bs?.balanced ? "Trial balance OK" : "Out of balance",
+              label: tCommon("revenue"),
+              value: money(pnl.revenue),
+              sub: tCommon("grossMarginPct", { pct: pnl.gross_margin_pct ?? 0 }),
+            },
+            {
+              label: tCommon("netProfit"),
+              value: money(pnl.net_profit),
+              sub: tCommon("netMarginPct", { pct: pnl.net_margin_pct ?? 0 }),
+            },
+            { label: t("closingCash"), value: money(cf?.closing_cash) },
+            {
+              label: t("tabs.ledger"),
+              value: bs?.balanced ? t("balanced") : t("review"),
+              sub: bs?.balanced ? t("trialBalanceOk") : t("outOfBalance"),
             },
           ]}
         />
@@ -710,61 +736,67 @@ export function FinancialsClient({
       )}
 
       {tab === "overview" && (
-        <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <StatCard
-              label="Revenue"
+              label={tCommon("revenue")}
               value={money(pnl.revenue)}
-              sub={`${pnl.gross_margin_pct ?? 0}% gross margin`}
+              sub={tCommon("grossMarginPct", { pct: pnl.gross_margin_pct ?? 0 })}
               icon={DollarSign}
             />
             <StatCard
-              label="Gross Profit"
+              label={tCommon("grossProfit")}
               value={money(pnl.gross_profit)}
               icon={TrendingUp}
               highlight={(pnl.gross_profit ?? 0) >= 0 ? "positive" : "negative"}
             />
             <StatCard
-              label="Operating Expenses"
+              label={tCommon("operatingExpenses")}
               value={money(pnl.operating_expenses)}
               icon={TrendingDown}
             />
             <StatCard
-              label="Net Profit"
+              label={tCommon("netProfit")}
               value={money(pnl.net_profit)}
-              sub={`${pnl.net_margin_pct ?? 0}% net margin`}
+              sub={tCommon("netMarginPct", { pct: pnl.net_margin_pct ?? 0 })}
               icon={Landmark}
               highlight={(pnl.net_profit ?? 0) >= 0 ? "positive" : "negative"}
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="Total Assets" value={money(bs?.total_assets)} icon={Wallet} />
-            <StatCard label="Closing Cash" value={money(cf?.closing_cash)} icon={ArrowUpRight} />
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            <StatCard label={t("totalAssets")} value={money(bs?.total_assets)} icon={Wallet} />
+            <StatCard label={t("closingCash")} value={money(cf?.closing_cash)} icon={ArrowUpRight} />
             <StatCard
-              label="Ledger Balance"
-              value={bs?.balanced ? "Balanced" : "Out of balance"}
-              sub={`Debits ${money(totalDebits)} · Credits ${money(totalCredits)}`}
+              label={t("overviewTips")}
+              value={money(periodTips)}
+              sub={t("tipPayable")}
+              icon={DollarSign}
+            />
+            <StatCard
+              label={t("ledgerBalance")}
+              value={bs?.balanced ? t("balanced") : t("outOfBalance")}
+              sub={t("debitsCredits", { debits: money(totalDebits), credits: money(totalCredits) })}
               icon={Scale}
               highlight={bs?.balanced ? "positive" : "negative"}
             />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ChartCard title="Revenue vs expenses" subtitle={`Daily trend · ${period}`}>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartCard title={t("revenueVsExpenses")} subtitle={t("dailyTrendPeriod", { period })}>
               <DualMetricChart data={dailyTrend} formatValue={money} />
             </ChartCard>
-            <ChartCard title="Payment method mix" subtitle="Collections in period">
+            <ChartCard title={t("paymentMethodMix")} subtitle={t("collectionsInPeriod")}>
               {paymentMix.length > 0 ? (
                 <FinanceDonutChart data={paymentMix.slice(0, 6)} formatValue={money} />
               ) : (
-                <p className="py-16 text-center text-sm text-muted-foreground">No payments in this period.</p>
+                <p className="py-16 text-center text-sm text-muted-foreground">{t("noPaymentsPeriod")}</p>
               )}
             </ChartCard>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <ChartCard title="P&L composition" subtitle="Waterfall view" className="lg:col-span-2">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <ChartCard title={t("pnlComposition")} subtitle={t("waterfallView")} className="lg:col-span-2">
               <PnlWaterfallChart
                 revenue={pnl.revenue ?? 0}
                 cogs={pnl.cogs ?? 0}
@@ -773,47 +805,51 @@ export function FinancialsClient({
                 formatValue={money}
               />
             </ChartCard>
-            <ChartCard title="Expenses by category" subtitle="Operating spend">
+            <ChartCard title={t("expensesByCategory")} subtitle={t("operatingSpend")}>
               {expenseByCategory.length > 0 ? (
                 <FinanceDonutChart data={expenseByCategory.slice(0, 6)} formatValue={money} innerRadius={48} />
               ) : (
-                <p className="py-16 text-center text-sm text-muted-foreground">No expenses recorded.</p>
+                <p className="py-16 text-center text-sm text-muted-foreground">{t("noExpensesRecorded")}</p>
               )}
             </ChartCard>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
           <ReportSection
-            title="Profit & Loss"
+            title={t("profitAndLoss")}
             subtitle={`${pnlModeLabel} · ${period}`}
             actions={PnlModeToggle}
           >
             <StatementTable rows={pnlRows} />
           </ReportSection>
 
-          <ReportSection title="Cash Flow Summary" subtitle={period}>
+          <ReportSection title={t("cashFlowSummary")} subtitle={period}>
             <StatementTable rows={cfRows.slice(0, 5)} />
           </ReportSection>
 
-          <ReportSection title="Balance Sheet Snapshot" subtitle={`As of ${to}`} className="lg:col-span-2">
-            <div className="grid gap-6 md:grid-cols-3">
+          <ReportSection
+            title={t("balanceSheetSnapshot")}
+            subtitle={t("asOf", { date: to })}
+            className="lg:col-span-2"
+          >
+            <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Assets</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground">{tCommon("assets")}</p>
                 <p className="mt-2 text-2xl font-semibold tabular-nums">{money(bs?.total_assets)}</p>
               </div>
               <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Liabilities</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground">{tCommon("liabilities")}</p>
                 <p className="mt-2 text-2xl font-semibold tabular-nums">{money(bs?.total_liabilities)}</p>
               </div>
               <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Equity</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground">{tCommon("equity")}</p>
                 <p className="mt-2 text-2xl font-semibold tabular-nums">{money(bs?.total_equity)}</p>
               </div>
             </div>
             {bs && !bs.balanced && (
               <p className="mt-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                Ledger is not balanced. Post historical sales and expenses, or review journal entries.
+                {t("ledgerNotBalanced")}
               </p>
             )}
           </ReportSection>
@@ -822,8 +858,8 @@ export function FinancialsClient({
       )}
 
       {tab === "pnl" && (
-        <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Profit waterfall" subtitle={period}>
               <PnlWaterfallChart
                 revenue={pnl.revenue ?? 0}
@@ -889,7 +925,7 @@ export function FinancialsClient({
               priorLabel={pnlPriorLabel}
             />
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-lg border p-4">
               <p className="text-sm text-muted-foreground">Gross margin</p>
               <p className="text-xl font-semibold tabular-nums">{pnl.gross_margin_pct ?? 0}%</p>
@@ -904,8 +940,8 @@ export function FinancialsClient({
       )}
 
       {tab === "balance" && (
-        <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Balance sheet composition" subtitle={`As of ${to}`}>
               <FinanceDonutChart
                 data={[
@@ -972,8 +1008,8 @@ export function FinancialsClient({
       )}
 
       {tab === "cashflow" && (
-        <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Cash movement" subtitle={period}>
               <FinanceBarChart
                 formatValue={money}
@@ -1023,7 +1059,14 @@ export function FinancialsClient({
       )}
 
       {tab === "ledger" && (
-        <LedgerEntriesTab orgId={orgId} currency={currency} from={from} to={to} canManage={canPostLedger} />
+        <LedgerEntriesTab
+          orgId={orgId}
+          currency={currency}
+          from={from}
+          to={to}
+          canManage={canPostLedger}
+          timeZone={orgTimezone}
+        />
       )}
 
       {tab === "coa" && (
@@ -1031,7 +1074,7 @@ export function FinancialsClient({
       )}
 
       {tab === "journal" && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <OpeningBalanceWizard
             orgId={orgId}
             currency={currency}
@@ -1271,6 +1314,16 @@ export function FinancialsClient({
                 }
               : null
           }
+        />
+      )}
+
+      {tab === "txn_flow" && (
+        <TransactionFlowTab
+          orgId={orgId}
+          currency={currency}
+          from={from}
+          to={to}
+          timeZone={orgTimezone}
         />
       )}
 

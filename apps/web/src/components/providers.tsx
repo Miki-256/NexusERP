@@ -10,8 +10,20 @@ import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { DevRejectionFilter } from "@/components/dev-rejection-filter";
 import { DevChunkRecovery } from "@/components/dev-chunk-recovery";
 import { SessionBootLoader } from "@/components/ui/loading";
+import { RegisterServiceWorker } from "@/components/pwa/register-sw";
+import { IntlProvider } from "@/components/i18n/intl-provider";
+import type { AbstractIntlMessages } from "next-intl";
+import type { AppLocale } from "@/i18n/config";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  locale = "en",
+  messages,
+}: {
+  children: React.ReactNode;
+  locale?: AppLocale;
+  messages?: AbstractIntlMessages;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -21,7 +33,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       })
   );
 
-  return (
+  const tree = (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <DevRejectionFilter />
@@ -29,6 +41,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <AppErrorBoundary>
           <OfflineProvider>
             <ToasterProvider>
+              <RegisterServiceWorker />
               <SessionBootLoader />
               {children}
               <SyncIndicator />
@@ -37,5 +50,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
         </AppErrorBoundary>
       </ThemeProvider>
     </QueryClientProvider>
+  );
+
+  if (!messages) return tree;
+
+  return (
+    <IntlProvider locale={locale} messages={messages}>
+      {tree}
+    </IntlProvider>
   );
 }

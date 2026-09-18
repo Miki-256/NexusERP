@@ -199,12 +199,15 @@ export async function fetchFinancialsPageRawData(
     { data: shellPreferencesData },
     { data: launchpadTilesData },
   ] = await Promise.all([
+    // NX-AUDIT-001: same SQL as fetchPostedGlMtdPnl (profit_and_loss, p_mode gl) when pnlMode=gl.
     supabase.rpc("fetch_financial_report", {
       p_org_id: orgId,
       p_report_type: "profit_and_loss",
       p_from: from,
       p_to: to,
       p_mode: pnlMode,
+      // Live vs Dashboard GL KPIs — skip 60m cache so hub matches posted ledger.
+      p_force_refresh: true,
     }),
     skip(
       scope.reporting,

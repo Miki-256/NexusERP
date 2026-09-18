@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { formatCurrency, cn } from "@/lib/utils";
 import { DateRangeToolbar } from "@/components/finance/date-range-toolbar";
-import { ChartCard, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts-lazy";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/layout/stat-card";
 import { StatusBadge } from "@/components/layout/status-badge";
@@ -38,8 +38,11 @@ import {
   type SalesRegisterListResult,
   type SalesRegisterRow,
 } from "@/lib/sales-register";
+import { createClient } from "@/lib/supabase/client";
 import { Banknote, BarChart3, Receipt, ShoppingCart, TrendingUp } from "lucide-react";
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
+import { useTranslations } from "next-intl";
+import { DEFAULT_ORG_TIMEZONE, formatOrgDateTime, utcDayRangeForCalendarDate } from "@/lib/finance-dates";
 
 type FilterState = {
   from: string;
@@ -59,27 +62,31 @@ export function SalesClient({
   currency,
   canManage,
   orgName,
+  organizationId,
   registerData,
   analytics,
-  lineExportRows,
   filters,
   pageSize,
   stores,
   registers,
   staff,
+  timeZone = DEFAULT_ORG_TIMEZONE,
 }: {
   currency: string;
   canManage: boolean;
   orgName: string;
+  organizationId: string;
   registerData: SalesRegisterListResult;
   analytics: SalesAnalytics;
-  lineExportRows: Record<string, unknown>[];
   filters: FilterState;
   pageSize: number;
   stores: { id: string; name: string }[];
   registers: { id: string; name: string; storeId: string }[];
   staff: { id: string; name: string }[];
+  timeZone?: string;
 }) {
+  const t = useTranslations("sales");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
@@ -154,14 +161,14 @@ export function SalesClient({
   return (
     <div className={cn(PAGE_SHELL, isPending && "opacity-70 transition-opacity")}>
       <PageHeader
-        breadcrumb="Revenue"
-        title="Sales Register"
-        description="Complete transaction history with filters, analytics, returns, and exports."
+        breadcrumb={t("title")}
+        title={t("registerTitle")}
+        description={t("description")}
       />
 
-      <DateRangeToolbar from={filters.from} to={filters.to} className="mb-4" />
+      <DateRangeToolbar from={filters.from} to={filters.to} timeZone={timeZone} />
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         {SALES_VIEW_PRESETS.map((preset) => {
           const active = filters.view === preset.key;
           return (
@@ -195,50 +202,54 @@ export function SalesClient({
           onClick={() => setTab(tab === "analytics" ? "register" : "analytics")}
         >
           <BarChart3 className="h-3.5 w-3.5" />
-          {tab === "analytics" ? "Show register" : "Analytics"}
+          {tab === "analytics" ? t("showRegister") : t("analytics")}
         </Button>
       </div>
 
       <SalesAlertsBanner alerts={analytics.alerts ?? []} />
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Completed sales" value={summary.count} icon={ShoppingCart} />
-        <StatCard label="Gross revenue" value={money(summary.gross)} icon={TrendingUp} />
-        <StatCard label="Tax collected" value={money(summary.tax)} icon={Receipt} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatCard label={t("completedSales")} value={summary.count} icon={ShoppingCart} />
+        <StatCard label={t("grossRevenue")} value={money(summary.gross)} icon={TrendingUp} />
+        <StatCard label={t("taxCollected")} value={money(summary.tax)} icon={Receipt} />
         <StatCard
-          label="Average ticket"
+          label={t("averageTicket")}
           value={money(summary.count > 0 ? summary.gross / summary.count : 0)}
           icon={Banknote}
         />
       </div>
 
       {tab === "analytics" ? (
-        <div className="mt-6">
+        <div>
           <SalesAnalyticsPanel analytics={analytics} currency={currency} />
         </div>
       ) : (
         <>
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <ChartCard title="Sales trend" subtitle="Daily completed sales">
+          <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
+            <ChartCard title={t("salesTrend")} subtitle={t("dailyCompleted")}>
               {dailyTrend.length > 0 ? (
                 <TrendAreaChart data={dailyTrend} formatValue={money} height={220} />
               ) : (
-                <p className="py-12 text-center text-sm text-muted-foreground">No completed sales in range.</p>
+                <p className="py-12 text-center text-sm text-muted-foreground">{tCommon("noResults")}</p>
               )}
             </ChartCard>
-            <ChartCard title="Revenue by store" subtitle="Completed sales">
+            <ChartCard title={t("revenueByStore")} subtitle={t("completedSales")}>
               {analytics.by_store.length > 0 ? (
                 <FinanceDonutChart data={analytics.by_store} formatValue={money} />
               ) : (
-                <p className="py-12 text-center text-sm text-muted-foreground">No store breakdown.</p>
+                <p className="py-12 text-center text-sm text-muted-foreground">{tCommon("noResults")}</p>
               )}
             </ChartCard>
           </div>
 
           <ReportSection
             className="mt-6"
-            title="Transactions"
-            subtitle={`${total} records · page ${filters.page} of ${totalPages}`}
+            title={t("transactions")}
+            subtitle={t("recordsPage", {
+              total,
+              page: filters.page,
+              pages: totalPages,
+            })}
             actions={
               <div className="flex flex-wrap gap-2">
                 <DailySalesSummaryPrint
@@ -251,10 +262,10 @@ export function SalesClient({
                 />
                 <ExportCsvButton
                   filename="sales-register"
-                  label="Export sales"
+                  label={t("exportSales")}
                   rows={rows.map((s) => ({
                     receipt_no: s.receipt_no,
-                    date: new Date(s.created_at).toLocaleString(),
+                    date: formatOrgDateTime(s.created_at, timeZone),
                     store: s.store_name ?? "",
                     customer: s.customer_name ?? s.customer_phone ?? "",
                     cashier: s.staff_name ?? "",
@@ -268,52 +279,96 @@ export function SalesClient({
                     payments: paymentMixLabel(s.payments),
                   }))}
                   columns={[
-                    { key: "receipt_no", label: "Receipt" },
-                    { key: "date", label: "Date" },
-                    { key: "store", label: "Store" },
-                    { key: "customer", label: "Customer" },
-                    { key: "cashier", label: "Cashier" },
-                    { key: "register", label: "Register" },
-                    { key: "status", label: "Status" },
-                    { key: "subtotal", label: "Subtotal" },
-                    { key: "tax", label: "Tax" },
-                    { key: "discount", label: "Discount" },
-                    { key: "tip", label: "Tip" },
-                    { key: "total", label: "Total" },
-                    { key: "payments", label: "Payments" },
+                    { key: "receipt_no", label: t("receipt") },
+                    { key: "date", label: tCommon("date") },
+                    { key: "store", label: tCommon("store") },
+                    { key: "customer", label: t("customer") },
+                    { key: "cashier", label: t("cashier") },
+                    { key: "register", label: t("register") },
+                    { key: "status", label: tCommon("status") },
+                    { key: "subtotal", label: tCommon("subtotal") },
+                    { key: "tax", label: tCommon("tax") },
+                    { key: "discount", label: tCommon("discount") },
+                    { key: "tip", label: tCommon("tip") },
+                    { key: "total", label: tCommon("total") },
+                    { key: "payments", label: t("payments") },
                   ]}
                 />
                 <ExportCsvButton
                   filename="sales-line-items"
-                  label="Export lines"
-                  rows={lineExportRows}
+                  label={t("exportLines")}
+                  loadRows={async () => {
+                    const supabase = createClient();
+                    const fromIso = utcDayRangeForCalendarDate(filters.from, timeZone).from;
+                    const toIso = utcDayRangeForCalendarDate(filters.to, timeZone).to;
+                    const { data: lineExportSales } = await supabase
+                      .from("sales")
+                      .select(
+                        `receipt_no, created_at, status, total, tip_amount, stores(name),
+                         sale_lines(product_name, variant_name, quantity, unit_price, discount_amount, line_total)`
+                      )
+                      .eq("organization_id", organizationId)
+                      .gte("created_at", fromIso)
+                      .lte("created_at", toIso)
+                      .order("created_at", { ascending: false })
+                      .limit(500);
+                    const rows: Record<string, unknown>[] = [];
+                    for (const sale of lineExportSales ?? []) {
+                      const storeRaw = sale.stores as
+                        | { name: string }
+                        | { name: string }[]
+                        | null;
+                      const store = Array.isArray(storeRaw)
+                        ? storeRaw[0]?.name
+                        : storeRaw?.name;
+                      for (const line of (sale.sale_lines as Record<string, unknown>[]) ?? []) {
+                        rows.push({
+                          receipt_no: sale.receipt_no,
+                          date: formatOrgDateTime(sale.created_at as string, timeZone),
+                          store: store ?? "",
+                          status: sale.status,
+                          product: line.product_name,
+                          variant: line.variant_name ?? "",
+                          quantity: line.quantity,
+                          unit_price: line.unit_price,
+                          discount: line.discount_amount,
+                          line_total: line.line_total,
+                          sale_tip: (sale as { tip_amount?: number }).tip_amount ?? 0,
+                          sale_total: sale.total,
+                        });
+                      }
+                    }
+                    return rows;
+                  }}
                   columns={[
-                    { key: "receipt_no", label: "Receipt" },
-                    { key: "date", label: "Date" },
-                    { key: "store", label: "Store" },
-                    { key: "status", label: "Status" },
-                    { key: "product", label: "Product" },
-                    { key: "variant", label: "Variant" },
-                    { key: "quantity", label: "Qty" },
-                    { key: "unit_price", label: "Unit price" },
-                    { key: "discount", label: "Discount" },
-                    { key: "line_total", label: "Line total" },
+                    { key: "receipt_no", label: t("receipt") },
+                    { key: "date", label: tCommon("date") },
+                    { key: "store", label: tCommon("store") },
+                    { key: "status", label: tCommon("status") },
+                    { key: "product", label: t("product") },
+                    { key: "variant", label: t("variant") },
+                    { key: "quantity", label: t("qty") },
+                    { key: "unit_price", label: t("unitPrice") },
+                    { key: "discount", label: tCommon("discount") },
+                    { key: "line_total", label: t("lineTotal") },
+                    { key: "sale_tip", label: t("saleTip") },
+                    { key: "sale_total", label: t("saleTotal") },
                   ]}
                 />
               </div>
             }
           >
-            <div className="mb-4">
+            <div className="mb-3">
               <TableToolbar
                 search={searchInput}
                 onSearchChange={setSearchInput}
                 onSearchSubmit={applySearch}
-                placeholder="Search receipt, customer, store…"
+                placeholder={t("searchPlaceholder")}
                 filterOpen={filtersOpen}
                 onFilterOpenChange={setFiltersOpen}
                 filterActive={filtersActive}
                 filterContent={
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Status</Label>
                       <select
@@ -452,13 +507,16 @@ export function SalesClient({
                       <StatusBadge status={s.status} />
                     </div>
                     <div className="space-y-1.5">
-                      <MobileRecordCardRow label="Total">{money(s.total)}</MobileRecordCardRow>
-                      <MobileRecordCardRow label="Store">{s.store_name ?? "—"}</MobileRecordCardRow>
-                      <MobileRecordCardRow label="Date">
-                        {new Date(s.created_at).toLocaleString()}
+                      <MobileRecordCardRow label={tCommon("total")}>{money(s.total)}</MobileRecordCardRow>
+                      {Number(s.tip_amount) > 0 && (
+                        <MobileRecordCardRow label={tCommon("tip")}>{money(Number(s.tip_amount))}</MobileRecordCardRow>
+                      )}
+                      <MobileRecordCardRow label={tCommon("store")}>{s.store_name ?? "—"}</MobileRecordCardRow>
+                      <MobileRecordCardRow label={tCommon("date")}>
+                        {formatOrgDateTime(s.created_at, timeZone)}
                       </MobileRecordCardRow>
                       {(s.customer_name || s.customer_phone) && (
-                        <MobileRecordCardRow label="Customer">
+                        <MobileRecordCardRow label={t("customer")}>
                           {s.customer_name ?? s.customer_phone}
                         </MobileRecordCardRow>
                       )}
@@ -477,16 +535,17 @@ export function SalesClient({
             <DataTable>
               <table className="w-full">
                 <DataTableHeader>
-                  <DataTableHead>Receipt</DataTableHead>
-                  <DataTableHead hideBelow="md">Store</DataTableHead>
-                  <DataTableHead hideBelow="lg">Customer</DataTableHead>
-                  <DataTableHead hideBelow="xl">Cashier</DataTableHead>
-                  <DataTableHead hideBelow="xl">Payments</DataTableHead>
-                  <DataTableHead align="right" hideBelow="lg">Disc %</DataTableHead>
-                  <DataTableHead align="right">Total</DataTableHead>
-                  <DataTableHead>Status</DataTableHead>
-                  <DataTableHead hideBelow="md">Date</DataTableHead>
-                  {canManage && <DataTableHead align="right">Actions</DataTableHead>}
+                  <DataTableHead>{t("receipt")}</DataTableHead>
+                  <DataTableHead hideBelow="md">{tCommon("store")}</DataTableHead>
+                  <DataTableHead hideBelow="lg">{t("customer")}</DataTableHead>
+                  <DataTableHead hideBelow="xl">{t("cashier")}</DataTableHead>
+                  <DataTableHead hideBelow="xl">{t("payments")}</DataTableHead>
+                  <DataTableHead align="right" hideBelow="lg">{tCommon("discount")} %</DataTableHead>
+                  <DataTableHead align="right" hideBelow="lg">{tCommon("tip")}</DataTableHead>
+                  <DataTableHead align="right">{tCommon("total")}</DataTableHead>
+                  <DataTableHead>{tCommon("status")}</DataTableHead>
+                  <DataTableHead hideBelow="md">{tCommon("date")}</DataTableHead>
+                  {canManage && <DataTableHead align="right">{tCommon("actions")}</DataTableHead>}
                 </DataTableHeader>
                 <DataTableBody>
                   {rows.length === 0 ? (
@@ -519,6 +578,9 @@ export function SalesClient({
                         <DataTableCell hideBelow="lg" align="right" className="font-mono text-muted-foreground">
                           {s.discount_amount > 0 ? `${discountPct(s)}%` : "—"}
                         </DataTableCell>
+                        <DataTableCell hideBelow="lg" align="right" className="font-mono text-muted-foreground">
+                          {Number(s.tip_amount) > 0 ? money(Number(s.tip_amount)) : "—"}
+                        </DataTableCell>
                         <DataTableCell align="right" className="font-mono font-medium">
                           {money(s.total)}
                         </DataTableCell>
@@ -526,7 +588,7 @@ export function SalesClient({
                           <StatusBadge status={s.status} />
                         </DataTableCell>
                         <DataTableCell hideBelow="md" className="text-muted-foreground">
-                          {new Date(s.created_at).toLocaleString()}
+                          {formatOrgDateTime(s.created_at, timeZone)}
                         </DataTableCell>
                         {canManage && (
                           <DataTableCell align="right">

@@ -63,7 +63,13 @@ import type { FinancialShellPreferences, LaunchpadArea } from "@/lib/finance/fin
 import type { ReportSnapshotRow } from "@/components/finance/reports-library-tab";
 import type { ExchangeRateRow, FxRevaluationRunRow } from "@/components/finance/fx-currencies-tab";
 import type { ArAging, ApAging } from "@/components/finance/aging-tab";
-import { monthToDate, priorPeriod, priorBalanceSheetDate, formatPeriod } from "@/lib/finance-dates";
+import {
+  monthToDateInTimeZone,
+  priorPeriod,
+  priorBalanceSheetDate,
+  formatPeriod,
+  DEFAULT_ORG_TIMEZONE,
+} from "@/lib/finance-dates";
 import { bucketDailyTotals } from "@/lib/finance-aggregates";
 import {
   fetchConsolidatedFinancialReports,
@@ -133,6 +139,7 @@ async function FinancialsContent({
   pnlMode,
   canPostLedger,
   unpostedCount,
+  posAutoPostSales,
   initialTab,
   initialArea,
   orgTimezone,
@@ -144,6 +151,7 @@ async function FinancialsContent({
   pnlMode: "operational" | "gl";
   canPostLedger: boolean;
   unpostedCount: number;
+  posAutoPostSales: boolean;
   initialTab?: string;
   initialArea?: string;
   orgTimezone: string;
@@ -429,6 +437,13 @@ async function FinancialsContent({
   const treasuryForecast = (treasuryForecastData ?? null) as TreasuryForecast | null;
   const treasuryTransfers = (Array.isArray(treasuryTransfersData) ? treasuryTransfersData : []) as TreasuryTransferRow[];
 
+  const { data: tipSum } = await supabase.rpc("sum_sales_tips", {
+    p_organization_id: orgId,
+    p_from: from,
+    p_to: `${to}T23:59:59.999`,
+  });
+  const periodTips = Number(tipSum ?? 0) || 0;
+
   let consolidatedPnl: Record<string, unknown> | null = null;
   let consolidatedBs: Record<string, unknown> | null = null;
   if (scope.planning && consolidationGroups.length > 0) {
@@ -452,6 +467,8 @@ async function FinancialsContent({
       pnlMode={pnlMode}
       canPostLedger={canPostLedger}
       unpostedCount={unpostedCount}
+      posAutoPostSales={posAutoPostSales}
+      periodTips={periodTips}
       accounts={(accountsData as AccountRow[]) ?? []}
       journals={(journalsData as { id: string; code: string; name: string }[]) ?? []}
       arAging={arAging}
@@ -542,20 +559,27 @@ export default async function FinancialsPage({
   const ctx = await requireAppAccess("accounting");
 
   const sp = await searchParams;
-  const def = monthToDate();
+  const orgTimezone = ctx.organization.timezone?.trim() || DEFAULT_ORG_TIMEZONE;
+  const def = monthToDateInTimeZone(orgTimezone);
   const from = sp.from ?? def.from;
   const to = sp.to ?? def.to;
-  const pnlMode = sp.pnl === "gl" ? "gl" : "operational";
+  // Statutory hub defaults to posted GL so MTD matches Dashboard ledger KPIs.
+  // Operational remains available via ?pnl=operational.
+  const pnlMode = sp.pnl === "operational" ? "operational" : "gl";
   const initialTab = sp.tab;
   const initialArea = sp.area;
-  const orgTimezone = ctx.organization.timezone?.trim() || "Africa/Addis_Ababa";
   const canPostLedger = ctx.canManageApp("accounting");
 
   let unpostedCount = 0;
+  let posAutoPostSales = false;
   if (canPostLedger) {
     const supabase = await createReportingClient();
-    const { data } = await supabase.rpc("count_unposted_sales", { p_org_id: ctx.organization.id });
-    unpostedCount = typeof data === "number" ? data : 0;
+    const [{ data: countData }, { data: orgRow }] = await Promise.all([
+      supabase.rpc("count_unposted_sales", { p_org_id: ctx.organization.id }),
+      supabase.from("organizations").select("pos_auto_post_sales").eq("id", ctx.organization.id).maybeSingle(),
+    ]);
+    unpostedCount = typeof countData === "number" ? countData : 0;
+    posAutoPostSales = Boolean(orgRow?.pos_auto_post_sales);
   }
 
   return (
@@ -567,6 +591,7 @@ export default async function FinancialsPage({
       pnlMode={pnlMode}
       canPostLedger={canPostLedger}
       unpostedCount={unpostedCount}
+      posAutoPostSales={posAutoPostSales}
       initialTab={initialTab}
       initialArea={initialArea}
       orgTimezone={orgTimezone}

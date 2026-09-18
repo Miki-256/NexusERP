@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/layout/status-badge";
 import { SaleDetailClient } from "@/components/sales/sale-detail-client";
 import { PAGE_SHELL } from "@/lib/ui-classes";
 import type { SaleDetailBundle } from "@/lib/sales-register";
+import { DEFAULT_ORG_TIMEZONE, formatOrgDateTimeFull } from "@/lib/finance-dates";
 
 export default async function SaleDetailPage({
   params,
@@ -27,11 +28,13 @@ export default async function SaleDetailPage({
 
   if ((sale.organization_id as string) !== ctx.organization.id) notFound();
 
+  const orgTimezone = ctx.organization.timezone?.trim() || DEFAULT_ORG_TIMEZONE;
+
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
         title={`Sale ${sale.receipt_no}`}
-        description={new Date(sale.created_at).toLocaleString()}
+        description={formatOrgDateTimeFull(sale.created_at as string, orgTimezone)}
         action={<StatusBadge status={sale.status} />}
       />
       <SaleDetailClient
@@ -40,6 +43,7 @@ export default async function SaleDetailPage({
         orgName={ctx.organization.name}
         receiptFooter={ctx.organization.receipt_footer}
         canManage={ctx.canManageApp("sales")}
+        timeZone={orgTimezone}
       />
     </div>
   );
