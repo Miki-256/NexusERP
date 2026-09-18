@@ -40,6 +40,23 @@ Do **not** mark production-ready until TS-QA retests on preprod against acceptan
 - Manufacturing variant select capped at 200 — BOM form may miss rarely used SKUs until search is added later.  
 - App must be **deployed** to preprod; DB migrations alone do not fix UI defects.
 
+## Shipped to preprod (001 / 002 / 006 land)
+
+| Field | Value |
+|-------|--------|
+| Branch | `ai-assistant-l2-l6` |
+| Tip SHA | `bffd36085a4ae7f54aff11e3aa30428ed6328f06` (includes `7de1962` land + build deps + PO `organizationId`) |
+| Vercel deployment | `dpl_7zv72LwkQioKjwyX92eonon3x5xN` |
+| Alias | https://nexus-erp-preprod.vercel.app/ |
+
+**Retest-v3 FAIL meta-RCA:** fixes existed only in WIP; HEAD/preprod still had operational hub default, UTC sale headers, and untracked `messages/*.json`.
+
+**Self-smoke on that deploy (Olana, 2026-09-18):**
+- **001:** Dashboard Posted GL revenue MTD ETB 4,737.00 / NP 2,941.68 / cash 155,418.20 === Financials hub (same range) — gap **0.00**.
+- **002:** Sale R-000608 header `Sep 18, 2026, 6:11:01 PM` === payment time (Addis; UTC instant was 15:11Z).
+- **006:** Settings Language=English — labels render (Subscription, Business name, …); zero raw `settings.*`.
+- **007 / 003 / GL:** New PO typeahead finds Coffee*; `/products?q=Coffee` returns 3; R-000608 JE posted & balanced (Dr/Cr 124.50).
+
 ## Do not self-certify
 
 TS-QA retests against NX-AUDIT acceptance; Human CEO go/no-go.
