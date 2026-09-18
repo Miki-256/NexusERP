@@ -21,8 +21,8 @@ export type PostedGlMtdResult = {
 };
 
 type RpcClient = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  rpc: (fn: string, args: Record<string, unknown>) => any;
+  // Supabase client rpc returns a thenable builder; keep loosely typed for server/client.
+  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 };
 
 /** Canonical MTD bounds + posted-GL P&L for ledger KPIs. */
