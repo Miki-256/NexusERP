@@ -1144,7 +1144,17 @@
       "defaultVariant": "Default",
       "baseEquivalent": "{qty} {uom} → {baseQty} {baseUom} base",
       "createNewProduct": "Create new product…",
-      "costUomHint": "Catalog {baseCost}/{baseUom} · Line {unitCost}/{uom}"
+      "costUomHint": "Catalog {baseCost}/{baseUom} · Line {unitCost}/{uom}",
+      "items": "Items",
+      "orderedProducts": "Ordered products",
+      "lineCount": "{count, plural, one {# line} other {# lines}}",
+      "noLines": "No line items on this order.",
+      "received": "Received",
+      "remaining": "{qty} {uom} left",
+      "qtyReceived": "{received} of {ordered} {uom} received",
+      "confirmReceive": "Confirm receive",
+      "receiveMessage": "Receive remaining stock for: {items}",
+      "receiveMessageEmpty": "Receive all remaining quantities on this purchase order?"
     },
     "vendorsTab": {
       "addVendor": "Add Vendor",
@@ -1185,6 +1195,7 @@
       "receiveFailed": "Receive failed",
       "poReceived": "PO received",
       "poReceivedDesc": "Stock and vendor bill updated.",
+      "poReceivedLines": "Received {count, plural, one {# product} other {# products}}: {items}",
       "cancelFailed": "Cancel failed",
       "poCancelled": "Purchase order cancelled",
       "paymentFailed": "Payment failed",

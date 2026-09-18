@@ -1143,7 +1143,17 @@
       "defaultVariant": "ነባሪ",
       "baseEquivalent": "{qty} {uom} → {baseQty} {baseUom} መሠረታዊ",
       "createNewProduct": "አዲስ ምርት ፍጠር…",
-      "costUomHint": "ካታሎግ {baseCost}/{baseUom} · መስመር {unitCost}/{uom}"
+      "costUomHint": "ካታሎግ {baseCost}/{baseUom} · መስመር {unitCost}/{uom}",
+      "items": "እቃዎች",
+      "orderedProducts": "የታዘዙ ምርቶች",
+      "lineCount": "{count} መስመሮች",
+      "noLines": "በዚህ ትዕዛዝ ምንም መስመር የለም።",
+      "received": "ተቀብሏል",
+      "remaining": "{qty} {uom} ቀርቷል",
+      "qtyReceived": "{received} ከ {ordered} {uom} ተቀብሏል",
+      "confirmReceive": "መቀበልን አረጋግጥ",
+      "receiveMessage": "ቀሪ ክምችት ተቀበል፦ {items}",
+      "receiveMessageEmpty": "በዚህ የግዢ ትዕዛዝ ላይ ያለውን ቀሪ ብዛት ሁሉ ይቀበሉ?"
     },
     "vendorsTab": {
       "addVendor": "አቅራቢ ጨምር",
@@ -1184,6 +1194,7 @@
       "receiveFailed": "መቀበል አልተሳካም",
       "poReceived": "PO ተቀብሏል",
       "poReceivedDesc": "ክምችት እና የአቅራቢ ሂሳብ ተዘምኗል።",
+      "poReceivedLines": "{count} ምርቶች ተቀብለዋል፦ {items}",
       "cancelFailed": "መሰረዝ አልተሳካም",
       "poCancelled": "የግዢ ትዕዛዝ ተሰርዟል",
       "paymentFailed": "ክፍያ አልተሳካም",

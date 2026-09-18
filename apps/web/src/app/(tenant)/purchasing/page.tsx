@@ -4,6 +4,17 @@ import { PurchasingClient } from "./purchasing-client";
 import type { OpenBillOption, PaymentRunRow } from "@/components/finance/ap-payment-runs-tab";
 
 export type VendorRow = { id: string; name: string; phone: string | null; email: string | null; is_active: boolean };
+export type POLineRow = {
+  id: string;
+  product_name: string;
+  quantity: number;
+  unit_cost: number;
+  line_total: number;
+  uom_code: string | null;
+  qty_received: number | null;
+  qty_base: number | null;
+};
+
 export type PORow = {
   id: string;
   status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
@@ -11,6 +22,7 @@ export type PORow = {
   total: number;
   vendors: { name: string } | { name: string }[] | null;
   stores: { name: string } | { name: string }[] | null;
+  purchase_order_lines?: POLineRow[] | null;
 };
 export type BillRow = {
   id: string;
@@ -63,7 +75,9 @@ export default async function PurchasingPage() {
       supabase.from("stores").select("id, name").eq("organization_id", orgId).order("name"),
       supabase
         .from("purchase_orders")
-        .select("id, status, order_date, total, vendors(name), stores(name)")
+        .select(
+          "id, status, order_date, total, vendors(name), stores(name), purchase_order_lines(id, product_name, quantity, unit_cost, line_total, uom_code, qty_received, qty_base)"
+        )
         .eq("organization_id", orgId)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -93,6 +107,7 @@ export default async function PurchasingPage() {
         balance_due: Math.max(Number(b.amount) - Number(b.amount_paid ?? 0), 0),
       }))}
       variants={[]}
+      productUoms={[]}
       openBills={openBills}
       paymentRuns={(paymentRuns as PaymentRunRow[]) ?? []}
     />
