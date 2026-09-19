@@ -18,6 +18,7 @@ export type RpcLine = {
   quantity: number;
   unitPrice: number;
   discountAmount: number;
+  uomCode?: string;
 };
 
 export type CompleteSalePayload = {
@@ -73,12 +74,20 @@ export type PosSessionCache = {
 };
 
 export function cartLinesToRpc(lines: CartLine[]): RpcLine[] {
-  return lines.map((l) => ({
-    variantId: l.variantId,
-    productName: l.productName,
-    variantName: l.variantName ?? "",
-    quantity: l.quantity,
-    unitPrice: l.unitPrice,
-    discountAmount: l.discountAmount,
-  }));
+  return lines.map((l) => {
+    const raw = (l.uomCode ?? "").trim();
+    const uomCode =
+      !raw || raw.toLowerCase() === "null" || raw.toLowerCase() === "undefined"
+        ? "ea"
+        : raw;
+    return {
+      variantId: l.variantId,
+      productName: l.productName,
+      variantName: l.variantName ?? "",
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      discountAmount: l.discountAmount,
+      uomCode,
+    };
+  });
 }

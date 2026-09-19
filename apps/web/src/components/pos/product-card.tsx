@@ -1,10 +1,18 @@
 "use client";
 
 import { memo } from "react";
-import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/utils";
-import { Plus, Star, Package } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { cn, formatCurrency } from "@/lib/utils";
+import { Plus, Star } from "lucide-react";
 import { PosProductImage } from "./pos-product-image";
+import { defaultSaleUom, hasMeasuredSaleUoms } from "@/lib/pos/stock-utils";
+
+export type PosSaleUom = {
+  code: string;
+  name: string;
+  factor: number;
+  isBase?: boolean;
+};
 
 export type PosCatalogItem = {
   productId: string;
@@ -18,8 +26,10 @@ export type PosCatalogItem = {
   categoryId: string | null;
   categoryName: string | null;
   imageUrl?: string | null;
+  saleUoms?: PosSaleUom[];
 };
 
+/** Compact POS product tile — name, price, stock, add. No giant image placeholders. */
 export const ProductCard = memo(function ProductCard({
   item,
   currency,
@@ -28,8 +38,7 @@ export const ProductCard = memo(function ProductCard({
   onToggleFavorite,
   recentlySold,
   addedFlash,
-  compact = false,
-  mobile = false,
+  compact = true,
 }: {
   item: PosCatalogItem;
   currency: string;
@@ -39,67 +48,66 @@ export const ProductCard = memo(function ProductCard({
   recentlySold?: boolean;
   addedFlash?: boolean;
   compact?: boolean;
+  /** @deprecated Kept for call-site compat; density is always compact-first. */
   mobile?: boolean;
 }) {
+  const t = useTranslations("pos");
   const outOfStock = item.stock <= 0;
   const lowStock = !outOfStock && item.stock <= 5;
-  const initial = item.name.charAt(0).toUpperCase();
-  const isLarge = !compact;
-  const isMobileCompact = mobile && compact;
+  const hasImage = Boolean(item.imageUrl);
 
-  const stockLabel = outOfStock
-    ? isMobileCompact ? "Out" : "Out of stock"
-    : isLarge
-      ? `${item.stock} in stock`
-      : isMobileCompact
-        ? String(item.stock)
-        : String(item.stock);
+  const measured = hasMeasuredSaleUoms(item);
+  const saleUom = measured ? defaultSaleUom(item) : null;
+  const displayPrice = saleUom
+    ? Math.round(item.sellPrice * (Number(saleUom.factor) || 1) * 100) / 100
+    : item.sellPrice;
+  const priceSuffix = saleUom ? ` / ${saleUom.code}` : "";
 
   const displayName =
     item.variantName !== "Default" ? `${item.name}, ${item.variantName}` : item.name;
   const addLabel = outOfStock
-    ? `${displayName} is out of stock`
-    : `Add ${displayName} to cart`;
-  const imageAlt = item.imageUrl
-    ? `${displayName}${outOfStock ? ", out of stock" : ""}`
-    : undefined;
+    ? t("itemOutOfStockAria", { name: displayName })
+    : measured
+      ? t("addMeasuredToCart", { name: displayName })
+      : t("addToCart", { name: displayName });
+
+  const stockText = outOfStock
+    ? t("outOfStock")
+    : lowStock
+      ? t("lowStockCount", { count: item.stock })
+      : t("stockShort", { count: item.stock });
 
   return (
     <div
       className={cn(
         "pos-product-card pos-card group relative flex flex-col overflow-hidden",
-        compact && !mobile && "pos-product-card-compact",
-        isMobileCompact && "pos-product-card-mobile-compact",
-        mobile && isLarge && "pos-product-card-mobile",
+        compact ? "pos-product-card-compact" : "pos-product-card-comfort",
         addedFlash && "pos-added",
-        outOfStock && "opacity-70"
+        outOfStock && "opacity-60"
       )}
     >
       {recentlySold && (
-        <span
-          className={cn(
-            "absolute left-2 top-2 z-10 rounded-md bg-amber-500 font-bold uppercase tracking-wide text-white shadow-sm",
-            isLarge ? "left-2.5 top-2.5 rounded-lg px-2 py-0.5 text-[10px]" : "px-1.5 py-0.5 text-[9px]"
-          )}
-        >
-          Recent
+        <span className="absolute left-1.5 top-1.5 z-10 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide text-white bg-amber-500">
+          {t("recent")}
         </span>
       )}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleFavorite?.();
-        }}
-        className={cn(
-          "touch-target absolute right-2 top-2 z-10 flex cursor-pointer items-center justify-center rounded-lg bg-white/90 shadow-sm transition-colors",
-          isLarge ? "right-2.5 top-2.5 h-10 w-10 rounded-xl" : isMobileCompact ? "h-8 w-8" : "h-7 w-7",
-          isFavorite ? "text-amber-500" : "text-slate-300 hover:text-amber-400"
-        )}
-        aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-      >
-        <Star className={cn(isLarge ? "h-4 w-4" : "h-3.5 w-3.5", isFavorite && "fill-current")} />
-      </button>
+
+      {onToggleFavorite && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
+          className={cn(
+            "absolute right-1 top-1 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded text-slate-300 transition-colors hover:text-amber-400",
+            isFavorite && "text-amber-500"
+          )}
+          aria-label={isFavorite ? t("removeFromFavorites") : t("addToFavorites")}
+        >
+          <Star className={cn("h-3.5 w-3.5", isFavorite && "fill-current")} />
+        </button>
+      )}
 
       <button
         type="button"
@@ -107,131 +115,58 @@ export const ProductCard = memo(function ProductCard({
         onClick={onAdd}
         aria-label={addLabel}
         aria-disabled={outOfStock}
-        className={cn(
-          "flex flex-1 cursor-pointer flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed",
-          isLarge ? "p-3.5 sm:p-4" : isMobileCompact ? "p-2.5" : "p-2.5"
-        )}
+        className="flex flex-1 cursor-pointer flex-col gap-1 p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary focus-visible:ring-offset-1 disabled:cursor-not-allowed"
       >
-        <div
-          className={cn(
-            "pos-product-image flex w-full items-center justify-center overflow-hidden",
-            isLarge
-              ? "mb-3 aspect-[4/3] max-h-32 sm:max-h-36"
-              : isMobileCompact
-                ? "mb-2 h-16 rounded-lg"
-                : "mb-2 h-14 rounded-lg"
-          )}
-        >
-          {item.imageUrl ? (
+        {hasImage && (
+          <div className="pos-product-image mb-0.5 flex h-10 w-full items-center justify-center overflow-hidden rounded">
             <PosProductImage
-              imageUrl={item.imageUrl}
-              alt={imageAlt ?? displayName}
-              compact={!isLarge}
+              imageUrl={item.imageUrl!}
+              alt={displayName}
+              compact
             />
-          ) : (
-            <span
-              className={cn(
-                "pos-heading font-bold text-slate-300",
-                isLarge ? "text-3xl" : isMobileCompact ? "text-xl" : "text-lg"
-              )}
-            >
-              {initial}
-            </span>
+          </div>
+        )}
+
+        <div className={cn("min-w-0 pr-5", recentlySold && "pt-3")}>
+          <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-slate-900">
+            {item.name}
+          </p>
+          {item.variantName !== "Default" && (
+            <p className="line-clamp-1 text-[10px] text-slate-500">{item.variantName}</p>
           )}
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
-          {isLarge ? (
-            <>
-              <p
-                className={cn(
-                  "font-bold leading-snug text-slate-900",
-                  mobile
-                    ? "line-clamp-2 text-sm"
-                    : "line-clamp-2 text-sm sm:text-base"
-                )}
-              >
-                {item.name}
-              </p>
-              {item.variantName !== "Default" && (
-                <p className="line-clamp-1 text-xs font-medium text-slate-500">{item.variantName}</p>
-              )}
-              {item.sku && (
-                <p className="truncate font-mono text-[10px] text-slate-400">SKU {item.sku}</p>
-              )}
-            </>
-          ) : (
-            <div className="flex items-start justify-between gap-1.5">
-              <p
-                className={cn(
-                  "min-w-0 flex-1 font-bold leading-snug text-slate-900",
-                  isMobileCompact ? "line-clamp-2 text-xs" : "line-clamp-2 text-xs"
-                )}
-              >
-                {item.name}
-              </p>
-              <p
-                className={cn(
-                  "pos-heading shrink-0 font-bold tabular-nums text-pos-primary",
-                  isMobileCompact ? "text-xs" : "text-sm"
-                )}
-              >
-                {formatCurrency(item.sellPrice, currency)}
-              </p>
-            </div>
-          )}
+        <p className="pos-heading text-[13px] font-bold tabular-nums leading-tight text-pos-primary sm:text-sm">
+          {formatCurrency(displayPrice, currency)}
+          {priceSuffix ? (
+            <span className="ml-0.5 text-[10px] font-semibold text-slate-500">{priceSuffix}</span>
+          ) : null}
+        </p>
 
+        <div className="mt-auto flex items-center justify-between gap-1 pt-0.5">
           <span
             className={cn(
-              "mt-1 inline-flex w-fit max-w-full items-center gap-1 rounded-full px-2 py-0.5 font-bold uppercase tracking-wide",
-              isMobileCompact ? "text-[9px]" : "text-[10px]",
+              "min-w-0 truncate text-[10px] font-medium",
               outOfStock
-                ? "bg-red-100 text-red-700"
+                ? "text-red-600"
                 : lowStock
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-emerald-100 text-emerald-800"
+                  ? "text-amber-700"
+                  : "text-slate-500"
             )}
+            title={stockText}
           >
-            <Package className="h-3 w-3 shrink-0" aria-hidden />
-            <span className="truncate">{stockLabel}</span>
+            {stockText}
+          </span>
+          <span
+            className={cn(
+              "pos-add-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+              outOfStock && "pos-add-btn-disabled cursor-not-allowed bg-slate-100 text-slate-300"
+            )}
+            aria-hidden
+          >
+            <Plus className="h-4 w-4" />
           </span>
         </div>
-
-        {isLarge ? (
-          <div className={cn("mt-auto flex items-end justify-between gap-2", "pt-3")}>
-            <p
-              className={cn(
-                "pos-heading min-w-0 flex-1 truncate font-bold tabular-nums text-pos-primary",
-                mobile ? "text-lg" : "text-lg sm:text-xl"
-              )}
-            >
-              {formatCurrency(item.sellPrice, currency)}
-            </p>
-            <span
-              className={cn(
-                "pos-add-btn touch-target flex shrink-0 items-center justify-center rounded-xl shadow-md",
-                mobile ? "h-10 w-10" : "h-11 w-11",
-                outOfStock && "pos-add-btn-disabled cursor-not-allowed bg-slate-100 text-slate-300 shadow-none"
-              )}
-              aria-hidden
-            >
-              <Plus className={cn(mobile ? "h-4 w-4" : "h-5 w-5")} />
-            </span>
-          </div>
-        ) : (
-          <div className={cn("mt-auto flex justify-end pt-1.5")}>
-            <span
-              className={cn(
-                "pos-add-btn touch-target flex shrink-0 items-center justify-center rounded-lg shadow-md",
-                isMobileCompact ? "h-10 w-10" : "h-8 w-8",
-                outOfStock && "pos-add-btn-disabled cursor-not-allowed bg-slate-100 text-slate-300 shadow-none"
-              )}
-              aria-hidden
-            >
-              <Plus className="h-4 w-4" />
-            </span>
-          </div>
-        )}
       </button>
     </div>
   );

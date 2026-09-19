@@ -23,13 +23,114 @@ import {
   Tag,
 } from "lucide-react";
 import type { PosCatalogItem } from "./product-card";
-import { stockWarningForLine } from "@/lib/pos/stock-utils";
+import { stockWarningForLine, qtyStepForUom, qtyButtonStepForUom, isMeasuredCartLine } from "@/lib/pos/stock-utils";
+import { useTranslations } from "next-intl";
+
+function roundQty(qty: number, uomCode?: string, uomFactor?: number): number {
+  const step = qtyStepForUom(uomCode, uomFactor);
+  if (step >= 1) return Math.round(qty);
+  const decimals = step <= 0.001 ? 3 : 2;
+  return Math.round(qty * 10 ** decimals) / 10 ** decimals;
+}
+
+function lineKey(variantId: string, uomCode?: string) {
+  return `${variantId}::${(uomCode || "ea").toLowerCase()}`;
+}
+
+/** Editable qty: blank while typing; 0/empty does not remove the line (use trash). */
+function CartQtyField({
+  quantity,
+  uomCode,
+  uomFactor,
+  measured,
+  uomSuffix,
+  ariaLabel,
+  onCommit,
+}: {
+  quantity: number;
+  uomCode?: string;
+  uomFactor?: number;
+  measured: boolean;
+  uomSuffix: string;
+  ariaLabel: string;
+  onCommit: (qty: number) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (!focused) setDraft("");
+  }, [quantity, focused]);
+
+  function commitDraft() {
+    setFocused(false);
+    const trimmed = draft.trim();
+    if (trimmed === "") {
+      return;
+    }
+    const parsed = parseFloat(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setDraft("");
+      return;
+    }
+    onCommit(roundQty(parsed, uomCode, uomFactor));
+    setDraft("");
+  }
+
+  const display = focused ? draft : String(quantity);
+
+  return (
+    <div className="relative flex items-center">
+      <Input
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        value={display}
+        aria-label={ariaLabel}
+        placeholder={focused ? "0" : undefined}
+        className={cn(
+          "h-11 rounded-none border-0 bg-transparent text-center font-mono text-sm font-bold shadow-none focus-visible:ring-0",
+          measured ? "w-20 pr-8" : "w-16"
+        )}
+        onFocus={() => {
+          setFocused(true);
+          setDraft("");
+        }}
+        onChange={(e) => {
+          const next = e.target.value;
+          // Allow empty, digits, one decimal point while typing (e.g. "0.", ".5", "1.25")
+          if (next === "" || /^\d*\.?\d*$/.test(next)) {
+            setDraft(next);
+          }
+        }}
+        onBlur={commitDraft}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          }
+          if (e.key === "Escape") {
+            setDraft("");
+            setFocused(false);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+      {measured && uomSuffix ? (
+        <span className="pointer-events-none absolute right-1.5 text-[10px] font-bold uppercase text-slate-500">
+          {uomSuffix}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 export function CartPanel({
   lines,
   currency,
   subtotal,
   tax,
+  taxRate,
   cartDiscount,
   promoDiscount = 0,
   promoCode,
@@ -54,6 +155,7 @@ export function CartPanel({
   onUpdateQty,
   onRemove,
   onDiscount,
+  onSetUom,
   onCartDiscount,
   onHold,
   onRecallHeld,
@@ -69,6 +171,7 @@ export function CartPanel({
   currency: string;
   subtotal: number;
   tax: number;
+  taxRate?: number;
   cartDiscount: number;
   promoDiscount?: number;
   promoCode?: string | null;
@@ -90,9 +193,10 @@ export function CartPanel({
   onClearCustomer: () => void;
   onCustomerName: (v: string) => void;
   onCustomerPhone: (v: string) => void;
-  onUpdateQty: (variantId: string, qty: number) => void;
-  onRemove: (variantId: string) => void;
-  onDiscount: (variantId: string, amount: number) => void;
+  onUpdateQty: (variantId: string, qty: number, uomCode?: string) => void;
+  onRemove: (variantId: string, uomCode?: string) => void;
+  onDiscount: (variantId: string, amount: number, uomCode?: string) => void;
+  onSetUom?: (variantId: string, fromUom: string | undefined, toUom: string) => void;
   onCartDiscount: (amount: number) => void;
   onHold: () => void;
   onRecallHeld: () => void;
@@ -104,6 +208,8 @@ export function CartPanel({
   discountPct?: number;
   needsManagerOverride?: boolean;
 }) {
+  const t = useTranslations("pos");
+  const tCommon = useTranslations("common");
   const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const [promoInput, setPromoInput] = useState(promoCode ?? "");
   const [orderDiscountMode, setOrderDiscountMode] = useState<"amount" | "percent">("amount");
@@ -184,7 +290,7 @@ export function CartPanel({
 
   return (
     <aside
-      aria-label="Shopping cart"
+      aria-label={t("shoppingCart")}
       className={cn(
         "flex min-h-0 w-full flex-1 flex-col bg-white shadow-[-8px_0_32px_rgb(15_23_42/0.06)] lg:h-full lg:w-[var(--pos-cart-width)] lg:max-w-[var(--pos-cart-width)] lg:flex-none lg:shrink-0",
         className
@@ -197,12 +303,12 @@ export function CartPanel({
               <ShoppingCart className="h-4 w-4 text-white" aria-hidden />
               {lines.length > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-pos-primary px-0.5 text-[9px] font-bold text-white">
-                  {lines.reduce((s, l) => s + l.quantity, 0)}
+                  {lines.length}
                 </span>
               )}
             </div>
             <div className="min-w-0">
-              <p className="pos-heading truncate text-sm font-semibold text-white">Current sale</p>
+              <p className="pos-heading truncate text-sm font-semibold text-white">{t("currentSale")}</p>
               <p className="flex items-center gap-1.5 text-[11px] text-white/70">
                 <Hash className="h-3 w-3 shrink-0" aria-hidden />
                 {orderNumber}
@@ -220,7 +326,7 @@ export function CartPanel({
                 type="button"
                 onClick={onCloseMobile}
                 className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg border border-white/20 text-white/80 hover:bg-white/10 lg:hidden"
-                aria-label="Close cart"
+                aria-label={t("closeCart")}
               >
                 <X className="h-5 w-5" aria-hidden />
               </button>
@@ -230,8 +336,8 @@ export function CartPanel({
               size="icon"
               className="h-9 w-9 cursor-pointer text-white hover:bg-white/15 hover:text-white"
               onClick={onHold}
-              title="Hold sale"
-              aria-label="Hold current sale"
+              title={t("hold")}
+              aria-label={t("hold")}
             >
               <Pause className="h-4 w-4" aria-hidden />
             </Button>
@@ -241,7 +347,7 @@ export function CartPanel({
                 size="sm"
                 className="h-9 cursor-pointer gap-1 border-white/25 bg-white/10 px-2 text-xs text-white hover:bg-white/20 hover:text-white"
                 onClick={onRecallHeld}
-                aria-label={`Recall held sale, ${heldCount} held`}
+                aria-label={t("recall")}
               >
                 <Play className="h-3.5 w-3.5" aria-hidden />
                 {heldCount}
@@ -260,15 +366,15 @@ export function CartPanel({
               onClick={onCustomerLookup}
             >
               <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{customerName || "Find customer (F5)"}</span>
+              <span className="truncate">{customerName || t("findCustomer")}</span>
             </Button>
             {customerName && (
               <button
                 type="button"
                 onClick={onClearCustomer}
                 className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/20 text-white/70 hover:bg-white/10"
-                title="Clear customer"
-                aria-label="Clear customer"
+                title={t("clearCustomer")}
+                aria-label={t("clearCustomer")}
               >
                 <X className="h-3.5 w-3.5" aria-hidden />
               </button>
@@ -277,15 +383,15 @@ export function CartPanel({
           {!customerName && (
             <div className="flex gap-1.5">
               <Input
-                placeholder="Walk-in name"
-                aria-label="Walk-in customer name"
+                placeholder={t("walkInName")}
+                aria-label={t("walkInNameAria")}
                 value={customerName}
                 onChange={(e) => onCustomerName(e.target.value)}
                 className="h-8 flex-1 rounded-lg border-white/20 bg-white/10 text-xs text-white placeholder:text-white/50"
               />
               <Input
-                placeholder="Phone"
-                aria-label="Walk-in customer phone"
+                placeholder={t("phone")}
+                aria-label={t("walkInPhoneAria")}
                 value={customerPhone}
                 onChange={(e) => onCustomerPhone(e.target.value)}
                 className="h-8 w-[5.5rem] rounded-lg border-white/20 bg-white/10 text-xs text-white placeholder:text-white/50"
@@ -295,20 +401,20 @@ export function CartPanel({
           {customerCreditBalance != null && customerCreditBalance > 0 && (
             <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-200">
               <Gift className="h-3 w-3" aria-hidden />
-              Credit: {formatCurrency(customerCreditBalance, currency)}
+              {t("creditBalance", { amount: formatCurrency(customerCreditBalance, currency) })}
             </p>
           )}
           {customerOnAccountEnabled ? (
             <p className="flex items-center gap-1 text-[11px] font-medium text-amber-200">
               <Clock className="h-3 w-3" aria-hidden />
               {customerReceivableBalance != null && customerReceivableBalance > 0
-                ? `Owes ${formatCurrency(customerReceivableBalance, currency)}`
+                ? t("owesAmount", { amount: formatCurrency(customerReceivableBalance, currency) })
                 : customerCreditAvailable != null
-                  ? `Pay later: ${formatCurrency(customerCreditAvailable, currency)}`
-                  : "Pay later enabled"}
+                  ? t("payLaterAmount", { amount: formatCurrency(customerCreditAvailable, currency) })
+                  : t("payLaterEnabled")}
             </p>
           ) : customerName ? (
-            <p className="text-[11px] text-amber-200/90">Pay later not enabled</p>
+            <p className="text-[11px] text-amber-200/90">{t("payLaterNotEnabled")}</p>
           ) : null}
         </div>
       </div>
@@ -317,30 +423,46 @@ export function CartPanel({
         {lines.length === 0 ? (
           <li className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-white text-center">
             <ShoppingCart className="h-10 w-10 text-slate-200" aria-hidden />
-            <p className="pos-heading text-sm font-semibold text-slate-500">Cart is empty</p>
-            <p className="text-xs text-slate-400">Tap products to add items</p>
+            <p className="pos-heading text-sm font-semibold text-slate-500">{t("cartEmpty")}</p>
+            <p className="text-xs text-slate-400">{t("tapProducts")}</p>
           </li>
         ) : (
           lines.map((line) => {
             const lineTotal = line.unitPrice * line.quantity - line.discountAmount;
             const catalogItem = catalogByVariant.get(line.variantId);
-            const stockWarn = stockWarningForLine(catalogItem, line.quantity);
+            const stockWarn = stockWarningForLine(catalogItem, line);
+            const stockWarnText = stockWarn
+              ? stockWarn.values
+                ? t(stockWarn.messageKey, stockWarn.values)
+                : t(stockWarn.messageKey)
+              : null;
+            const saleUoms =
+              line.saleUoms?.length
+                ? line.saleUoms
+                : catalogItem?.saleUoms?.length
+                  ? catalogItem.saleUoms
+                  : null;
+            const measured = isMeasuredCartLine(line);
+            const btnStep = qtyButtonStepForUom(line.uomCode, line.uomFactor);
+            const uomSuffix = line.uomCode || line.uomLabel || "";
             return (
               <li
-                key={line.variantId}
+                key={`${line.variantId}::${line.uomCode ?? "ea"}`}
                 className="pos-cart-item flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <p className="truncate text-sm font-bold text-slate-900">{line.productName}</p>
-                    {stockWarn && (
-                      <p className="text-[11px] font-semibold text-amber-700">{stockWarn}</p>
+                    {stockWarnText && (
+                      <p className="text-[11px] font-semibold text-amber-700">{stockWarnText}</p>
                     )}
                     {line.variantName && line.variantName !== "Default" && (
                       <p className="truncate text-[11px] font-medium text-slate-500">{line.variantName}</p>
                     )}
                     <p className="text-[11px] text-slate-500">
-                      {formatCurrency(line.unitPrice, currency)} × {line.quantity}
+                      {formatCurrency(line.unitPrice, currency)}
+                      {uomSuffix ? ` / ${uomSuffix}` : ""} × {line.quantity}
+                      {uomSuffix ? ` ${uomSuffix}` : ""}
                     </p>
                   </div>
                   <p className="pos-heading shrink-0 text-sm font-bold tabular-nums text-pos-navy">
@@ -348,24 +470,61 @@ export function CartPanel({
                   </p>
                 </div>
 
+                {saleUoms && saleUoms.length > 1 && onSetUom && (
+                  <select
+                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"
+                    value={(line.uomCode || "ea").toLowerCase()}
+                    onChange={(e) => onSetUom(line.variantId, line.uomCode, e.target.value)}
+                    aria-label={t("unitOfMeasure")}
+                  >
+                    {saleUoms.map((u) => (
+                      <option key={u.code} value={u.code.toLowerCase()}>
+                        {u.name} ({u.code})
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                     <button
                       type="button"
                       className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center text-slate-600 transition-colors hover:bg-white"
-                      onClick={() => onUpdateQty(line.variantId, line.quantity - 1)}
-                      aria-label="Decrease quantity"
+                      onClick={() => {
+                        const next = roundQty(line.quantity - btnStep, line.uomCode, line.uomFactor);
+                        // Keep at least one step — trash removes the line
+                        if (next <= 0) return;
+                        onUpdateQty(line.variantId, next, line.uomCode);
+                      }}
+                      aria-label={t("decreaseQty")}
                     >
                       <Minus className="h-4 w-4" aria-hidden />
                     </button>
-                    <span className="min-w-[2.5rem] text-center font-mono text-sm font-bold">
-                      {line.quantity}
-                    </span>
+                    <CartQtyField
+                      key={lineKey(line.variantId, line.uomCode)}
+                      quantity={line.quantity}
+                      uomCode={line.uomCode}
+                      uomFactor={line.uomFactor}
+                      measured={measured}
+                      uomSuffix={uomSuffix}
+                      ariaLabel={
+                        measured
+                          ? t("measureAmount", { uom: uomSuffix || "uom" })
+                          : tCommon("quantity")
+                      }
+                      onCommit={(qty) => onUpdateQty(line.variantId, qty, line.uomCode)}
+                    />
                     <button
                       type="button"
                       className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center text-slate-600 transition-colors hover:bg-white"
-                      onClick={() => onUpdateQty(line.variantId, line.quantity + 1)}
-                      aria-label="Increase quantity"
+                      onClick={() =>
+                        onUpdateQty(
+                          line.variantId,
+                          roundQty(line.quantity + btnStep, line.uomCode, line.uomFactor),
+                          line.uomCode
+                        )
+                      }
+                      aria-label={t("increaseQty")}
                     >
                       <Plus className="h-4 w-4" aria-hidden />
                     </button>
@@ -376,23 +535,26 @@ export function CartPanel({
                       min="0"
                       max={lineGross(line)}
                       step="0.01"
-                      placeholder="Disc."
-                      aria-label={`Line discount for ${line.productName}`}
-                      title={`Line discount (max ${formatCurrency(lineGross(line), currency)})`}
+                      placeholder={t("discPlaceholder")}
+                      aria-label={t("lineDiscountAria", { name: line.productName })}
+                      title={t("lineDiscountTitle", {
+                        amount: formatCurrency(lineGross(line), currency),
+                      })}
                       className="h-9 w-14 rounded-lg text-xs"
                       value={line.discountAmount || ""}
                       onChange={(e) =>
                         onDiscount(
                           line.variantId,
-                          clampLineDiscount(line, parseFloat(e.target.value) || 0)
+                          clampLineDiscount(line, parseFloat(e.target.value) || 0),
+                          line.uomCode
                         )
                       }
                     />
                     <button
                       type="button"
                       className="touch-target flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50"
-                      onClick={() => onRemove(line.variantId)}
-                      aria-label="Remove item"
+                      onClick={() => onRemove(line.variantId, line.uomCode)}
+                      aria-label={t("removeItem")}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
@@ -404,18 +566,20 @@ export function CartPanel({
         )}
       </ul>
 
-      <div className="flex shrink-0 flex-col gap-2.5 border-t border-slate-200 bg-white p-3">
+        <div className="flex shrink-0 flex-col gap-2.5 border-t border-slate-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:pb-3">
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-medium text-slate-600">
           <span>
-            Subtotal{" "}
+            {t("subtotal")}{" "}
             <span className="tabular-nums text-slate-900">{formatCurrency(subtotal, currency)}</span>
           </span>
           <span>
-            Tax <span className="tabular-nums text-slate-900">{formatCurrency(tax, currency)}</span>
+            {t("tax")}
+            {typeof taxRate === "number" && taxRate > 0 ? ` ${taxRate}%` : ""}{" "}
+            <span className="tabular-nums text-slate-900">{formatCurrency(tax, currency)}</span>
           </span>
           {(cartDiscount > 0 || promoDiscount > 0) && (
             <span className="text-emerald-700">
-              Disc{" "}
+              {t("discount")}{" "}
               <span className="tabular-nums">
                 −{formatCurrency(cartDiscount + promoDiscount, currency)}
               </span>
@@ -432,10 +596,10 @@ export function CartPanel({
         >
           <span className="flex items-center gap-1.5">
             <Tag className="h-3.5 w-3.5" aria-hidden />
-            Discounts & promo
+            {t("discountsPromo")}
             {hasAdjustments && (
               <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                Active
+                {t("active")}
               </span>
             )}
           </span>
@@ -452,14 +616,14 @@ export function CartPanel({
             className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 text-sm"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600">Order discount</span>
+              <span className="text-xs font-medium text-slate-600">{t("orderDiscount")}</span>
               <div className="flex items-center gap-1.5">
                 <div className="flex overflow-hidden rounded-md border border-slate-200 bg-white p-0.5">
                   <button
                     type="button"
                     onClick={() => switchOrderDiscountMode("percent")}
                     aria-pressed={orderDiscountMode === "percent"}
-                    aria-label="Order discount as percentage"
+                    aria-label={t("orderDiscountPercentAria")}
                     className={cn(
                       "cursor-pointer rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
                       orderDiscountMode === "percent"
@@ -473,7 +637,7 @@ export function CartPanel({
                     type="button"
                     onClick={() => switchOrderDiscountMode("amount")}
                     aria-pressed={orderDiscountMode === "amount"}
-                    aria-label={`Order discount as ${currency} amount`}
+                    aria-label={t("orderDiscountAmountAria", { currency })}
                     className={cn(
                       "cursor-pointer rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
                       orderDiscountMode === "amount"
@@ -492,8 +656,8 @@ export function CartPanel({
                   placeholder={orderDiscountMode === "percent" ? "0" : "0.00"}
                   aria-label={
                     orderDiscountMode === "percent"
-                      ? "Order discount percentage"
-                      : "Order discount amount"
+                      ? t("orderDiscountPctAria")
+                      : t("orderDiscountAmtAria")
                   }
                   className="h-8 w-20 rounded-lg text-right text-xs"
                   value={orderDiscountInput}
@@ -503,7 +667,7 @@ export function CartPanel({
             </div>
             {cartDiscount > 0 && orderDiscountMode === "percent" && (
               <p className="text-right text-[11px] text-slate-500">
-                −{formatCurrency(cartDiscount, currency)} off order
+                {t("offOrder", { amount: formatCurrency(cartDiscount, currency) })}
               </p>
             )}
             {onApplyPromo && (
@@ -525,7 +689,7 @@ export function CartPanel({
                           type="button"
                           onClick={onClearPromo}
                           className="cursor-pointer rounded p-0.5 text-slate-400 hover:text-slate-600"
-                          aria-label="Remove promotion"
+                          aria-label={t("removePromotion")}
                         >
                           <X className="h-3.5 w-3.5" aria-hidden />
                         </button>
@@ -535,8 +699,8 @@ export function CartPanel({
                 ) : (
                   <div className="flex gap-1.5">
                     <Input
-                      placeholder="Promo code"
-                      aria-label="Promotion code"
+                      placeholder={t("promoCode")}
+                      aria-label={t("promotionCodeAria")}
                       value={promoInput}
                       onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                       className="h-8 flex-1 rounded-lg text-xs uppercase"
@@ -551,7 +715,7 @@ export function CartPanel({
                       aria-busy={promoBusy}
                       onClick={() => onApplyPromo(promoInput.trim())}
                     >
-                      {promoBusy ? "…" : "Apply"}
+                      {promoBusy ? "…" : t("apply")}
                     </Button>
                   </div>
                 )}
@@ -569,15 +733,18 @@ export function CartPanel({
                   needsManagerOverride ? "font-semibold text-amber-700" : "text-slate-500"
                 )}
               >
-                Discount {discountPct.toFixed(1)}% · limit {maxCashierDiscountPct}%
-                {needsManagerOverride && " · PIN required"}
+                {t("discountLimit", {
+                  pct: discountPct.toFixed(1),
+                  limit: maxCashierDiscountPct,
+                })}
+                {needsManagerOverride ? t("pinRequired") : ""}
               </p>
             )}
           </div>
         )}
 
         <div className="flex items-baseline justify-between rounded-xl bg-pos-primary-soft-8 px-3 py-2">
-          <span className="text-xs font-semibold text-slate-600">Total due</span>
+          <span className="text-xs font-semibold text-slate-600">{t("total")}</span>
           <span className="pos-heading text-2xl font-bold tabular-nums tracking-tight text-pos-primary">
             {formatCurrency(total, currency)}
           </span>
@@ -592,7 +759,7 @@ export function CartPanel({
             "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           )}
         >
-          Checkout · {formatCurrency(total, currency)}
+          {t("checkout")} · {formatCurrency(total, currency)}
         </button>
       </div>
     </aside>
