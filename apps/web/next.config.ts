@@ -67,6 +67,45 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // PWA: service worker must revalidate so updates reach installed clients
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      {
+        source: "/pos-manifest.json",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600",
+          },
+          {
+            key: "Content-Type",
+            value: "application/manifest+json; charset=utf-8",
+          },
+        ],
+      },
+      {
+        source: "/offline.html",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600",
+          },
+        ],
+      },
+      {
+        source: "/icons/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400",
+          },
+        ],
+      },
       // Default ERP headers (camera allowed for same-origin — POS barcode scan).
       { source: "/:path*", headers: securityHeaders },
       // POS / register: explicit camera policy (matches default; kept for clarity).

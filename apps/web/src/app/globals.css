@@ -37,7 +37,12 @@
     --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
     --shadow-md: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.04);
     --shadow-lg: 0 4px 6px -1px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.04);
-    --mobile-nav-height: 3.25rem;
+    /* Fixed mobile tab bar content height (icons + labels). */
+    --mobile-nav-height: 3.5rem;
+    /* Total space to clear: tab bar + iOS home indicator + breathing room. */
+    --mobile-nav-offset: calc(
+      var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 0.75rem
+    );
   }
 
   .dark {
@@ -119,17 +124,6 @@
     }
   }
 
-  /* Tenant shell — reserve space for fixed bottom nav + home indicator */
-  .pb-mobile-nav {
-    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
-  }
-
-  @media (min-width: 1024px) {
-    .pb-mobile-nav {
-      padding-bottom: 0;
-    }
-  }
-
   .safe-area-top {
     padding-top: env(safe-area-inset-top, 0px);
   }
@@ -169,6 +163,38 @@
 }
 
 @layer utilities {
+  /*
+   * Clear the fixed mobile bottom nav. Lives in utilities so it wins over
+   * padding shorthand utilities when used as an explicit pb-* class.
+   * Prefer splitting px/pt from pb in the shell (see TenantShell).
+   */
+  .pb-mobile-nav {
+    padding-bottom: var(--mobile-nav-offset);
+  }
+
+  .scroll-pb-mobile-nav {
+    scroll-padding-bottom: var(--mobile-nav-offset);
+  }
+
+  /* For sticky/fixed footers inside pages (bottom: offset above the tab bar). */
+  .bottom-mobile-nav {
+    bottom: var(--mobile-nav-offset);
+  }
+
+  @media (min-width: 1024px) {
+    .pb-mobile-nav {
+      padding-bottom: 0;
+    }
+
+    .scroll-pb-mobile-nav {
+      scroll-padding-bottom: 0;
+    }
+
+    .bottom-mobile-nav {
+      bottom: 0;
+    }
+  }
+
   .animate-in {
     animation: animate-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }

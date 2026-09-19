@@ -1,4 +1,5 @@
 import { formatCurrency } from "@/lib/utils";
+import { DEFAULT_ORG_TIMEZONE, formatOrgDateTimeFull } from "@/lib/finance-dates";
 
 type ReceiptData = {
   orgName: string;
@@ -6,12 +7,15 @@ type ReceiptData = {
   currency: string;
   receiptNo: string;
   createdAt: string;
+  timeZone?: string;
   lines: {
     product_name: string;
     variant_name: string | null;
     quantity: number;
     unit_price: number;
     line_total: number;
+    tax_amount?: number | null;
+    discount_amount?: number | null;
   }[];
   subtotal: number;
   tax: number;
@@ -52,7 +56,7 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
     new Uint8Array([ESC, 0x61, 1]),
     line(data.orgName),
     line(data.storeName),
-    line(new Date(data.createdAt).toLocaleString()),
+    line(formatOrgDateTimeFull(data.createdAt, data.timeZone ?? DEFAULT_ORG_TIMEZONE)),
     line(`#${data.receiptNo}`),
     line("--------------------------------"),
     new Uint8Array([ESC, 0x61, 0]),
@@ -63,8 +67,14 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
       l.variant_name && l.variant_name !== "Default"
         ? `${l.product_name} (${l.variant_name})`
         : l.product_name;
+    const tax = Number(l.tax_amount ?? 0);
+    const disc = Number(l.discount_amount ?? 0);
+    const lineEx =
+      tax > 0
+        ? Math.round((Number(l.line_total) - tax) * 100) / 100
+        : Math.round((Number(l.unit_price) * Number(l.quantity) - disc) * 100) / 100;
     chunks.push(line(name));
-    chunks.push(line(`  ${l.quantity} x ${money(l.unit_price)}  ${money(l.line_total)}`));
+    chunks.push(line(`  ${l.quantity} x ${money(l.unit_price)}  ${money(lineEx)}`));
   }
 
   chunks.push(line("--------------------------------"));

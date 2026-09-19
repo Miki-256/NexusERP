@@ -13,10 +13,10 @@ export function relationName(
   return rel.name;
 }
 
-export function formatCurrency(amount: number, currency = "ETB") {
+export function formatCurrency(amount: number, currency = "ETB", locale = "en-ET") {
   const code = currency?.trim() || "ETB";
   try {
-    return new Intl.NumberFormat("en-ET", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: code,
       minimumFractionDigits: 2,

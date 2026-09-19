@@ -10,8 +10,14 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { FormCard } from "@/components/layout/form-card";
+import { Panel } from "@/components/layout/panel";
 import { PAGE_SHELL } from "@/lib/ui-classes";
 import { CreditCard } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { applyLocaleCookie } from "@/components/i18n/language-switcher";
+import { isAppLocale, type AppLocale } from "@/i18n/config";
+import { SELECT_CLS } from "@/lib/ui-classes";
+import { cn } from "@/lib/utils";
 
 type Org = {
   id: string;
@@ -33,6 +39,7 @@ type Org = {
   je_requires_approval: boolean;
   address: string | null;
   tax_id: string | null;
+  default_locale?: string;
 };
 
 export function SettingsClient({
@@ -46,8 +53,13 @@ export function SettingsClient({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const t = useTranslations("settings");
+  const tCommon = useTranslations("common");
   const [name, setName] = useState(organization.name);
   const [currency, setCurrency] = useState(organization.currency);
+  const [locale, setLocale] = useState<AppLocale>(
+    isAppLocale(organization.default_locale) ? organization.default_locale : "en"
+  );
   const [taxRate, setTaxRate] = useState(String(organization.tax_rate));
   const [taxInclusive, setTaxInclusive] = useState(organization.tax_inclusive);
   const [receiptPrefix, setReceiptPrefix] = useState(organization.receipt_prefix);
@@ -102,8 +114,8 @@ export function SettingsClient({
     const normalizedCurrency = currency.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
       toast({
-        title: "Invalid currency",
-        description: "Use a 3-letter ISO code (e.g. ETB, USD, EUR).",
+        title: t("invalidCurrency"),
+        description: t("invalidCurrencyHelp"),
         variant: "destructive",
       });
       return;
@@ -115,15 +127,17 @@ export function SettingsClient({
     if (!Number.isFinite(parsedMaxDiscount) || parsedMaxDiscount < 0 || parsedMaxDiscount > 100) {
       setLoading(false);
       toast({
-        title: "Invalid discount limit",
-        description: "Max cashier discount must be between 0 and 100.",
+        title: t("invalidDiscount"),
+        description: t("invalidDiscountHelp"),
         variant: "destructive",
       });
       return;
     }
+    const wasAutoPost = organization.pos_auto_post_sales ?? false;
     const { error } = await supabase.from("organizations").update({
       name,
       currency: normalizedCurrency,
+      default_locale: locale,
       tax_rate: parseFloat(taxRate),
       tax_inclusive: taxInclusive,
       receipt_prefix: receiptPrefix,
@@ -139,37 +153,89 @@ export function SettingsClient({
       pos_loyalty_spend_per_point: parseFloat(loyaltySpendPerPoint) || 0.1,
       pos_loyalty_min_redeem_points: parseInt(loyaltyMinRedeem, 10) || 100,
     }).eq("id", organization.id);
+    if (error) {
+      setLoading(false);
+      return toast({ title: t("saveFailed"), description: error.message, variant: "destructive" });
+    }
+
+    let backfillNote = "";
+    if (!wasAutoPost && autoPostSales) {
+      const { data: batch, error: batchError } = await supabase.rpc("post_unposted_sales_batch", {
+        p_org_id: organization.id,
+        p_limit: 500,
+      });
+      if (batchError) {
+        backfillNote = t("backfillFailed", { message: batchError.message });
+      } else {
+        const posted = Number((batch as { posted?: number } | null)?.posted ?? 0);
+        const skipped = Number((batch as { skipped?: number } | null)?.skipped ?? 0);
+        backfillNote =
+          posted > 0 || skipped > 0
+            ? [t("backfilled", { posted }), skipped ? t("backfillSkipped", { skipped }) : null]
+                .filter(Boolean)
+                .join(" ")
+            : t("noBackfill");
+      }
+    }
+
     setLoading(false);
-    if (error) return toast({ title: "Save failed", description: error.message, variant: "destructive" });
-    toast({ title: "Settings saved" });
-    router.refresh();
+    applyLocaleCookie(locale);
+    toast({ title: t("saved"), description: backfillNote.trim() || undefined });
+    // Full reload so Amharic/English messages + Ethiopic font apply immediately
+    window.location.reload();
   }
 
   if (!canManage) {
-    return <p className="text-muted-foreground">You don&apos;t have permission to change settings.</p>;
+    return <p className="text-muted-foreground">{t("noPermission")}</p>;
   }
 
   return (
     <div className={PAGE_SHELL}>
-      <PageHeader title="Settings" description="Organization profile, tax, and receipt preferences" />
+      <PageHeader title={t("title")} description={t("languageHelp")} />
 
-      <FormCard title="Subscription">
-        <p className="mb-4 text-sm text-muted-foreground">
-          View your plan tier, usage limits, and upgrade options.
+      <Panel title={t("subscription")}>
+        <p className="mb-3 text-sm text-muted-foreground">
+          {t("subscriptionHelp")}
         </p>
         <Button variant="outline" size="sm" asChild>
           <Link href="/settings/billing">
             <CreditCard className="mr-1.5 h-4 w-4" />
-            Billing &amp; plan
+            {t("billingPlan")}
           </Link>
         </Button>
-      </FormCard>
+      </Panel>
 
-      <FormCard title="Organization">
+      <FormCard title={t("organization")}>
         <form onSubmit={handleSave} className="max-w-lg space-y-4">
-          <div className="space-y-2"><Label>Business name</Label><Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} /></div>
+          <div className="space-y-2"><Label>{t("businessName")}</Label><Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} /></div>
           <div className="space-y-2">
-            <Label htmlFor="currency">Currency</Label>
+            <Label htmlFor="locale">{t("language")}</Label>
+            <select
+              id="locale"
+              className={cn(SELECT_CLS, "h-10 max-w-xs")}
+              value={locale}
+              disabled={!isOwner}
+              onChange={(e) => {
+                const next = e.target.value as AppLocale;
+                setLocale(next);
+                applyLocaleCookie(next);
+                void (async () => {
+                  const supabase = createClient();
+                  await supabase
+                    .from("organizations")
+                    .update({ default_locale: next })
+                    .eq("id", organization.id);
+                  window.location.reload();
+                })();
+              }}
+            >
+              <option value="en">{tCommon("english")}</option>
+              <option value="am">{tCommon("amharic")}</option>
+            </select>
+            <p className="text-xs text-muted-foreground">{t("languageHelp")}</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="currency">{t("currency")}</Label>
             <Input
               id="currency"
               value={currency}
@@ -180,18 +246,18 @@ export function SettingsClient({
               className="max-w-[8rem] uppercase"
             />
             <p className="text-xs text-muted-foreground">
-              3-letter code used across POS, sales, products, and reports. Existing amounts are not converted.
+              {t("currencyHelp")}
             </p>
           </div>
-          <div className="space-y-2"><Label>Tax rate %</Label><Input type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} disabled={!isOwner} /></div>
+          <div className="space-y-2"><Label>{t("taxRate")}</Label><Input type="number" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} disabled={!isOwner} /></div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={taxInclusive} onChange={(e) => setTaxInclusive(e.target.checked)} disabled={!isOwner} className="rounded border-input" />
-            Prices include tax
+            {t("taxInclusive")}
           </label>
-          <div className="space-y-2"><Label>Receipt prefix</Label><Input value={receiptPrefix} onChange={(e) => setReceiptPrefix(e.target.value)} disabled={!isOwner} /></div>
-          <div className="space-y-2"><Label>Receipt footer</Label><Input value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)} disabled={!isOwner} /></div>
+          <div className="space-y-2"><Label>{t("receiptPrefix")}</Label><Input value={receiptPrefix} onChange={(e) => setReceiptPrefix(e.target.value)} disabled={!isOwner} /></div>
+          <div className="space-y-2"><Label>{t("receiptFooter")}</Label><Input value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)} disabled={!isOwner} /></div>
           <div className="space-y-2">
-            <Label htmlFor="pos-max-discount">Max cashier discount %</Label>
+            <Label htmlFor="pos-max-discount">{t("maxCashierDiscount")}</Label>
             <Input
               id="pos-max-discount"
               type="number"
@@ -204,14 +270,14 @@ export function SettingsClient({
               className="max-w-[8rem]"
             />
             <p className="text-xs text-muted-foreground">
-              Cashiers must enter a manager PIN when cart or line discounts exceed this percentage.
+              {t("maxCashierDiscountHelp")}
             </p>
           </div>
-          {isOwner && <Button type="submit" disabled={loading}>{loading ? "Saving…" : "Save changes"}</Button>}
+          {isOwner && <Button type="submit" disabled={loading}>{loading ? tCommon("saving") : t("saveChanges")}</Button>}
         </form>
       </FormCard>
 
-      <FormCard title="Accounting controls">
+      <FormCard title={t("accountingControls")}>
         <form onSubmit={handleSave} className="max-w-lg space-y-4">
           <label className="flex items-start gap-2 text-sm">
             <input
@@ -222,22 +288,19 @@ export function SettingsClient({
               className="mt-0.5 rounded border-input"
             />
             <span>
-              <span className="font-medium">Require approval for manual journal entries</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                When enabled, manual entries are saved as drafts until a manager approves them from
-                Financials → Manual JE. System postings (sales, refunds, period close) are not affected.
-              </span>
+              <span className="font-medium">{t("jeApproval")}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t("jeApprovalHelp")}</span>
             </span>
           </label>
           {isOwner && (
             <Button type="submit" disabled={loading}>
-              {loading ? "Saving…" : "Save accounting settings"}
+              {loading ? tCommon("saving") : t("saveAccounting")}
             </Button>
           )}
         </form>
       </FormCard>
 
-      <FormCard title="POS operations">
+      <FormCard title={t("posOperations")}>
         <form onSubmit={handleSave} className="max-w-lg space-y-4">
           <label className="flex items-start gap-2 text-sm">
             <input
@@ -248,13 +311,8 @@ export function SettingsClient({
               className="mt-0.5 rounded border-input"
             />
             <span>
-              <span className="font-medium">Auto-post sales to ledger</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Recommended for businesses using Financial Statements and trial balance. Each completed
-                sale posts Dr cash/AR/store-credit liability, Cr revenue and tax, plus COGS — skipped while
-                mobile payments are pending confirmation. You can also batch-post historical sales from
-                Financials.
-              </span>
+              <span className="font-medium">{t("autoPost")}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t("autoPostHelp")}</span>
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm">
@@ -266,10 +324,8 @@ export function SettingsClient({
               className="mt-0.5 rounded border-input"
             />
             <span>
-              <span className="font-medium">Mobile money pending until webhook</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                When a Telebirr/M-Pesa reference is entered at checkout, mark payment pending until the provider webhook confirms it.
-              </span>
+              <span className="font-medium">{t("mobilePending")}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t("mobilePendingHelp")}</span>
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm">
@@ -281,16 +337,13 @@ export function SettingsClient({
               className="mt-0.5 rounded border-input"
             />
             <span>
-              <span className="font-medium">Enable tips at checkout</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                At cash checkout, enter cash received and change given — any leftover after the order
-                total and change is recorded as tip (e.g. order 143, received 150, change 5 → tip 2).
-              </span>
+              <span className="font-medium">{t("tipsEnable")}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t("tipsHelp")}</span>
             </span>
           </label>
           {tipsEnabled && (
             <div className="space-y-2">
-              <Label htmlFor="tip-presets">Tip preset percentages</Label>
+              <Label htmlFor="tip-presets">{t("tipPresets")}</Label>
               <Input
                 id="tip-presets"
                 value={tipPresetsInput}
@@ -298,9 +351,7 @@ export function SettingsClient({
                 disabled={!isOwner}
                 placeholder="10, 15, 20"
               />
-              <p className="text-xs text-muted-foreground">
-                Comma-separated percentages shown as quick-select buttons at checkout.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("tipPresetsHelp")}</p>
             </div>
           )}
           <label className="flex items-start gap-2 text-sm">
@@ -312,16 +363,14 @@ export function SettingsClient({
               className="mt-0.5 rounded border-input"
             />
             <span>
-              <span className="font-medium">Loyalty program at POS</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Customers earn points on merchandise purchases and can redeem them as payment at checkout.
-              </span>
+              <span className="font-medium">{t("loyalty")}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t("loyaltyHelp")}</span>
             </span>
           </label>
           {loyaltyEnabled && (
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label>Points per {currency} spent</Label>
+                <Label>{t("pointsPer", { currency })}</Label>
                 <Input
                   type="number"
                   min="0"
@@ -332,7 +381,7 @@ export function SettingsClient({
                 />
               </div>
               <div className="space-y-2">
-                <Label>{currency} value per point</Label>
+                <Label>{t("valuePerPoint", { currency })}</Label>
                 <Input
                   type="number"
                   min="0.01"
@@ -343,7 +392,7 @@ export function SettingsClient({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Minimum redeem (points)</Label>
+                <Label>{t("minRedeem")}</Label>
                 <Input
                   type="number"
                   min="1"
@@ -357,7 +406,7 @@ export function SettingsClient({
           )}
           {isOwner && (
             <Button type="submit" disabled={loading}>
-              {loading ? "Saving…" : "Save POS settings"}
+              {loading ? tCommon("saving") : t("savePos")}
             </Button>
           )}
         </form>

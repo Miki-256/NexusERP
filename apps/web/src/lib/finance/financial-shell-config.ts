@@ -17,6 +17,7 @@ export type FinancialShellTab =
   | "balance"
   | "cashflow"
   | "trial"
+  | "txn_flow"
   | "ledger"
   | "coa"
   | "journal"
@@ -56,6 +57,7 @@ export const TAB_TO_AREA: Record<FinancialShellTab, FinancialShellAreaId> = {
   balance: "reporting",
   cashflow: "reporting",
   trial: "reporting",
+  txn_flow: "reporting",
   reports: "reporting",
   analytics: "reporting",
   ledger: "ledger",
@@ -80,7 +82,7 @@ export const TAB_TO_AREA: Record<FinancialShellTab, FinancialShellAreaId> = {
 
 export const AREA_TABS: Record<FinancialShellAreaId, FinancialShellTab[]> = {
   home: ["home"],
-  reporting: ["overview", "executive", "pnl", "balance", "cashflow", "trial", "reports", "analytics"],
+  reporting: ["overview", "executive", "pnl", "balance", "cashflow", "trial", "txn_flow", "reports", "analytics"],
   ledger: ["ledger", "coa", "journal", "periods"],
   working_capital: ["aging", "banking", "treasury", "fx"],
   compliance: ["tax", "security"],
@@ -96,6 +98,7 @@ export const TAB_LABELS: Record<FinancialShellTab, string> = {
   balance: "Balance Sheet",
   cashflow: "Cash Flow",
   trial: "Trial Balance",
+  txn_flow: "Transaction flow",
   ledger: "Ledger",
   coa: "COA",
   journal: "Manual JE",

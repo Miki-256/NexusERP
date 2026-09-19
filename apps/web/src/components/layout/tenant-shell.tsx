@@ -61,16 +61,20 @@ function MainContent({ children }: { children: React.ReactNode }) {
   }, [children, pathname]);
 
   return (
-    <main ref={mainRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+    <main
+      ref={mainRef}
+      className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-pb-mobile-nav"
+    >
       {isNavigating && (
         <div
           className="pointer-events-none absolute inset-0 z-10 bg-background/20 backdrop-blur-[1px]"
           aria-hidden
         />
       )}
+      {/* Avoid padding shorthand here — it overrides pb-mobile-nav on small screens. */}
       <div
         className={cn(
-          "relative mx-auto max-w-[1400px] p-3 pb-mobile-nav transition-all duration-300 ease-out sm:p-5 lg:p-7",
+          "relative mx-auto max-w-[1400px] px-3 pt-3 pb-mobile-nav transition-all duration-300 ease-out sm:px-5 sm:pt-5 lg:px-7 lg:pb-7 lg:pt-7",
           isNavigating && "scale-[0.998] opacity-60"
         )}
       >
