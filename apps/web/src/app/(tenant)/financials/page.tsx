@@ -76,8 +76,14 @@ import {
   fetchFinancialsPageRawData,
 } from "@/lib/finance/financials-page-data";
 
+/** Unwrap `fetch_financial_report` envelope `{ source, data }` — leave raw RPC payloads alone. */
 function unwrapCachedReport<T>(payload: unknown): T {
-  if (payload && typeof payload === "object" && "data" in payload) {
+  if (payload == null) return payload as T;
+  if (
+    typeof payload === "object" &&
+    "data" in payload &&
+    ("source" in payload || "cache_key" in payload || "report_type" in payload)
+  ) {
     return (payload as { data: T }).data;
   }
   return payload as T;

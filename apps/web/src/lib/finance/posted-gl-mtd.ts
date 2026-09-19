@@ -1,7 +1,8 @@
 /**
  * Shared posted-GL MTD KPI path (NX-AUDIT-001).
  * Dashboard and Accounting hub must use the same org-TZ window + p_mode='gl'.
- * Hub overview still loads via fetch_financial_report(..., p_mode:'gl', p_force_refresh)
+ * Hub overview loads via fetch_financial_report(..., p_mode:'gl', p_force_refresh)
+ * for P&L, Balance Sheet, Cash Flow, Trial Balance, and Executive Dashboard.
  * which resolves to the same profit_and_loss SQL with identical dates.
  */
 import { monthToDateInTimeZone, DEFAULT_ORG_TIMEZONE } from "@/lib/finance-dates";

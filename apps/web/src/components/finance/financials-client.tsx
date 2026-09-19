@@ -701,7 +701,10 @@ export function FinancialsClient({
         <FinancialLaunchpad
           catalog={launchpadCatalog}
           pinnedTabs={shellPrefs.pinned_tabs}
-          onSelectTab={(nextTab) => navigateShell(areaForTab(nextTab), nextTab)}
+          onSelectTab={(nextTab) => {
+            const nextArea = areaForTab(nextTab);
+            navigateShell(nextArea, nextTab, nextArea !== area);
+          }}
           compact={compact}
           kpis={[
             {

@@ -209,6 +209,8 @@ export async function fetchFinancialsPageRawData(
       // Live vs Dashboard GL KPIs — skip 60m cache so hub matches posted ledger.
       p_force_refresh: true,
     }),
+    // Live statutory statements — skip 60m cache so BS/CF match posted ledger for every org
+    // (same NX-AUDIT-001 pattern as P&L; stale cache was serving zeros after late JE posts).
     skip(
       scope.reporting,
       supabase.rpc("fetch_financial_report", {
@@ -216,6 +218,7 @@ export async function fetchFinancialsPageRawData(
         p_report_type: "trial_balance",
         p_to: to,
         p_as_of: to,
+        p_force_refresh: true,
       })
     ),
     skip(
@@ -225,6 +228,7 @@ export async function fetchFinancialsPageRawData(
         p_report_type: "balance_sheet",
         p_to: to,
         p_as_of: to,
+        p_force_refresh: true,
       })
     ),
     skip(
@@ -234,6 +238,7 @@ export async function fetchFinancialsPageRawData(
         p_report_type: "cash_flow",
         p_from: from,
         p_to: to,
+        p_force_refresh: true,
       })
     ),
     skip(scope.reporting, supabase.rpc("financials_chart_data", { p_org_id: orgId, p_from: from, p_to: to })),
@@ -325,6 +330,7 @@ export async function fetchFinancialsPageRawData(
         p_report_type: "executive_dashboard",
         p_from: from,
         p_to: to,
+        p_force_refresh: true,
       })
     ),
     skip(scope.platform, supabase.rpc("list_financial_automation_rules", { p_org_id: orgId })),
