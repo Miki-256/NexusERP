@@ -1,48 +1,92 @@
 export type DatePreset = "today" | "week" | "month" | "quarter" | "year" | "last_month";
 
+/**
+ * Business-date / display rule (NexusERP):
+ * - Persist instants as timestamptz (UTC).
+ * - Display all user-facing sale/payment/movement/receipt/JE times in the org IANA
+ *   timezone (default Africa/Addis_Ababa) via formatOrgDateTime / formatOrgDateTimeFull.
+ * - Report day bounds / MTD use calendar dates in that timezone
+ *   (monthToDateInTimeZone, utcDayRangeForCalendarDate) — never UTC toISOString slice alone.
+ * - Journal entry_date / day P&L = calendar date of sale.created_at in org TZ
+ *   (see post_sale_to_ledger_internal: (created_at AT TIME ZONE v_tz)::date).
+ */
+export const DEFAULT_ORG_TIMEZONE = "Africa/Addis_Ababa";
+
 export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function dateRangeForPreset(preset: DatePreset): { from: string; to: string; label: string } {
+/** Calendar YYYY-MM-DD for `date` in an IANA timezone (e.g. Africa/Addis_Ababa). */
+export function calendarDateInTimeZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(date);
+}
+
+/** Month-to-date [from, to] as calendar dates in `timeZone`. */
+export function monthToDateInTimeZone(
+  timeZone: string = DEFAULT_ORG_TIMEZONE,
+  now: Date = new Date()
+): { from: string; to: string } {
+  const tz = timeZone.trim() || DEFAULT_ORG_TIMEZONE;
+  const to = calendarDateInTimeZone(now, tz);
+  const [y, m] = to.split("-").map((n) => parseInt(n, 10));
+  const from = `${y}-${String(m).padStart(2, "0")}-01`;
+  return { from, to };
+}
+
+/** Shift a calendar YYYY-MM-DD by `deltaDays` (civil date arithmetic). */
+function shiftCalendarDate(ymd: string, deltaDays: number): string {
+  const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
+  const utc = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  return utc.toISOString().slice(0, 10);
+}
+
+export function dateRangeForPreset(
+  preset: DatePreset,
+  timeZone: string = DEFAULT_ORG_TIMEZONE
+): { from: string; to: string; label: string } {
+  const tz = timeZone.trim() || DEFAULT_ORG_TIMEZONE;
   const now = new Date();
-  const to = isoDate(now);
+  const to = calendarDateInTimeZone(now, tz);
+  const [y, m] = to.split("-").map((n) => parseInt(n, 10));
 
   switch (preset) {
     case "today":
       return { from: to, to, label: "Today" };
-    case "week": {
-      const start = new Date(now);
-      start.setDate(now.getDate() - 6);
-      return { from: isoDate(start), to, label: "Last 7 days" };
-    }
-    case "month": {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { from: isoDate(start), to, label: "Month to date" };
-    }
+    case "week":
+      return { from: shiftCalendarDate(to, -6), to, label: "Last 7 days" };
+    case "month":
+      return { from: `${y}-${String(m).padStart(2, "0")}-01`, to, label: "Month to date" };
     case "last_month": {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { from: isoDate(start), to: isoDate(end), label: "Last month" };
+      const lastEnd = shiftCalendarDate(`${y}-${String(m).padStart(2, "0")}-01`, -1);
+      const [ly, lm] = lastEnd.split("-").map((n) => parseInt(n, 10));
+      return {
+        from: `${ly}-${String(lm).padStart(2, "0")}-01`,
+        to: lastEnd,
+        label: "Last month",
+      };
     }
     case "quarter": {
-      const q = Math.floor(now.getMonth() / 3);
-      const start = new Date(now.getFullYear(), q * 3, 1);
-      return { from: isoDate(start), to, label: "Quarter to date" };
+      const qStartMonth = Math.floor((m - 1) / 3) * 3 + 1;
+      return {
+        from: `${y}-${String(qStartMonth).padStart(2, "0")}-01`,
+        to,
+        label: "Quarter to date",
+      };
     }
-    case "year": {
-      const start = new Date(now.getFullYear(), 0, 1);
-      return { from: isoDate(start), to, label: "Year to date" };
-    }
+    case "year":
+      return { from: `${y}-01-01`, to, label: "Year to date" };
   }
 }
 
-export function monthToDate(): { from: string; to: string } {
-  return dateRangeForPreset("month");
+/** @deprecated Prefer monthToDateInTimeZone(orgTimezone) for finance MTD. */
+export function monthToDate(timeZone: string = DEFAULT_ORG_TIMEZONE): { from: string; to: string } {
+  const r = dateRangeForPreset("month", timeZone);
+  return { from: r.from, to: r.to };
 }
 
-export function previousMonthRange(): { from: string; to: string } {
-  return dateRangeForPreset("last_month");
+export function previousMonthRange(timeZone: string = DEFAULT_ORG_TIMEZONE): { from: string; to: string } {
+  const r = dateRangeForPreset("last_month", timeZone);
+  return { from: r.from, to: r.to };
 }
 
 export function formatPeriod(from: string, to: string): string {
@@ -71,11 +115,6 @@ export function priorPeriod(from: string, to: string): { from: string; to: strin
 export function priorBalanceSheetDate(asOf: string, periodFrom: string): string {
   const prior = priorPeriod(periodFrom, asOf);
   return prior.to;
-}
-
-/** Calendar date YYYY-MM-DD for `date` in an IANA timezone (e.g. Africa/Addis_Ababa). */
-export function calendarDateInTimeZone(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(date);
 }
 
 /**
@@ -134,4 +173,37 @@ function zonedLocalToUtc(
   }
 
   return new Date(guess);
+}
+
+function parseInstant(iso: string | Date): Date | null {
+  if (iso instanceof Date) return Number.isNaN(iso.getTime()) ? null : iso;
+  const raw = iso.trim();
+  if (!raw) return null;
+  // Postgres sometimes returns "YYYY-MM-DD HH:MM:SS+00" — normalize space to T
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function formatOrgDateTime(
+  iso: string | Date | null | undefined,
+  timeZone: string = DEFAULT_ORG_TIMEZONE,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  if (!iso) return "—";
+  const d = parseInstant(iso);
+  if (!d) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: timeZone.trim() || DEFAULT_ORG_TIMEZONE,
+    dateStyle: "medium",
+    timeStyle: "short",
+    ...options,
+  }).format(d);
+}
+
+export function formatOrgDateTimeFull(
+  iso: string | Date | null | undefined,
+  timeZone: string = DEFAULT_ORG_TIMEZONE
+): string {
+  return formatOrgDateTime(iso, timeZone, { dateStyle: "medium", timeStyle: "medium" });
 }

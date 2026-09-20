@@ -24,11 +24,13 @@ export function MobileBottomNav({ accessibleAppIds }: { accessibleAppIds: string
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur-md lg:hidden"
-      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-md lg:hidden"
       aria-label="Primary navigation"
     >
-      <div className="mx-auto flex max-w-lg items-stretch justify-around" style={{ minHeight: "var(--mobile-nav-height)" }}>
+      <div
+        className="mx-auto flex max-w-lg items-stretch justify-around"
+        style={{ minHeight: "var(--mobile-nav-height)" }}
+      >
         {links.map(({ href, label, icon: Icon, match }) => {
           const active = match(pathname);
           return (
@@ -36,7 +38,7 @@ export function MobileBottomNav({ accessibleAppIds }: { accessibleAppIds: string
               key={href}
               href={href}
               className={cn(
-                "touch-target flex min-h-[var(--mobile-nav-height)] min-w-[4rem] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-medium transition-colors active:scale-95",
+                "touch-target flex h-[var(--mobile-nav-height)] min-w-[4rem] flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors active:scale-95",
                 active ? "text-primary" : "text-muted-foreground"
               )}
             >
@@ -48,7 +50,7 @@ export function MobileBottomNav({ accessibleAppIds }: { accessibleAppIds: string
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="touch-target flex min-h-[var(--mobile-nav-height)] min-w-[4rem] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-medium text-muted-foreground active:scale-95"
+          className="touch-target flex h-[var(--mobile-nav-height)] min-w-[4rem] flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium text-muted-foreground active:scale-95"
           aria-label="Open full menu"
         >
           <Menu className="h-5 w-5 shrink-0" />

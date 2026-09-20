@@ -18,7 +18,7 @@ export function DataTable({
 }) {
   return (
     <div className={cn("group/table overflow-hidden rounded-lg border border-border bg-card", className)}>
-      {toolbar && <div className="border-b border-border bg-muted/40 px-3 py-3 sm:px-4">{toolbar}</div>}
+      {toolbar && <div className="border-b border-border bg-muted/40 px-3 py-2 sm:px-4">{toolbar}</div>}
       <div className="relative overflow-x-auto overscroll-x-contain scrollbar-thin [-webkit-overflow-scrolling:touch]">
         <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-6 bg-gradient-to-l from-card/90 to-transparent lg:hidden" aria-hidden />
         <div className="relative min-w-0 flex-1">{children}</div>
@@ -50,7 +50,7 @@ export function DataTableHead({
   return (
     <th
       className={cn(
-        "whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+        "whitespace-nowrap px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-2.5",
         align === "right" && "text-right",
         align === "center" && "text-center",
         align === "left" && "text-left",
@@ -71,16 +71,20 @@ export function DataTableRow({
   children,
   className,
   selected,
+  onClick,
 }: {
   children: React.ReactNode;
   className?: string;
   selected?: boolean;
+  onClick?: React.MouseEventHandler<HTMLTableRowElement>;
 }) {
   return (
     <tr
+      onClick={onClick}
       className={cn(
         "transition-colors duration-150 hover:bg-muted/30",
         selected && "bg-muted/50",
+        onClick && "cursor-pointer",
         className
       )}
     >
@@ -94,16 +98,19 @@ export function DataTableCell({
   className,
   align = "left",
   hideBelow,
+  onClick,
 }: {
   children: React.ReactNode;
   className?: string;
   align?: "left" | "right" | "center";
   hideBelow?: keyof typeof HIDE_BELOW;
+  onClick?: React.MouseEventHandler<HTMLTableCellElement>;
 }) {
   return (
     <td
+      onClick={onClick}
       className={cn(
-        "px-4 py-3 text-sm text-foreground",
+        "px-3 py-2 text-sm text-foreground sm:px-4 sm:py-2.5",
         align === "right" && "text-right",
         align === "center" && "text-center",
         hideBelow && HIDE_BELOW[hideBelow],
@@ -126,8 +133,8 @@ export function DataTableEmpty({
 }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-4 py-14 text-center">
-        {icon && <div className="mb-3 flex justify-center text-muted-foreground">{icon}</div>}
+      <td colSpan={colSpan} className="px-4 py-8 text-center">
+        {icon && <div className="mb-2 flex justify-center text-muted-foreground">{icon}</div>}
         <p className="text-sm text-muted-foreground">{message}</p>
       </td>
     </tr>
@@ -144,7 +151,7 @@ export function DataTableFooter({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground",
+        "flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground sm:px-4 sm:py-3",
         className
       )}
     >

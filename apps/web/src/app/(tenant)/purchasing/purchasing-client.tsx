@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { StatCard } from "@/components/layout/stat-card";
 import { ExportCsvButton } from "@/components/finance/export-csv-button";
 import { ReportSection } from "@/components/finance/report-section";
 import { StatusBadge } from "@/components/layout/status-badge";
+import { useTranslations } from "next-intl";
 import {
   DataTable,
   DataTableBody,
@@ -26,18 +27,23 @@ import {
 } from "@/components/layout/data-table";
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
 import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
-import { formatCurrency, relationName } from "@/lib/utils";
+import { cn, formatCurrency, relationName } from "@/lib/utils";
 import { groupByField } from "@/lib/finance-aggregates";
-import { ChartCard, FinanceBarChart, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceBarChart, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts-lazy";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
-import { Building2, FileText, Package, Truck } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, FileText, Package, Truck } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
 import { PurchasingScmPanel } from "@/components/scm/purchasing-scm-panel";
 import { StandaloneBillForm } from "@/components/finance/standalone-bill-form";
 import { ApPaymentRunsTab, type OpenBillOption, type PaymentRunRow } from "@/components/finance/ap-payment-runs-tab";
-import { ProductVariantSearchSelect } from "@/components/purchasing/product-variant-search-select";
-import type { VendorRow, PORow, BillRow, VariantOption } from "./page";
+import { ProductVariantSearchSelect, type ProductVariantSearchOption } from "@/components/purchasing/product-variant-search-select";
+import {
+  PoQuickCreateProductModal,
+  type PoQuickCreateResult,
+} from "@/components/purchasing/po-quick-create-product";
+import { fromBasePrice, formatPriceInput } from "@/lib/scm/uom-pricing";
+import type { VendorRow, PORow, POLineRow, BillRow, VariantOption, ProductUomOption } from "./page";
 
 type Tab = "orders" | "planning" | "vendors" | "bills" | "payment_runs";
 
@@ -49,6 +55,30 @@ function canReceivePo(status: PORow["status"]) {
   return status === "ordered" || status === "partially_received";
 }
 
+function poLines(po: PORow): POLineRow[] {
+  return po.purchase_order_lines ?? [];
+}
+
+function lineRemaining(line: POLineRow): number {
+  return Math.max(Number(line.quantity) - Number(line.qty_received ?? 0), 0);
+}
+
+function formatPoLineQty(line: POLineRow): string {
+  const uom = (line.uom_code || "ea").trim() || "ea";
+  const ordered = Number(line.quantity);
+  const received = Number(line.qty_received ?? 0);
+  if (received > 0.0005) {
+    return `${received}/${ordered} ${uom}`;
+  }
+  return `${ordered} ${uom}`;
+}
+
+function poItemsSummary(po: PORow): string {
+  const lines = poLines(po);
+  if (lines.length === 0) return "";
+  return lines.map((l) => `${l.product_name} (${formatPoLineQty(l)})`).join("; ");
+}
+
 function billBalanceDue(b: BillRow) {
   if (b.balance_due != null) return Number(b.balance_due);
   if (b.status === "paid") return 0;
@@ -58,7 +88,52 @@ function billBalanceDue(b: BillRow) {
 function isPayableBill(b: BillRow) {
   return b.status === "open" || b.status === "partially_paid";
 }
-type DraftLine = { variantId: string; productName: string; quantity: string; unitCost: string };
+
+function purchaseUomsForProduct(uoms: ProductUomOption[], productId: string): ProductUomOption[] {
+  const list = uoms.filter((u) => u.product_id === productId && (u.is_purchase || u.is_base));
+  if (list.length === 0) {
+    return [
+      {
+        product_id: productId,
+        uom_code: "ea",
+        uom_name: "Each",
+        conversion_factor: 1,
+        is_base: true,
+        is_purchase: true,
+        is_sale: true,
+      },
+    ];
+  }
+  return list;
+}
+
+function defaultPurchaseUom(uoms: ProductUomOption[], productId: string) {
+  const list = purchaseUomsForProduct(uoms, productId);
+  return (
+    list.find((u) => u.is_purchase)?.uom_code ??
+    list.find((u) => u.is_base)?.uom_code ??
+    list[0]?.uom_code ??
+    "ea"
+  );
+}
+
+function uomFactor(uoms: ProductUomOption[], productId: string, code: string): number {
+  const list = purchaseUomsForProduct(uoms, productId);
+  const match = list.find((u) => u.uom_code.toLowerCase() === code.toLowerCase());
+  return Number(match?.conversion_factor) || 1;
+}
+
+function baseUomCode(uoms: ProductUomOption[], productId: string): string {
+  return purchaseUomsForProduct(uoms, productId).find((u) => u.is_base)?.uom_code ?? "ea";
+}
+
+type DraftLine = {
+  variantId: string;
+  productName: string;
+  quantity: string;
+  unitCost: string;
+  uomCode: string;
+};
 
 export function PurchasingClient({
   organizationId,
@@ -69,6 +144,7 @@ export function PurchasingClient({
   purchaseOrders,
   bills,
   variants,
+  productUoms = [],
   openBills,
   paymentRuns,
 }: {
@@ -80,9 +156,13 @@ export function PurchasingClient({
   purchaseOrders: PORow[];
   bills: BillRow[];
   variants: VariantOption[];
+  productUoms?: ProductUomOption[];
   openBills: OpenBillOption[];
   paymentRuns: PaymentRunRow[];
 }) {
+  const t = useTranslations("purchasing");
+  const tCommon = useTranslations("common");
+  const tPos = useTranslations("pos");
   const router = useRouter();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("orders");
@@ -90,6 +170,61 @@ export function PurchasingClient({
   const [payBillId, setPayBillId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState<"cash" | "mobile_money" | "bank_transfer">("bank_transfer");
+  const [localVariants, setLocalVariants] = useState(variants);
+  const [localProductUoms, setLocalProductUoms] = useState(productUoms);
+  const [quickCreateLine, setQuickCreateLine] = useState<number | null>(null);
+  const [quickCreateName, setQuickCreateName] = useState("");
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [expandedPos, setExpandedPos] = useState<Set<string>>(() => {
+    // Auto-open receivable POs so ordered products are visible without an extra click.
+    return new Set(
+      purchaseOrders.filter((p) => canReceivePo(p.status) && poLines(p).length > 0).map((p) => p.id)
+    );
+  });
+  const [confirmReceiveId, setConfirmReceiveId] = useState<string | null>(null);
+
+  function togglePoExpanded(id: string) {
+    setExpandedPos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Keep local lists in sync when server props refresh
+  useEffect(() => {
+    setLocalVariants(variants);
+    setLocalProductUoms(productUoms);
+  }, [variants, productUoms]);
+
+  // Keep receivable POs expanded after refresh so receive still shows products.
+  useEffect(() => {
+    setExpandedPos((prev) => {
+      const next = new Set(prev);
+      for (const p of purchaseOrders) {
+        if (canReceivePo(p.status) && poLines(p).length > 0) next.add(p.id);
+      }
+      // Drop ids that no longer exist
+      for (const id of [...next]) {
+        if (!purchaseOrders.some((p) => p.id === id)) next.delete(id);
+      }
+      return next;
+    });
+  }, [purchaseOrders]);
+
+  useEffect(() => {
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("categories")
+        .select("id, name")
+        .eq("organization_id", organizationId)
+        .order("name")
+        .limit(200);
+      setCategories((data as { id: string; name: string }[] | null) ?? []);
+    })();
+  }, [organizationId]);
 
   const money = (n: number) => formatCurrency(Number(n), currency);
   const variantLabel = (v: VariantOption) =>
@@ -110,10 +245,10 @@ export function PurchasingClient({
     () =>
       groupByField(
         bills.filter((b) => isPayableBill(b) && billBalanceDue(b) > 0.01),
-        (b) => relationName(b.vendors) || "Unknown",
+        (b) => relationName(b.vendors) || t("po.unknownVendor"),
         (b) => billBalanceDue(b)
       ).slice(0, 8),
-    [bills]
+    [bills, t]
   );
 
   const poByStatus = useMemo(
@@ -189,8 +324,13 @@ export function PurchasingClient({
       ? await supabase.from("vendors").update(payload).eq("id", editingVendorId).eq("organization_id", organizationId)
       : await supabase.from("vendors").insert({ organization_id: organizationId, ...payload });
     setBusy("");
-    if (err) return toast({ title: editingVendorId ? "Could not update vendor" : "Could not add vendor", description: err.message, variant: "destructive" });
-    toast({ title: editingVendorId ? "Vendor updated" : "Vendor added", description: vName });
+    if (err)
+      return toast({
+        title: editingVendorId ? t("toast.vendorUpdateFailed") : t("toast.vendorAddFailed"),
+        description: err.message,
+        variant: "destructive",
+      });
+    toast({ title: editingVendorId ? t("toast.vendorUpdated") : t("toast.vendorAdded"), description: vName });
     resetVendorForm();
     router.refresh();
   }
@@ -204,8 +344,8 @@ export function PurchasingClient({
       .eq("id", vendorId)
       .eq("organization_id", organizationId);
     setBusy("");
-    if (err) return toast({ title: "Could not update vendor", description: err.message, variant: "destructive" });
-    toast({ title: active ? "Vendor activated" : "Vendor deactivated" });
+    if (err) return toast({ title: t("toast.vendorUpdateFailed"), description: err.message, variant: "destructive" });
+    toast({ title: active ? t("toast.vendorActivated") : t("toast.vendorDeactivated") });
     router.refresh();
   }
 
@@ -215,9 +355,9 @@ export function PurchasingClient({
     const { error: err } = await supabase.from("vendors").delete().eq("id", vendorId).eq("organization_id", organizationId);
     setBusy("");
     if (err) {
-      return toast({ title: "Could not delete vendor", description: deleteBlockedMessage(err), variant: "destructive" });
+      return toast({ title: t("toast.vendorDeleteFailed"), description: deleteBlockedMessage(err), variant: "destructive" });
     }
-    toast({ title: "Vendor deleted", description: vendorName });
+    toast({ title: t("toast.vendorDeleted"), description: vendorName });
     if (editingVendorId === vendorId) resetVendorForm();
     router.refresh();
   }
@@ -227,19 +367,90 @@ export function PurchasingClient({
   const [poStore, setPoStore] = useState(stores[0]?.id ?? "");
   const [poExpected, setPoExpected] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([
-    { variantId: "", productName: "", quantity: "", unitCost: "" },
+    { variantId: "", productName: "", quantity: "", unitCost: "", uomCode: "ea" },
   ]);
 
   function updateLine(i: number, patch: Partial<DraftLine>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   }
-  function onPickVariant(i: number, variantId: string) {
-    const v = variants.find((x) => x.id === variantId);
-    updateLine(i, {
-      variantId,
-      productName: v ? variantLabel(v) : "",
-      unitCost: v?.cost_price != null ? String(v.cost_price) : "",
+  const mergeRemoteVariants = useCallback((items: ProductVariantSearchOption[]) => {
+    setLocalVariants((prev) => {
+      const map = new Map(prev.map((v) => [v.id, v]));
+      for (const item of items) {
+        if (!item.product_id) continue;
+        map.set(item.id, {
+          id: item.id,
+          name: item.name,
+          sku: item.sku ?? null,
+          barcode: item.barcode ?? null,
+          cost_price: item.cost_price,
+          product_id: item.product_id,
+          products: item.products,
+        });
+      }
+      return [...map.values()];
     });
+  }, []);
+
+  function onPickVariant(i: number, variantId: string) {
+    const v = localVariants.find((x) => x.id === variantId);
+    if (!v) {
+      updateLine(i, { variantId, productName: "", unitCost: "", uomCode: "ea" });
+      return;
+    }
+    void ensureUomsForProduct(v.product_id).then((uoms) => {
+      const uom = defaultPurchaseUom(uoms, v.product_id);
+      const factor = uomFactor(uoms, v.product_id, uom);
+      const baseCost = Number(v.cost_price) || 0;
+      const lineCost = fromBasePrice(baseCost, factor);
+      updateLine(i, {
+        variantId,
+        productName: variantLabel(v),
+        unitCost: baseCost ? formatPriceInput(lineCost) : "",
+        uomCode: uom,
+      });
+    });
+  }
+
+  async function ensureUomsForProduct(productId: string): Promise<ProductUomOption[]> {
+    const existing = localProductUoms.filter((u) => u.product_id === productId);
+    if (existing.length > 0) return localProductUoms;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("product_uoms")
+      .select("product_id, uom_code, uom_name, conversion_factor, is_base, is_purchase, is_sale")
+      .eq("organization_id", organizationId)
+      .eq("product_id", productId);
+    const rows = (data as ProductUomOption[] | null) ?? [];
+    if (rows.length === 0) return localProductUoms;
+    setLocalProductUoms((prev) => {
+      const without = prev.filter((u) => u.product_id !== productId);
+      return [...without, ...rows];
+    });
+    return [...localProductUoms.filter((u) => u.product_id !== productId), ...rows];
+  }
+
+  function handleQuickCreated(lineIndex: number, result: PoQuickCreateResult) {
+    setLocalVariants((prev) => {
+      if (prev.some((v) => v.id === result.variant.id)) return prev;
+      return [result.variant, ...prev];
+    });
+    setLocalProductUoms((prev) => {
+      const without = prev.filter((u) => u.product_id !== result.variant.product_id);
+      return [...result.uoms, ...without];
+    });
+    const uom = defaultPurchaseUom(result.uoms, result.variant.product_id);
+    const factor = uomFactor(result.uoms, result.variant.product_id, uom);
+    const lineCost = fromBasePrice(result.baseCost, factor);
+    updateLine(lineIndex, {
+      variantId: result.variant.id,
+      productName: variantLabel(result.variant),
+      unitCost: result.baseCost ? formatPriceInput(lineCost) : "",
+      uomCode: uom,
+    });
+    setQuickCreateLine(null);
+    setQuickCreateName("");
+    toast({ title: t("toast.productCreatedForPo") });
   }
   const poTotal = lines.reduce(
     (s, l) => s + (parseFloat(l.quantity) || 0) * (parseFloat(l.unitCost) || 0),
@@ -256,9 +467,10 @@ export function PurchasingClient({
         productName: l.productName,
         quantity: parseFloat(l.quantity),
         unitCost: parseFloat(l.unitCost) || 0,
+        uomCode: l.uomCode || "ea",
       }));
     if (!poVendor || !poStore || validLines.length === 0) {
-      return toast({ title: "Incomplete PO", description: "Pick vendor, store, and at least one line.", variant: "destructive" });
+      return toast({ title: t("toast.incompletePo"), description: t("toast.incompletePoDesc"), variant: "destructive" });
     }
     setBusy("po");
     const supabase = createClient();
@@ -271,21 +483,34 @@ export function PurchasingClient({
       p_lines: validLines,
     });
     setBusy("");
-    if (err) return toast({ title: "PO failed", description: err.message, variant: "destructive" });
-    toast({ title: "Purchase order created" });
+    if (err) return toast({ title: t("toast.poFailed"), description: err.message, variant: "destructive" });
+    toast({ title: t("toast.poCreated") });
     setPoVendor("");
     setPoExpected("");
-    setLines([{ variantId: "", productName: "", quantity: "", unitCost: "" }]);
+    setLines([{ variantId: "", productName: "", quantity: "", unitCost: "", uomCode: "ea" }]);
     router.refresh();
   }
 
   async function receivePO(id: string) {
+    const po = purchaseOrders.find((p) => p.id === id);
+    const lines = po ? poLines(po) : [];
+    const remaining = lines.filter((l) => lineRemaining(l) > 0.0005);
     setBusy(id);
     const supabase = createClient();
     const { error: err } = await supabase.rpc("receive_purchase_order", { p_po_id: id });
     setBusy("");
-    if (err) return toast({ title: "Receive failed", description: err.message, variant: "destructive" });
-    toast({ title: "PO received", description: "Stock and vendor bill updated." });
+    if (err) return toast({ title: t("toast.receiveFailed"), description: err.message, variant: "destructive" });
+    toast({
+      title: t("toast.poReceived"),
+      description:
+        remaining.length > 0
+          ? t("toast.poReceivedLines", {
+              count: remaining.length,
+              items: remaining.map((l) => l.product_name).slice(0, 4).join(", "),
+            })
+          : t("toast.poReceivedDesc"),
+    });
+    setConfirmReceiveId(null);
     router.refresh();
   }
 
@@ -297,8 +522,8 @@ export function PurchasingClient({
       p_reason: "Cancelled by user",
     });
     setBusy("");
-    if (err) return toast({ title: "Cancel failed", description: err.message, variant: "destructive" });
-    toast({ title: "Purchase order cancelled" });
+    if (err) return toast({ title: t("toast.cancelFailed"), description: err.message, variant: "destructive" });
+    toast({ title: t("toast.poCancelled") });
     router.refresh();
   }
 
@@ -315,8 +540,8 @@ export function PurchasingClient({
       p_amount: pay,
     });
     setBusy("");
-    if (err) return toast({ title: "Payment failed", description: err.message, variant: "destructive" });
-    toast({ title: pay >= balance - 0.01 ? "Bill paid in full" : "Partial payment recorded" });
+    if (err) return toast({ title: t("toast.paymentFailed"), description: err.message, variant: "destructive" });
+    toast({ title: pay >= balance - 0.01 ? t("toast.billPaidFull") : t("toast.partialPayment") });
     setPayBillId(null);
     setPayAmount("");
     router.refresh();
@@ -327,8 +552,8 @@ export function PurchasingClient({
     const supabase = createClient();
     const { error } = await supabase.rpc("post_vendor_bill", { p_bill_id: id });
     setBusy("");
-    if (error) return toast({ title: "Post failed", description: error.message, variant: "destructive" });
-    toast({ title: "Bill posted to ledger" });
+    if (error) return toast({ title: t("toast.postFailed"), description: error.message, variant: "destructive" });
+    toast({ title: t("toast.billPosted") });
     router.refresh();
   }
 
@@ -337,9 +562,12 @@ export function PurchasingClient({
     const supabase = createClient();
     const { data, error } = await supabase.rpc("validate_vendor_bill_match", { p_bill_id: id });
     setBusy("");
-    if (error) return toast({ title: "Match check failed", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: t("toast.matchFailed"), description: error.message, variant: "destructive" });
     const row = data as { match_status?: string; variance?: number };
-    toast({ title: `Match: ${row.match_status ?? "unknown"}`, description: row.variance ? `Variance ${row.variance}` : undefined });
+    toast({
+      title: t("toast.matchResult", { status: row.match_status ?? t("toast.matchUnknown") }),
+      description: row.variance ? t("toast.variance", { value: row.variance }) : undefined,
+    });
     router.refresh();
   }
 
@@ -352,17 +580,17 @@ export function PurchasingClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        breadcrumb="Accounts payable"
-        title="Purchasing & Vendor Bills"
-        description="Manage vendors, purchase orders, goods receipt, and vendor bill payments tied to inventory and AP."
+        breadcrumb={t("title")}
+        title={t("title")}
+        description={t("description")}
         action={
           <TabBar
             tabs={[
-              { key: "orders" as const, label: "Purchase Orders" },
-              ...(canManage ? [{ key: "planning" as const, label: "MRP & requisitions" }] : []),
-              { key: "vendors" as const, label: "Vendors" },
-              { key: "bills" as const, label: "Vendor Bills" },
-              { key: "payment_runs" as const, label: "Payment runs" },
+              { key: "orders" as const, label: t("purchaseOrders") },
+              ...(canManage ? [{ key: "planning" as const, label: t("planning") }] : []),
+              { key: "vendors" as const, label: t("vendors") },
+              { key: "bills" as const, label: t("bills") },
+              { key: "payment_runs" as const, label: t("paymentRuns") },
             ]}
             value={tab}
             onChange={setTab}
@@ -370,40 +598,45 @@ export function PurchasingClient({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Open AP" value={money(summary.apOpen)} sub={`${summary.openBills} bills`} icon={FileText} />
-        <StatCard label="Pending POs" value={summary.pendingPo} sub={money(summary.poValue)} icon={Package} />
-        <StatCard label="Active vendors" value={vendors.length} icon={Building2} />
-        <StatCard label="Total POs" value={purchaseOrders.length} icon={Truck} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatCard
+          label={t("stats.openAp")}
+          value={money(summary.apOpen)}
+          sub={t("stats.billsCount", { count: summary.openBills })}
+          icon={FileText}
+        />
+        <StatCard label={t("stats.pendingPos")} value={summary.pendingPo} sub={money(summary.poValue)} icon={Package} />
+        <StatCard label={t("stats.activeVendors")} value={vendors.length} icon={Building2} />
+        <StatCard label={t("stats.totalPos")} value={purchaseOrders.length} icon={Truck} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
-        <ChartCard title="Open AP by vendor" subtitle="Unpaid bills">
+      <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <ChartCard title={t("charts.openApByVendor")} subtitle={t("charts.unpaidBills")}>
           {apByVendor.length > 0 ? (
             <FinanceDonutChart data={apByVendor} formatValue={money} innerRadius={44} height={240} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No open bills</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noOpenBills")}</p>
           )}
         </ChartCard>
-        <ChartCard title="PO value by status" subtitle="All purchase orders">
+        <ChartCard title={t("charts.poValueByStatus")} subtitle={t("charts.allPos")}>
           {poByStatus.length > 0 ? (
             <FinanceBarChart data={poByStatus} formatValue={money} height={240} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No POs yet</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noPos")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Bills by status" subtitle="Vendor payables">
+        <ChartCard title={t("charts.billsByStatus")} subtitle={t("charts.vendorPayables")}>
           {billsByStatus.length > 0 ? (
             <FinanceDonutChart data={billsByStatus} formatValue={money} innerRadius={44} height={240} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No bills yet</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noBills")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Spend trend" subtitle="POs + bills · last 6 months">
+        <ChartCard title={t("charts.spendTrend")} subtitle={t("charts.spendTrendSub")}>
           {spendTrend.length > 0 ? (
             <TrendAreaChart data={spendTrend} formatValue={money} height={240} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No spend history</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noSpendHistory")}</p>
           )}
         </ChartCard>
       </div>
@@ -415,18 +648,18 @@ export function PurchasingClient({
       {tab === "orders" && (
         <>
           {canManage && (
-            <FormCard title="New Purchase Order">
+            <FormCard title={t("po.newPo")}>
                 <form onSubmit={createPO} className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
-                      <Label>Vendor</Label>
+                      <Label>{tCommon("vendor")}</Label>
                       <select
                         className={SELECT_CLS}
                         value={poVendor}
                         onChange={(e) => setPoVendor(e.target.value)}
                         required
                       >
-                        <option value="">Select…</option>
+                        <option value="">{tCommon("selectEllipsis")}</option>
                         {vendors.map((v) => (
                           <option key={v.id} value={v.id}>
                             {v.name}
@@ -435,7 +668,7 @@ export function PurchasingClient({
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Receiving store</Label>
+                      <Label>{t("po.receivingStore")}</Label>
                       <select
                         className={SELECT_CLS}
                         value={poStore}
@@ -450,34 +683,84 @@ export function PurchasingClient({
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Expected date</Label>
+                      <Label>{t("po.expectedDate")}</Label>
                       <DatePicker value={poExpected} onChange={setPoExpected} />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Lines</Label>
-                    {lines.map((l, i) => (
-                      <div key={i} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
+                    <Label>{t("po.lines")}</Label>
+                    {lines.map((l, i) => {
+                      const v = localVariants.find((x) => x.id === l.variantId);
+                      const uomOptions = v ? purchaseUomsForProduct(localProductUoms, v.product_id) : [];
+                      const qty = parseFloat(l.quantity) || 0;
+                      const factor = v ? uomFactor(localProductUoms, v.product_id, l.uomCode) : 1;
+                      const baseCode = v ? baseUomCode(localProductUoms, v.product_id) : "ea";
+                      const baseQty = qty * factor;
+                      const baseCost = Number(v?.cost_price) || 0;
+                      return (
+                      <div key={i} className="space-y-1">
+                      <div className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_auto]">
                         <ProductVariantSearchSelect
-                          variants={variants}
+                          variants={localVariants}
                           value={l.variantId}
                           onChange={(variantId) => onPickVariant(i, variantId)}
-                          placeholder="Search product…"
+                          placeholder={t("po.searchProduct")}
+                          organizationId={organizationId}
+                          onRemoteResults={mergeRemoteVariants}
+                          onCreateProduct={
+                            canManage
+                              ? (suggested) => {
+                                  setQuickCreateLine(i);
+                                  setQuickCreateName(suggested);
+                                }
+                              : undefined
+                          }
                         />
                         <Input
                           type="number"
                           step="0.001"
                           min="0"
-                          placeholder="Qty"
+                          placeholder={t("po.qty")}
                           value={l.quantity}
                           onChange={(e) => updateLine(i, { quantity: e.target.value })}
                         />
+                        <select
+                          className={SELECT_CLS}
+                          value={l.uomCode}
+                          disabled={!v}
+                          onChange={(e) => {
+                            if (!v) {
+                              updateLine(i, { uomCode: e.target.value });
+                              return;
+                            }
+                            const next = e.target.value;
+                            const prevFactor = uomFactor(localProductUoms, v.product_id, l.uomCode);
+                            const nextFactor = uomFactor(localProductUoms, v.product_id, next);
+                            const unit = parseFloat(l.unitCost) || 0;
+                            const nextBaseCost = prevFactor > 0 ? unit / prevFactor : unit;
+                            const nextUnit =
+                              nextFactor > 0
+                                ? Math.round(nextBaseCost * nextFactor * 10000) / 10000
+                                : unit;
+                            updateLine(i, {
+                              uomCode: next,
+                              unitCost: l.unitCost === "" ? "" : String(nextUnit),
+                            });
+                          }}
+                          aria-label={tPos("unitOfMeasure")}
+                        >
+                          {(uomOptions.length ? uomOptions : [{ uom_code: "ea", uom_name: "Each" }]).map((u) => (
+                            <option key={u.uom_code} value={u.uom_code}>
+                              {u.uom_name} ({u.uom_code})
+                            </option>
+                          ))}
+                        </select>
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
-                          placeholder="Unit cost"
+                          placeholder={t("po.unitCost")}
                           value={l.unitCost}
                           onChange={(e) => updateLine(i, { unitCost: e.target.value })}
                         />
@@ -486,28 +769,48 @@ export function PurchasingClient({
                           className="text-sm text-muted-foreground hover:text-red-600"
                           onClick={() => setLines((prev) => prev.filter((_, idx) => idx !== i))}
                         >
-                          Remove
+                          {tCommon("remove")}
                         </button>
                       </div>
-                    ))}
+                      {v && (
+                        <p className="text-xs text-muted-foreground pl-1">
+                          {t("po.costUomHint", {
+                            baseCost: formatPriceInput(baseCost),
+                            baseUom: baseCode,
+                            unitCost: l.unitCost || "0",
+                            uom: l.uomCode,
+                          })}
+                          {qty > 0
+                            ? ` · ${t("po.baseEquivalent", {
+                                qty,
+                                uom: l.uomCode,
+                                baseQty: Number(baseQty.toFixed(6)),
+                                baseUom: baseCode,
+                              })}`
+                            : ""}
+                        </p>
+                      )}
+                      </div>
+                      );
+                    })}
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() =>
                         setLines((prev) => [
                           ...prev,
-                          { variantId: "", productName: "", quantity: "", unitCost: "" },
+                          { variantId: "", productName: "", quantity: "", unitCost: "", uomCode: "ea" },
                         ])
                       }
                     >
-                      + Add line
+                      {t("po.addLine")}
                     </Button>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold">Total: {money(poTotal)}</p>
+                    <p className="text-sm font-semibold">{t("po.totalLabel", { amount: money(poTotal) })}</p>
                     <Button type="submit" disabled={busy === "po"}>
-                      {busy === "po" ? "Creating…" : "Create PO"}
+                      {busy === "po" ? tCommon("creating") : t("createPo")}
                     </Button>
                   </div>
                 </form>
@@ -515,8 +818,8 @@ export function PurchasingClient({
           )}
 
           <ReportSection
-            title="Purchase orders"
-            subtitle={`${purchaseOrders.length} orders`}
+            title={t("purchaseOrders")}
+            subtitle={t("po.ordersCount", { count: purchaseOrders.length })}
             actions={
               <ExportCsvButton
                 filename="purchase-orders"
@@ -526,13 +829,17 @@ export function PurchasingClient({
                   store: relationName(po.stores) || "",
                   status: po.status,
                   total: po.total,
+                  items: poItemsSummary(po),
+                  line_count: poLines(po).length,
                 }))}
                 columns={[
-                  { key: "date", label: "Date" },
-                  { key: "vendor", label: "Vendor" },
-                  { key: "store", label: "Store" },
-                  { key: "status", label: "Status" },
-                  { key: "total", label: "Total" },
+                  { key: "date", label: tCommon("date") },
+                  { key: "vendor", label: tCommon("vendor") },
+                  { key: "store", label: tCommon("store") },
+                  { key: "status", label: tCommon("status") },
+                  { key: "total", label: tCommon("total") },
+                  { key: "line_count", label: t("po.lines") },
+                  { key: "items", label: t("po.items") },
                 ]}
               />
             }
@@ -540,38 +847,112 @@ export function PurchasingClient({
           <ResponsiveTableLayout
             mobile={
               purchaseOrders.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">No purchase orders yet.</p>
+                <p className="py-10 text-center text-sm text-muted-foreground">{t("po.empty")}</p>
               ) : (
-                purchaseOrders.map((po) => (
+                purchaseOrders.map((po) => {
+                  const lines = poLines(po);
+                  const open = expandedPos.has(po.id);
+                  return (
                   <MobileRecordCard key={po.id}>
-                    <div className="mb-3 flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold">{relationName(po.vendors) || "Vendor"}</p>
+                    <button
+                      type="button"
+                      className="mb-3 flex w-full items-start justify-between gap-2 text-left"
+                      onClick={() => togglePoExpanded(po.id)}
+                      aria-expanded={open}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold">{relationName(po.vendors) || tCommon("vendor")}</p>
                         <p className="text-xs text-muted-foreground">{po.order_date}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {lines.length === 0
+                            ? t("po.noLines")
+                            : t("po.lineCount", { count: lines.length })}
+                        </p>
                       </div>
-                      <StatusBadge status={po.status} />
-                    </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <StatusBadge status={po.status} />
+                        {open ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+                        )}
+                      </div>
+                    </button>
                     <div className="space-y-1.5">
-                      <MobileRecordCardRow label="Store">{relationName(po.stores) || "—"}</MobileRecordCardRow>
-                      <MobileRecordCardRow label="Total">{money(po.total)}</MobileRecordCardRow>
+                      <MobileRecordCardRow label={tCommon("store")}>{relationName(po.stores) || "—"}</MobileRecordCardRow>
+                      <MobileRecordCardRow label={tCommon("total")}>{money(po.total)}</MobileRecordCardRow>
                     </div>
+                    {open && (
+                      <div className="mt-3 space-y-2 rounded-md border border-border bg-muted/30 p-2.5">
+                        <p className="text-xs font-medium text-muted-foreground">{t("po.orderedProducts")}</p>
+                        {lines.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">{t("po.noLines")}</p>
+                        ) : (
+                          lines.map((line) => (
+                            <div key={line.id} className="flex items-start justify-between gap-2 text-sm">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">{line.product_name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t("po.qtyReceived", {
+                                    received: Number(line.qty_received ?? 0),
+                                    ordered: Number(line.quantity),
+                                    uom: (line.uom_code || "ea").trim() || "ea",
+                                  })}
+                                </p>
+                              </div>
+                              <p className="shrink-0 font-mono text-xs">{money(Number(line.line_total))}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                     {canManage && (canReceivePo(po.status) || canCancelPo(po.status)) && (
                       <div className="mt-3 flex flex-col gap-2">
-                        {canReceivePo(po.status) && (
-                          <Button
-                            size="sm"
-                            className="w-full"
-                            disabled={busy === po.id || busy === `cancel-${po.id}`}
-                            onClick={() => receivePO(po.id)}
-                          >
-                            {busy === po.id ? "…" : "Receive"}
-                          </Button>
-                        )}
+                        {canReceivePo(po.status) &&
+                          (confirmReceiveId === po.id ? (
+                            <div className="space-y-2 rounded-md border border-border bg-muted/40 p-2.5">
+                              <p className="text-xs text-muted-foreground">
+                                {lines.length > 0
+                                  ? t("po.receiveMessage", { items: poItemsSummary(po) })
+                                  : t("po.receiveMessageEmpty")}
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={busy === po.id}
+                                  onClick={() => receivePO(po.id)}
+                                >
+                                  {busy === po.id ? "…" : t("po.confirmReceive")}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={busy === po.id}
+                                  onClick={() => setConfirmReceiveId(null)}
+                                >
+                                  {tCommon("cancel")}
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="w-full"
+                              disabled={busy === po.id || busy === `cancel-${po.id}`}
+                              onClick={() => {
+                                setExpandedPos((prev) => new Set(prev).add(po.id));
+                                setConfirmReceiveId(po.id);
+                              }}
+                            >
+                              {t("receive")}
+                            </Button>
+                          ))}
                         {canCancelPo(po.status) && (
                           <ConfirmDeleteButton
-                            label="Cancel order"
-                            confirmLabel="Confirm cancel"
-                            message="Cancel this purchase order? This cannot be undone."
+                            label={t("po.cancelOrder")}
+                            confirmLabel={t("po.confirmCancel")}
+                            message={t("po.cancelMessage")}
                             disabled={busy === po.id || busy === `cancel-${po.id}`}
                             onConfirm={() => cancelPO(po.id)}
                           />
@@ -579,59 +960,174 @@ export function PurchasingClient({
                       </div>
                     )}
                   </MobileRecordCard>
-                ))
+                  );
+                })
               )
             }
           >
           <DataTable>
             <table className="w-full">
               <DataTableHeader>
-                <DataTableHead>Date</DataTableHead>
-                <DataTableHead>Vendor</DataTableHead>
-                <DataTableHead>Store</DataTableHead>
-                <DataTableHead>Status</DataTableHead>
-                <DataTableHead align="right">Total</DataTableHead>
-                <DataTableHead align="right">Action</DataTableHead>
+                <DataTableHead className="w-8">{""}</DataTableHead>
+                <DataTableHead>{tCommon("date")}</DataTableHead>
+                <DataTableHead>{tCommon("vendor")}</DataTableHead>
+                <DataTableHead>{t("po.items")}</DataTableHead>
+                <DataTableHead>{tCommon("store")}</DataTableHead>
+                <DataTableHead>{tCommon("status")}</DataTableHead>
+                <DataTableHead align="right">{tCommon("total")}</DataTableHead>
+                <DataTableHead align="right">{tCommon("action")}</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
                 {purchaseOrders.length === 0 ? (
-                  <DataTableEmpty colSpan={6} message="No purchase orders yet." />
+                  <DataTableEmpty colSpan={8} message={t("po.empty")} />
                 ) : (
-                  purchaseOrders.map((po) => (
-                    <DataTableRow key={po.id}>
-                      <DataTableCell>{po.order_date}</DataTableCell>
-                      <DataTableCell>{relationName(po.vendors)}</DataTableCell>
-                      <DataTableCell>{relationName(po.stores)}</DataTableCell>
-                      <DataTableCell><StatusBadge status={po.status} /></DataTableCell>
-                      <DataTableCell align="right" className="font-mono">{money(po.total)}</DataTableCell>
-                      <DataTableCell align="right">
-                        {canManage && (canReceivePo(po.status) || canCancelPo(po.status)) ? (
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            {canReceivePo(po.status) && (
-                              <Button
-                                size="sm"
-                                disabled={busy === po.id || busy === `cancel-${po.id}`}
-                                onClick={() => receivePO(po.id)}
-                              >
-                                {busy === po.id ? "…" : "Receive"}
-                              </Button>
+                  purchaseOrders.map((po) => {
+                    const lines = poLines(po);
+                    const open = expandedPos.has(po.id);
+                    return (
+                      <Fragment key={po.id}>
+                        <DataTableRow
+                          className={cn("cursor-pointer", open && "bg-muted/20")}
+                          onClick={() => togglePoExpanded(po.id)}
+                        >
+                          <DataTableCell className="w-8 pr-0">
+                            {open ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
                             )}
-                            {canCancelPo(po.status) && (
-                              <ConfirmDeleteButton
-                                label="Cancel"
-                                confirmLabel="Confirm"
-                                message="Cancel this PO?"
-                                disabled={busy === po.id || busy === `cancel-${po.id}`}
-                                onConfirm={() => cancelPO(po.id)}
-                              />
+                          </DataTableCell>
+                          <DataTableCell>{po.order_date}</DataTableCell>
+                          <DataTableCell>{relationName(po.vendors)}</DataTableCell>
+                          <DataTableCell className="max-w-[14rem]">
+                            {lines.length === 0 ? (
+                              <span className="text-muted-foreground">{t("po.noLines")}</span>
+                            ) : (
+                              <span className="line-clamp-2 text-sm" title={poItemsSummary(po)}>
+                                {t("po.lineCount", { count: lines.length })}
+                                {": "}
+                                {lines.map((l) => l.product_name).slice(0, 3).join(", ")}
+                                {lines.length > 3 ? "…" : ""}
+                              </span>
                             )}
-                          </div>
-                        ) : (
-                          "—"
+                          </DataTableCell>
+                          <DataTableCell>{relationName(po.stores)}</DataTableCell>
+                          <DataTableCell><StatusBadge status={po.status} /></DataTableCell>
+                          <DataTableCell align="right" className="font-mono">{money(po.total)}</DataTableCell>
+                          <DataTableCell align="right" onClick={(e) => e.stopPropagation()}>
+                            {canManage && (canReceivePo(po.status) || canCancelPo(po.status)) ? (
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {canReceivePo(po.status) &&
+                                  (confirmReceiveId === po.id ? (
+                                    <div className="flex max-w-xs flex-col items-end gap-1.5">
+                                      <p className="text-right text-xs text-muted-foreground">
+                                        {lines.length > 0
+                                          ? t("po.receiveMessage", { items: poItemsSummary(po) })
+                                          : t("po.receiveMessageEmpty")}
+                                      </p>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          disabled={busy === po.id}
+                                          onClick={() => receivePO(po.id)}
+                                        >
+                                          {busy === po.id ? "…" : t("po.confirmReceive")}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          disabled={busy === po.id}
+                                          onClick={() => setConfirmReceiveId(null)}
+                                        >
+                                          {tCommon("cancel")}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      disabled={busy === po.id || busy === `cancel-${po.id}`}
+                                      onClick={() => {
+                                        setExpandedPos((prev) => new Set(prev).add(po.id));
+                                        setConfirmReceiveId(po.id);
+                                      }}
+                                    >
+                                      {t("receive")}
+                                    </Button>
+                                  ))}
+                                {canCancelPo(po.status) && (
+                                  <ConfirmDeleteButton
+                                    label={tCommon("cancel")}
+                                    confirmLabel={tCommon("confirm")}
+                                    message={t("po.cancelShort")}
+                                    disabled={busy === po.id || busy === `cancel-${po.id}`}
+                                    onConfirm={() => cancelPO(po.id)}
+                                  />
+                                )}
+                              </div>
+                            ) : (
+                              "—"
+                            )}
+                          </DataTableCell>
+                        </DataTableRow>
+                        {open && (
+                          <tr className="border-b border-border bg-muted/15">
+                            <td colSpan={8} className="px-4 py-3">
+                              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {t("po.orderedProducts")}
+                              </p>
+                              {lines.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">{t("po.noLines")}</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full min-w-[32rem] text-sm">
+                                    <thead>
+                                      <tr className="text-left text-xs text-muted-foreground">
+                                        <th className="pb-1.5 font-medium">{tCommon("product")}</th>
+                                        <th className="pb-1.5 font-medium">{t("po.qty")}</th>
+                                        <th className="pb-1.5 font-medium">{t("po.received")}</th>
+                                        <th className="pb-1.5 text-right font-medium">{t("po.unitCost")}</th>
+                                        <th className="pb-1.5 text-right font-medium">{tCommon("total")}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {lines.map((line) => {
+                                        const uom = (line.uom_code || "ea").trim() || "ea";
+                                        const ordered = Number(line.quantity);
+                                        const received = Number(line.qty_received ?? 0);
+                                        return (
+                                          <tr key={line.id} className="border-t border-border/60">
+                                            <td className="py-1.5 pr-3 font-medium">{line.product_name}</td>
+                                            <td className="py-1.5 pr-3 font-mono text-xs">
+                                              {ordered} {uom}
+                                            </td>
+                                            <td className="py-1.5 pr-3 font-mono text-xs">
+                                              {received} {uom}
+                                              {canReceivePo(po.status) && lineRemaining(line) > 0.0005 ? (
+                                                <span className="ml-1 text-muted-foreground">
+                                                  ({t("po.remaining", { qty: lineRemaining(line), uom })})
+                                                </span>
+                                              ) : null}
+                                            </td>
+                                            <td className="py-1.5 pr-3 text-right font-mono text-xs">
+                                              {money(Number(line.unit_cost))}
+                                            </td>
+                                            <td className="py-1.5 text-right font-mono text-xs">
+                                              {money(Number(line.line_total))}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
                         )}
-                      </DataTableCell>
-                    </DataTableRow>
-                  ))
+                      </Fragment>
+                    );
+                  })
                 )}
               </DataTableBody>
             </table>
@@ -644,32 +1140,32 @@ export function PurchasingClient({
       {tab === "vendors" && (
         <>
           {canManage && (
-            <FormCard title={editingVendorId ? "Edit Vendor" : "Add Vendor"}>
+            <FormCard title={editingVendorId ? t("vendorsTab.editVendor") : t("vendorsTab.addVendor")}>
                 <form onSubmit={saveVendor} className="grid gap-4 sm:grid-cols-4">
                   <div className="space-y-2 sm:col-span-2">
-                    <Label>Name</Label>
+                    <Label>{tCommon("name")}</Label>
                     <Input value={vName} onChange={(e) => setVName(e.target.value)} required />
                   </div>
                   <div className="space-y-2">
-                    <Label>Phone</Label>
+                    <Label>{tCommon("phone")}</Label>
                     <Input value={vPhone} onChange={(e) => setVPhone(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Email</Label>
+                    <Label>{tCommon("email")}</Label>
                     <Input type="email" value={vEmail} onChange={(e) => setVEmail(e.target.value)} />
                   </div>
                   <div className="flex gap-2">
-                    <Button type="submit" disabled={busy === "vendor"}>{editingVendorId ? "Update" : "Add"}</Button>
+                    <Button type="submit" disabled={busy === "vendor"}>{editingVendorId ? tCommon("update") : tCommon("add")}</Button>
                     {editingVendorId && (
-                      <Button type="button" variant="outline" onClick={resetVendorForm}>Cancel</Button>
+                      <Button type="button" variant="outline" onClick={resetVendorForm}>{tCommon("cancel")}</Button>
                     )}
                   </div>
                 </form>
             </FormCard>
           )}
           <ReportSection
-            title="Vendor directory"
-            subtitle={`${vendors.length} suppliers`}
+            title={t("vendorsTab.directory")}
+            subtitle={t("vendorsTab.suppliersCount", { count: vendors.length })}
             actions={
               <ExportCsvButton
                 filename="vendors"
@@ -679,9 +1175,9 @@ export function PurchasingClient({
                   email: v.email || "",
                 }))}
                 columns={[
-                  { key: "name", label: "Name" },
-                  { key: "phone", label: "Phone" },
-                  { key: "email", label: "Email" },
+                  { key: "name", label: tCommon("name") },
+                  { key: "phone", label: tCommon("phone") },
+                  { key: "email", label: tCommon("email") },
                 ]}
               />
             }
@@ -689,21 +1185,21 @@ export function PurchasingClient({
             <DataTable>
               <table className="w-full">
                 <DataTableHeader>
-                  <DataTableHead>Name</DataTableHead>
-                  <DataTableHead>Phone</DataTableHead>
-                  <DataTableHead>Email</DataTableHead>
-                  {canManage && <DataTableHead align="right">Actions</DataTableHead>}
+                  <DataTableHead>{tCommon("name")}</DataTableHead>
+                  <DataTableHead>{tCommon("phone")}</DataTableHead>
+                  <DataTableHead>{tCommon("email")}</DataTableHead>
+                  {canManage && <DataTableHead align="right">{tCommon("actions")}</DataTableHead>}
                 </DataTableHeader>
                 <DataTableBody>
                   {vendors.length === 0 ? (
-                    <DataTableEmpty colSpan={canManage ? 4 : 3} message="No vendors yet." />
+                    <DataTableEmpty colSpan={canManage ? 4 : 3} message={t("vendorsTab.empty")} />
                   ) : (
                     vendors.map((v) => (
                       <DataTableRow key={v.id}>
                         <DataTableCell className="font-medium">
                           {v.name}
                           {!v.is_active && (
-                            <span className="ml-2 text-xs text-muted-foreground">(inactive)</span>
+                            <span className="ml-2 text-xs text-muted-foreground">{t("vendorsTab.inactive")}</span>
                           )}
                         </DataTableCell>
                         <DataTableCell>{v.phone || "—"}</DataTableCell>
@@ -711,12 +1207,12 @@ export function PurchasingClient({
                         {canManage && (
                           <DataTableCell align="right">
                             <div className="flex flex-wrap justify-end gap-2">
-                              <Button variant="outline" size="sm" onClick={() => startEditVendor(v)}>Edit</Button>
+                              <Button variant="outline" size="sm" onClick={() => startEditVendor(v)}>{tCommon("edit")}</Button>
                               <Button variant="outline" size="sm" onClick={() => setVendorActive(v.id, !v.is_active)}>
-                                {v.is_active ? "Deactivate" : "Activate"}
+                                {v.is_active ? tCommon("deactivate") : tCommon("activate")}
                               </Button>
                               <ConfirmDeleteButton
-                                message="Delete vendor permanently? Deactivate if linked to POs or bills."
+                                message={t("vendorsTab.deleteMessage")}
                                 onConfirm={() => deleteVendor(v.id, v.name)}
                               />
                             </div>
@@ -741,8 +1237,8 @@ export function PurchasingClient({
             />
           )}
         <ReportSection
-          title="Vendor bills"
-          subtitle={`${bills.length} bills · ${money(summary.apOpen)} open`}
+          title={t("billsTab.title")}
+          subtitle={t("billsTab.summary", { count: bills.length, amount: money(summary.apOpen) })}
           actions={
             <ExportCsvButton
               filename="vendor-bills"
@@ -753,10 +1249,10 @@ export function PurchasingClient({
                 amount: b.amount,
               }))}
               columns={[
-                { key: "date", label: "Date" },
-                { key: "vendor", label: "Vendor" },
-                { key: "status", label: "Status" },
-                { key: "amount", label: "Amount" },
+                { key: "date", label: tCommon("date") },
+                { key: "vendor", label: tCommon("vendor") },
+                { key: "status", label: tCommon("status") },
+                { key: "amount", label: tCommon("amount") },
               ]}
             />
           }
@@ -764,17 +1260,17 @@ export function PurchasingClient({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableHead>Date</DataTableHead>
-              <DataTableHead>Vendor</DataTableHead>
-            <DataTableHead>Status</DataTableHead>
-            <DataTableHead>Match</DataTableHead>
-            <DataTableHead align="right">Amount</DataTableHead>
-            <DataTableHead align="right">Balance</DataTableHead>
-            <DataTableHead align="right">Action</DataTableHead>
-          </DataTableHeader>
+              <DataTableHead>{tCommon("date")}</DataTableHead>
+              <DataTableHead>{tCommon("vendor")}</DataTableHead>
+              <DataTableHead>{tCommon("status")}</DataTableHead>
+              <DataTableHead>{t("billsTab.match")}</DataTableHead>
+              <DataTableHead align="right">{tCommon("amount")}</DataTableHead>
+              <DataTableHead align="right">{tCommon("balance")}</DataTableHead>
+              <DataTableHead align="right">{tCommon("action")}</DataTableHead>
+            </DataTableHeader>
           <DataTableBody>
             {bills.length === 0 ? (
-              <DataTableEmpty colSpan={7} message="No vendor bills yet." />
+              <DataTableEmpty colSpan={7} message={t("billsTab.empty")} />
             ) : (
               bills.map((b) => (
                 <DataTableRow key={b.id}>
@@ -790,13 +1286,13 @@ export function PurchasingClient({
                   </DataTableCell>
                   <DataTableCell align="right" className="space-x-2">
                     {canManage && b.status === "draft" && (
-                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => postBill(b.id)}>Post</Button>
+                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => postBill(b.id)}>{t("billsTab.post")}</Button>
                     )}
                     {canManage && b.po_id && isPayableBill(b) && (
-                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => validateMatch(b.id)}>Match</Button>
+                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => validateMatch(b.id)}>{t("billsTab.match")}</Button>
                     )}
                     {canManage && isPayableBill(b) && billBalanceDue(b) > 0.01 && (
-                      <Button size="sm" disabled={busy === b.id} onClick={() => openPayDialog(b)}>Pay</Button>
+                      <Button size="sm" disabled={busy === b.id} onClick={() => openPayDialog(b)}>{t("billsTab.pay")}</Button>
                     )}
                     {!canManage && "—"}
                   </DataTableCell>
@@ -810,7 +1306,7 @@ export function PurchasingClient({
 
         {payBillId && (
           <FormCard
-            title="Pay vendor bill"
+            title={t("billsTab.payTitle")}
             onSubmit={(e) => {
               e.preventDefault();
               void payBill(payBillId, Number(payAmount) || undefined);
@@ -818,21 +1314,21 @@ export function PurchasingClient({
           >
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label>Amount</Label>
+                <Label>{tCommon("amount")}</Label>
                 <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label>Method</Label>
+                <Label>{t("billsTab.method")}</Label>
                 <select className={SELECT_CLS} value={payMethod} onChange={(e) => setPayMethod(e.target.value as typeof payMethod)}>
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="cash">Cash</option>
-                  <option value="mobile_money">Mobile money</option>
+                  <option value="bank_transfer">{t("billsTab.bankTransfer")}</option>
+                  <option value="cash">{t("billsTab.cash")}</option>
+                  <option value="mobile_money">{t("billsTab.mobileMoney")}</option>
                 </select>
               </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button type="submit" disabled={!!busy}>Apply payment</Button>
-              <Button type="button" variant="outline" onClick={() => setPayBillId(null)}>Cancel</Button>
+              <Button type="submit" disabled={!!busy}>{t("billsTab.applyPayment")}</Button>
+              <Button type="button" variant="outline" onClick={() => setPayBillId(null)}>{tCommon("cancel")}</Button>
             </div>
           </FormCard>
         )}
@@ -846,6 +1342,19 @@ export function PurchasingClient({
           canManage={canManage}
           runs={paymentRuns}
           openBills={openBills}
+        />
+      )}
+
+      {quickCreateLine != null && (
+        <PoQuickCreateProductModal
+          organizationId={organizationId}
+          categories={categories}
+          initialName={quickCreateName}
+          onClose={() => {
+            setQuickCreateLine(null);
+            setQuickCreateName("");
+          }}
+          onCreated={(result) => handleQuickCreated(quickCreateLine, result)}
         />
       )}
     </div>

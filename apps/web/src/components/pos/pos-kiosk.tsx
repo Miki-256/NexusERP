@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import {
   cachePosCatalog,
@@ -24,6 +25,8 @@ import type { PosCatalogItem } from "./product-card";
 import { StaffLogin, type PosStaffOption } from "./staff-login";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { enrichCatalogSaleUoms } from "@/lib/pos/enrich-catalog-uoms";
+import { perfTime } from "@/lib/perf";
 import "./pos.css";
 
 type RegisterContext = {
@@ -57,6 +60,8 @@ type OpenSession = {
 
 /** Public POS entry — loads register data with anon key (no ERP login). */
 export function PosKiosk({ registerId }: { registerId: string }) {
+  const t = useTranslations("pos");
+  const tCommon = useTranslations("common");
   const [loadState, setLoadState] = useState<"loading" | "error" | "ready">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [offlineMode, setOfflineMode] = useState(false);
@@ -68,10 +73,16 @@ export function PosKiosk({ registerId }: { registerId: string }) {
   const [staffSession, setStaffSession] = useState<PosStaffSession | null>(null);
   const [checkingStaff, setCheckingStaff] = useState(true);
 
-  const loadRegister = useCallback(async () => {
-    setLoadState("loading");
-    setLoadError(null);
-    setOfflineMode(false);
+  const loadRegister = useCallback(async (opts?: { soft?: boolean }) => {
+    const soft = Boolean(opts?.soft);
+    // Soft refresh must not flip loadState → loading (that unmounts PosScreen and churns draft ticket IDs).
+    if (!soft) {
+      setLoadState("loading");
+      setLoadError(null);
+      setOfflineMode(false);
+    } else {
+      setLoadError(null);
+    }
 
     if (!isBrowserOnline()) {
       const cachedContext = await getCachedPosContext(registerId);
@@ -87,17 +98,20 @@ export function PosKiosk({ registerId }: { registerId: string }) {
         return;
       }
 
-      setLoadError("No internet and no cached register data. Connect once to load this register.");
+      setLoadError(t("noInternetNoCache"));
       setLoadState("error");
       return;
     }
 
     const supabase = createClient();
 
-    const { data: bootstrap, error: bootstrapError } = await supabase.rpc("get_pos_bootstrap", {
-      p_register_id: registerId,
-    });
-
+    const { data: bootstrap, error: bootstrapError } = await perfTime(
+      "pos.bootstrap",
+      async () =>
+        supabase.rpc("get_pos_bootstrap", {
+          p_register_id: registerId,
+        })
+    );
     if (bootstrapError || !bootstrap) {
       const cachedContext = await getCachedPosContext(registerId);
       const cachedCatalog = await getCachedPosCatalog(registerId);
@@ -112,7 +126,7 @@ export function PosKiosk({ registerId }: { registerId: string }) {
         return;
       }
 
-      setLoadError(bootstrapError?.message ?? "Register not found");
+      setLoadError(bootstrapError?.message ?? t("registerNotFound"));
       setLoadState("error");
       return;
     }
@@ -152,7 +166,9 @@ export function PosKiosk({ registerId }: { registerId: string }) {
         role: s.role,
       })),
     };
-    const nextCatalog = (boot.catalog ?? []).filter((c) => c.variantId);
+    const nextCatalog = await enrichCatalogSaleUoms(
+      (boot.catalog ?? []).filter((c) => c.variantId)
+    );
     const nextSession = boot.open_session ?? null;
 
     setContext(nextContext);
@@ -170,18 +186,9 @@ export function PosKiosk({ registerId }: { registerId: string }) {
         opened_at: nextSession.opened_at,
       });
     }
-  }, [registerId]);
+  }, [registerId, t]);
 
-  useEffect(() => {
-    loadRegister();
-    const id = setInterval(() => {
-      if (isBrowserOnline()) void loadRegister();
-    }, 5 * 60_000);
-    return () => clearInterval(id);
-  }, [loadRegister]);
-
-  const validateStoredSession = useCallback(async () => {
-    const stored = getStoredPosSession(registerId);
+  const validateStoredSession = useCallback(async () => {    const stored = getStoredPosSession(registerId);
     if (!stored) {
       setStaffSession(null);
       setCheckingStaff(false);
@@ -246,6 +253,36 @@ export function PosKiosk({ registerId }: { registerId: string }) {
   }, [registerId, offlineMode]);
 
   useEffect(() => {
+    void loadRegister();
+
+    const IDLE_FULL_REFRESH_MS = 5 * 60_000;
+    let lastHiddenAt: number | null = null;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        lastHiddenAt = Date.now();
+        return;
+      }
+      const hiddenFor = lastHiddenAt != null ? Date.now() - lastHiddenAt : 0;
+      lastHiddenAt = null;
+      if (hiddenFor >= IDLE_FULL_REFRESH_MS && isBrowserOnline()) {
+        void loadRegister({ soft: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const heartbeat = window.setInterval(() => {
+      if (!isBrowserOnline()) return;
+      void validateStoredSession();
+    }, IDLE_FULL_REFRESH_MS);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(heartbeat);
+    };
+  }, [loadRegister, validateStoredSession]);
+
+  useEffect(() => {
     if (loadState === "ready") validateStoredSession();
   }, [loadState, validateStoredSession]);
 
@@ -258,7 +295,7 @@ export function PosKiosk({ registerId }: { registerId: string }) {
     return (
       <div className="pos-root pos-shell flex h-full flex-col items-center justify-center gap-3">
         <LoadingSpinner size="lg" className="text-pos-primary" />
-        <p className="text-sm font-medium text-slate-500">Loading register…</p>
+        <p className="text-sm font-medium text-slate-500">{t("loadingRegister")}</p>
       </div>
     );
   }
@@ -267,10 +304,10 @@ export function PosKiosk({ registerId }: { registerId: string }) {
     return (
       <div className="pos-root pos-shell flex h-full flex-col items-center justify-center gap-4 p-6">
         <div className="pos-card-elevated max-w-md p-8 text-center">
-          <h1 className="pos-heading text-xl font-bold text-slate-900">Register unavailable</h1>
+          <h1 className="pos-heading text-xl font-bold text-slate-900">{t("registerUnavailable")}</h1>
           <p className="mt-2 text-sm text-slate-600">{loadError}</p>
-          <Button className="mt-5 cursor-pointer rounded-xl bg-pos-primary hover:bg-pos-primary-dark" onClick={loadRegister}>
-            Retry
+          <Button className="mt-5 cursor-pointer rounded-xl bg-pos-primary hover:bg-pos-primary-dark" onClick={() => void loadRegister()}>
+            {t("retry")}
           </Button>
         </div>
       </div>
@@ -281,7 +318,7 @@ export function PosKiosk({ registerId }: { registerId: string }) {
     return (
       <div className="pos-root pos-shell flex h-full flex-col items-center justify-center gap-3">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-pos-primary" />
-        <p className="text-sm font-medium text-slate-500">Loading…</p>
+        <p className="text-sm font-medium text-slate-500">{tCommon("loading")}</p>
       </div>
     );
   }
@@ -341,6 +378,7 @@ function normalizeTipPresets(raw: unknown): number[] {
 
 /** Landing when cashier opens /pos without a register id in the URL. */
 export function PosKioskLanding() {
+  const t = useTranslations("pos");
   const router = useRouter();
   const [registerId, setRegisterId] = useState("");
 
@@ -360,30 +398,30 @@ export function PosKioskLanding() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-pos-navy text-2xl font-bold text-white shadow-lg">
             N
           </div>
-          <h1 className="pos-heading text-2xl font-bold text-slate-900">Point of Sale</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Cashiers: open the register link from your manager, or enter the register ID below.
-          </p>
+          <h1 className="pos-heading text-2xl font-bold text-slate-900">{t("pointOfSale")}</h1>
+          <p className="mt-2 text-sm text-slate-600">{t("cashiersOpenRegisterHint")}</p>
         </div>
         <form onSubmit={openRegister} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="register-id" className="font-semibold text-slate-700">Register ID</Label>
+            <Label htmlFor="register-id" className="font-semibold text-slate-700">
+              {t("registerId")}
+            </Label>
             <Input
               id="register-id"
               value={registerId}
               onChange={(e) => setRegisterId(e.target.value)}
-              placeholder="Paste register link or ID"
+              placeholder={t("pasteRegisterLinkOrId")}
               className="h-12 rounded-xl border-slate-200 bg-white text-slate-900"
             />
           </div>
           <Button type="submit" className="h-14 w-full cursor-pointer rounded-xl bg-pos-primary text-base font-bold text-white hover:bg-pos-primary-dark">
-            Open register
+            {t("openRegister")}
           </Button>
         </form>
         <p className="mt-6 text-center text-xs text-slate-400">
-          Managers:{" "}
+          {t("managersLabel")}{" "}
           <a href="/dashboard" className="font-semibold text-pos-primary underline-offset-2 hover:underline">
-            open ERP dashboard
+            {t("openErpDashboard")}
           </a>
         </p>
       </div>

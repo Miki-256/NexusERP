@@ -87,6 +87,40 @@ export const inventoryAdjustmentSchema = z.object({
   variantId: z.string().uuid(),
   delta: z.coerce.number(),
   reason: z.string().min(1).max(500),
+  /** Optional display UOM; delta is always applied in base units at the RPC. */
+  uomCode: z.string().min(1).max(32).optional(),
+});
+
+export const productUomUpsertSchema = z.object({
+  productId: z.string().uuid(),
+  uomCode: z
+    .string()
+    .min(1)
+    .max(32)
+    .transform((s) => s.trim().toLowerCase()),
+  uomName: z.string().min(1).max(100),
+  conversionFactor: z.coerce.number().positive(),
+  isBase: z.boolean().default(false),
+  isSale: z.boolean().default(true),
+  isPurchase: z.boolean().default(true),
+});
+
+export const purchaseOrderLineSchema = z.object({
+  variantId: z.string().uuid(),
+  quantity: z.coerce.number().positive(),
+  unitCost: z.coerce.number().min(0),
+  uomCode: z.string().min(1).max(32).optional(),
+});
+
+export const receiveLineSchema = z.object({
+  barcode: z.string().min(1).max(50),
+  name: z.string().min(1).max(200),
+  sellPrice: z.coerce.number().min(0).default(0),
+  costPrice: z.coerce.number().min(0).default(0),
+  /** Quantity in base units after UOM conversion. */
+  quantity: z.coerce.number().positive(),
+  uomCode: z.string().min(1).max(32).optional(),
+  qtyEntered: z.coerce.number().positive().optional(),
 });
 
 export const inviteMemberSchema = z.object({
@@ -113,6 +147,7 @@ export const cartLineSchema = z.object({
   quantity: z.number().positive(),
   unitPrice: z.number().min(0),
   discountAmount: z.number().min(0).default(0),
+  uomCode: z.string().min(1).max(32).optional(),
 });
 
 export const paymentInputSchema = z.discriminatedUnion("method", [
@@ -155,3 +190,6 @@ export const voidSaleSchema = z.object({
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type PaymentInput = z.infer<typeof paymentInputSchema>;
+export type ProductUomUpsertInput = z.infer<typeof productUomUpsertSchema>;
+export type PurchaseOrderLineInput = z.infer<typeof purchaseOrderLineSchema>;
+export type ReceiveLineInput = z.infer<typeof receiveLineSchema>;

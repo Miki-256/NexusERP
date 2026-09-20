@@ -35,14 +35,16 @@ export function isCatalogStale(cachedAt: string | null, maxAgeMs = CATALOG_STALE
 
 export async function decrementCachedPosStock(
   registerId: string,
-  lines: { variantId: string; quantity: number }[]
+  lines: { variantId: string; quantity: number; uomFactor?: number }[]
 ): Promise<void> {
   const entry = await idbGet<PosCatalogCache>(STORES.posCatalog, registerId);
   if (!entry?.catalog) return;
 
-  const byVariant = new Map(
-    lines.map((l) => [l.variantId, l.quantity] as const)
-  );
+  const byVariant = new Map<string, number>();
+  for (const l of lines) {
+    const base = l.quantity * (l.uomFactor ?? 1);
+    byVariant.set(l.variantId, (byVariant.get(l.variantId) ?? 0) + base);
+  }
 
   const nextCatalog = (entry.catalog as PosCatalogItem[]).map((item) => {
     const sold = byVariant.get(item.variantId);

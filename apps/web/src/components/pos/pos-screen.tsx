@@ -1,19 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatCurrency } from "@/lib/utils";
-import { cachePosSession, clearCachedPosSession, getCachedPosSession, decrementCachedPosStock, getCachedPosCatalogMeta, isCatalogStale } from "@/lib/offline/pos-cache";
+import { cachePosSession, clearCachedPosSession, getCachedPosSession, decrementCachedPosStock, getCachedPosCatalogMeta, isCatalogStale, cachePosCatalog } from "@/lib/offline/pos-cache";
 import { isBrowserOnline } from "@/lib/offline/network";
 import { useOfflineOptional } from "@/components/offline/offline-provider";
 import { useCartStore, calcCartTotals } from "@/stores/cart-store";
 import { usePosCart } from "@/lib/pos/use-pos-cart";
-import { canAddToCart } from "@/lib/pos/stock-utils";
+import { canAddToCart, defaultSaleUom, hasMeasuredSaleUoms, rememberPreferredSaleUom } from "@/lib/pos/stock-utils";
+import { refreshCatalogStock } from "@/lib/pos/stock-refresh";
+import { fetchProductByBarcode } from "@/lib/pos/barcode-server";
+import { isValidBarcode, normalizeBarcode } from "@/lib/pos/barcode-scan";
+import { perfNow } from "@/lib/perf";
 import type { PosStaffSession } from "@/lib/pos-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { ReceiptPrint } from "./receipt-print";
 import type { PosCatalogItem } from "./product-card";
+import { MeasureQtyModal } from "./measure-qty-modal";
 import { VirtualizedCatalogGrid } from "./virtualized-catalog-grid";
 import { CategoryNav } from "./category-nav";
 import { CartPanel } from "./cart-panel";
@@ -37,7 +44,8 @@ import {
 import {
   getRecentVariantIds,
   recordRecentVariants,
-  getCatalogDensity,
+  getStoredCatalogDensity,
+  resolveCatalogDensity,
   setCatalogDensity,
   getPosAutoReturn,
   type PosCatalogDensity,
@@ -86,6 +94,38 @@ type Session = {
 } | null;
 
 const FAVORITES_KEY = (orgId: string) => `pos-favorites-${orgId}`;
+
+/** Persist draft ticket # per register so remounts/idle refresh do not churn IDs. */
+const DRAFT_TICKET_KEY = (registerId: string) => `pos-draft-ticket-${registerId}`;
+
+function mintDraftTicketId(): string {
+  return String(Math.floor(Math.random() * 9000) + 1000);
+}
+
+function readDraftTicketId(registerId: string): string {
+  if (typeof window === "undefined") return mintDraftTicketId();
+  try {
+    const existing = sessionStorage.getItem(DRAFT_TICKET_KEY(registerId));
+    if (existing && /^\d{4}$/.test(existing)) return existing;
+  } catch {
+    /* ignore */
+  }
+  const minted = mintDraftTicketId();
+  try {
+    sessionStorage.setItem(DRAFT_TICKET_KEY(registerId), minted);
+  } catch {
+    /* ignore */
+  }
+  return minted;
+}
+
+function writeDraftTicketId(registerId: string, id: string) {
+  try {
+    sessionStorage.setItem(DRAFT_TICKET_KEY(registerId), id);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function PosScreen({
   registerId,
@@ -138,6 +178,7 @@ export function PosScreen({
   loyaltySpendPerPoint?: number;
   loyaltyMinRedeemPoints?: number;
 }) {
+  const t = useTranslations("pos");
   const [session, setSession] = useState(initialSession);
   const [shiftError, setShiftError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -158,7 +199,9 @@ export function PosScreen({
   const [localCatalog, setLocalCatalog] = useState(catalog);
   const [catalogCachedAt, setCatalogCachedAt] = useState<string | null>(null);
   const [serverSearchItems, setServerSearchItems] = useState<PosCatalogItem[] | null>(null);
+  const [serverSearchLoading, setServerSearchLoading] = useState(false);
   const [stockToast, setStockToast] = useState<string | null>(null);
+  const [measureItem, setMeasureItem] = useState<PosCatalogItem | null>(null);
   const [showCustomerLookup, setShowCustomerLookup] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [showRefund, setShowRefund] = useState(false);
@@ -172,12 +215,28 @@ export function PosScreen({
   const [discountOverride, setDiscountOverride] = useState(false);
   const [managerDiscountPin, setManagerDiscountPin] = useState<string | null>(null);
   const [pendingDiscount, setPendingDiscount] = useState<
-    | { type: "line"; variantId: string; amount: number }
+    | { type: "line"; variantId: string; amount: number; uomCode?: string }
     | { type: "cart"; amount: number }
     | null
   >(null);
   const [pendingCheckout, setPendingCheckout] = useState(false);
-  const [orderSeq] = useState(() => String(Math.floor(Math.random() * 9000) + 1000));
+  const [orderSeq, setOrderSeq] = useState("----");
+
+  useEffect(() => {
+    const id = readDraftTicketId(registerId);
+    setOrderSeq(id);
+  }, [registerId]);
+
+  useEffect(() => {
+    if (orderSeq === "----") return;
+    writeDraftTicketId(registerId, orderSeq);
+  }, [registerId, orderSeq]);
+
+  function rotateDraftTicketId() {
+    const next = mintDraftTicketId();
+    setOrderSeq(next);
+    writeDraftTicketId(registerId, next);
+  }
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [lastSale, setLastSale] = useState<{
@@ -221,15 +280,36 @@ export function PosScreen({
     return map;
   }, [localCatalog]);
 
-  const refreshCatalog = useCallback(async () => {
-    if (!isBrowserOnline()) return;
-    const supabase = createClient();
-    const { data } = await supabase.rpc("get_pos_catalog", { p_register_id: registerId });
-    if (data) setLocalCatalog((data as PosCatalogItem[]).filter((c) => c.variantId));
+  const localCatalogRef = useRef(localCatalog);
+  localCatalogRef.current = localCatalog;
+
+  /** Targeted stock delta — never reloads full catalog after sale/void. */
+  const refreshStock = useCallback(async (variantIds: string[]) => {
+    if (!isBrowserOnline() || variantIds.length === 0) return;
+    const next = await refreshCatalogStock(
+      registerId,
+      localCatalogRef.current,
+      variantIds
+    );
+    setLocalCatalog(next);
   }, [registerId]);
 
-  function clearCustomer() {
-    setCustomerId(null);
+  const mergeCatalogItem = useCallback(
+    (item: PosCatalogItem) => {
+      setLocalCatalog((prev) => {
+        const idx = prev.findIndex((c) => c.variantId === item.variantId);
+        const next =
+          idx >= 0
+            ? prev.map((c, i) => (i === idx ? { ...c, ...item } : c))
+            : [...prev, item];
+        void cachePosCatalog(registerId, next);
+        return next;
+      });
+    },
+    [registerId]
+  );
+
+  function clearCustomer() {    setCustomerId(null);
     setCustomerName("");
     setCustomerPhone("");
     setCustomerCreditBalance(0);
@@ -278,17 +358,37 @@ export function PosScreen({
     removeLine,
     setCartDiscount,
     setLineDiscount,
+    setLineUom,
     applyPromotion,
     clearPromotion,
     clear,
     hold,
     recall,
     initForRegister,
+    cartRestoreFailed,
+    acknowledgeCartRestoreFailed,
   } = usePosCart();
+  const { toast } = useToast();
 
   useEffect(() => {
     initForRegister(registerId);
   }, [registerId, initForRegister]);
+
+  useEffect(() => {
+    if (!cartRestoreFailed) return;
+    toast({
+      title: t("cartCleared"),
+      description: t("cartClearedHelp"),
+      variant: "destructive",
+    });
+    acknowledgeCartRestoreFailed();
+  }, [cartRestoreFailed, acknowledgeCartRestoreFailed, toast, t]);
+
+  // Prefetch PaymentModal chunk once cart has lines (avoids hitch on Pay).
+  useEffect(() => {
+    if (lines.length === 0) return;
+    void import("./payment-modal");
+  }, [lines.length]);
 
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -311,12 +411,26 @@ export function PosScreen({
     setRecentVariantIds(getRecentVariantIds(registerId));
   }, [registerId]);
 
+  const catalogDensityExplicitRef = useRef(false);
+
   useEffect(() => {
-    setCatalogDensityState(getCatalogDensity(registerId));
+    const stored = getStoredCatalogDensity(registerId);
+    catalogDensityExplicitRef.current = stored != null;
+    const apply = () => {
+      setCatalogDensityState(resolveCatalogDensity(registerId, window.innerWidth));
+    };
+    apply();
+    const onResize = () => {
+      if (catalogDensityExplicitRef.current) return;
+      setCatalogDensityState(resolveCatalogDensity(registerId, window.innerWidth));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [registerId]);
 
   function toggleCatalogDensity() {
     const next: PosCatalogDensity = catalogDensity === "compact" ? "comfortable" : "compact";
+    catalogDensityExplicitRef.current = true;
     setCatalogDensityState(next);
     setCatalogDensity(registerId, next);
   }
@@ -324,10 +438,12 @@ export function PosScreen({
   useEffect(() => {
     if (!catalogTruncated || debouncedSearch.trim().length < 2 || !isBrowserOnline()) {
       setServerSearchItems(null);
+      setServerSearchLoading(false);
       return;
     }
 
     let cancelled = false;
+    setServerSearchLoading(true);
     void fetchPosCatalogPage(registerId, {
       search: debouncedSearch,
       category,
@@ -338,6 +454,9 @@ export function PosScreen({
       })
       .catch(() => {
         if (!cancelled) setServerSearchItems(null);
+      })
+      .finally(() => {
+        if (!cancelled) setServerSearchLoading(false);
       });
 
     return () => {
@@ -486,10 +605,7 @@ export function PosScreen({
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim();
-    if (catalogTruncated && q.length >= 2 && serverSearchItems) {
-      return serverSearchItems;
-    }
-    return filterCatalogItems(localCatalog, catalogSearchIndex, {
+    const localFiltered = filterCatalogItems(localCatalog, catalogSearchIndex, {
       search: debouncedSearch,
       category,
       viewFavorites,
@@ -497,6 +613,12 @@ export function PosScreen({
       favorites,
       recentVariantIds,
     });
+
+    // Prefer non-empty server hits for truncated catalogs; empty array is a miss → fall back local
+    if (catalogTruncated && q.length >= 2 && serverSearchItems && serverSearchItems.length > 0) {
+      return serverSearchItems;
+    }
+    return localFiltered;
   }, [
     catalogTruncated,
     serverSearchItems,
@@ -515,25 +637,81 @@ export function PosScreen({
       if (!session) return;
       const item = catalogByVariant.get(variantId);
       if (!item) return;
+
+      // Weight/volume products: enter measurement — do not add as 1 pc.
+      if (hasMeasuredSaleUoms(item)) {
+        if (item.stock <= 0) {
+          setStockToast(t("itemOutOfStock", { name: item.name }));
+          setTimeout(() => setStockToast(null), 3500);
+          return;
+        }
+        setMeasureItem(item);
+        setSearch("");
+        return;
+      }
+
       const currentLines = useCartStore.getState().lines;
-      const check = canAddToCart(item, currentLines, 1);
+      const saleUom = defaultSaleUom(item);
+      const factor = Number(saleUom.factor) || 1;
+      const check = canAddToCart(item, currentLines, 1, factor);
       if (!check.ok) {
-        setStockToast(check.message);
+        setStockToast(
+          check.values ? t(check.messageKey, check.values) : t(check.messageKey)
+        );
         setTimeout(() => setStockToast(null), 3500);
         return;
       }
+      rememberPreferredSaleUom(item.variantId, saleUom.code);
       addLine({
         variantId: item.variantId,
         productName: item.name,
         variantName: item.variantName,
-        unitPrice: item.sellPrice,
+        unitPrice: Math.round(item.sellPrice * factor * 100) / 100,
+        baseUnitPrice: item.sellPrice,
+        uomCode: saleUom.code,
+        uomLabel: saleUom.name,
+        uomFactor: factor,
+        saleUoms: item.saleUoms,
       });
       setFlashVariant(item.variantId);
       setTimeout(() => setFlashVariant(null), 400);
       setSearch("");
       searchRef.current?.focus();
     },
-    [session, catalogByVariant, addLine]
+    [session, catalogByVariant, addLine, t]
+  );
+
+  const confirmMeasuredQty = useCallback(
+    (item: PosCatalogItem, qty: number, uom: { code: string; name: string; factor: number }) => {
+      const currentLines = useCartStore.getState().lines;
+      const factor = Number(uom.factor) || 1;
+      const check = canAddToCart(item, currentLines, qty, factor);
+      if (!check.ok) {
+        setStockToast(
+          check.values ? t(check.messageKey, check.values) : t(check.messageKey)
+        );
+        setTimeout(() => setStockToast(null), 3500);
+        return;
+      }
+      rememberPreferredSaleUom(item.variantId, uom.code);
+      addLine({
+        variantId: item.variantId,
+        productName: item.name,
+        variantName: item.variantName,
+        quantity: qty,
+        unitPrice: Math.round(item.sellPrice * factor * 100) / 100,
+        baseUnitPrice: item.sellPrice,
+        uomCode: uom.code,
+        uomLabel: uom.name,
+        uomFactor: factor,
+        saleUoms: item.saleUoms,
+      });
+      setMeasureItem(null);
+      setFlashVariant(item.variantId);
+      setTimeout(() => setFlashVariant(null), 400);
+      searchRef.current?.focus();
+    },
+    [addLine, t]
   );
 
   const isManager = posStaffSession?.role === "manager";
@@ -552,8 +730,12 @@ export function PosScreen({
 
   function commitDiscount(prep: ReturnType<typeof prepareDiscountApplication>, request: DiscountApplyRequest) {
     if (request.type === "line") {
-      const line = prep.lines.find((l) => l.variantId === request.variantId);
-      if (line) setLineDiscount(request.variantId, line.discountAmount);
+      const line = prep.lines.find(
+        (l) =>
+          l.variantId === request.variantId &&
+          (l.uomCode || "ea").toLowerCase() === (request.uomCode || "ea").toLowerCase()
+      );
+      if (line) setLineDiscount(request.variantId, line.discountAmount, request.uomCode);
     } else {
       setCartDiscount(prep.cartDiscount);
     }
@@ -562,7 +744,7 @@ export function PosScreen({
   async function handleApplyPromo(code: string) {
     setPromoError(null);
     if (!isBrowserOnline()) {
-      setPromoError("Connect to apply promotion codes.");
+      setPromoError(t("connectToApplyPromo"));
       return;
     }
     setPromoBusy(true);
@@ -593,7 +775,7 @@ export function PosScreen({
   function applyDiscountWithPolicy(next: DiscountApplyRequest) {
     const prep = prepareDiscountApplication(next, lines, cartDiscount, promoDiscount);
     if (prep.blocked) {
-      showDiscountToast("Total discount cannot exceed 100% of merchandise value.");
+      showDiscountToast(t("discountExceeds100"));
       return;
     }
 
@@ -618,12 +800,31 @@ export function PosScreen({
     commitDiscount(prep, next);
   }
 
-  function handleBarcodeScan(code: string): BarcodeScanResult {
+  async function handleBarcodeScan(code: string): Promise<BarcodeScanResult> {
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
     const item = lookupCatalogByBarcode(catalogSearchIndex, code);
     if (item) {
       addProductByVariantId(item.variantId);
+      perfNow("pos.barcode", { path: "local", ms: Math.round(performance.now() - t0) });
       return { ok: true, label: item.name };
     }
+
+    // Server fallback when catalog is truncated or SKU outside bootstrap slice
+    if (isBrowserOnline() && (catalogTruncated || isValidBarcode(normalizeBarcode(code)))) {
+      try {
+        const remote = await fetchProductByBarcode(registerId, code);
+        if (remote) {
+          mergeCatalogItem(remote);
+          addProductByVariantId(remote.variantId);
+          perfNow("pos.barcode", { path: "server", ms: Math.round(performance.now() - t0) });
+          return { ok: true, label: remote.name };
+        }
+      } catch {
+        /* fall through to miss */
+      }
+    }
+
+    perfNow("pos.barcode", { path: "miss", ms: Math.round(performance.now() - t0) });
     return { ok: false };
   }
 
@@ -634,7 +835,7 @@ export function PosScreen({
 
   const openCameraScanner = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setStockToast("Camera not available in this browser.");
+      setStockToast(t("cameraNotAvailable"));
       setTimeout(() => setStockToast(null), 3500);
       return;
     }
@@ -647,10 +848,10 @@ export function PosScreen({
       scannerStreamRef.current = stream;
       setShowScanner(true);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not open camera";
+      const msg = e instanceof Error ? e.message : t("couldNotOpenCamera");
       setStockToast(
         /denied|notallowed|permission/i.test(msg)
-          ? "Allow camera access for this site, then tap Camera again."
+          ? t("allowCameraAccess")
           : msg
       );
       setTimeout(() => setStockToast(null), 4500);
@@ -668,17 +869,32 @@ export function PosScreen({
   }
 
   const updateQtyWithStock = useCallback(
-    (variantId: string, quantity: number) => {
+    (variantId: string, quantity: number, uomCode?: string) => {
       const item = catalogByVariant.get(variantId);
+      const line = lines.find(
+        (l) =>
+          l.variantId === variantId &&
+          (l.uomCode || "ea").toLowerCase() === (uomCode || "ea").toLowerCase()
+      );
+      const factor = line?.uomFactor ?? 1;
       if (item && quantity > 0) {
-        const check = canAddToCart(item, lines.filter((l) => l.variantId !== variantId), quantity);
+        const others = lines.filter(
+          (l) =>
+            !(
+              l.variantId === variantId &&
+              (l.uomCode || "ea").toLowerCase() === (uomCode || "ea").toLowerCase()
+            )
+        );
+        const check = canAddToCart(item, others, quantity, factor);
         if (!check.ok) {
-          setStockToast(check.message);
+          setStockToast(
+            check.values ? t(check.messageKey, check.values) : t(check.messageKey)
+          );
           setTimeout(() => setStockToast(null), 3500);
           return;
         }
       }
-      updateQuantity(variantId, quantity);
+      updateQuantity(variantId, quantity, uomCode);
     },
     [catalogByVariant, lines, updateQuantity]
   );
@@ -729,7 +945,7 @@ export function PosScreen({
       } else if (e.key === "F8" && lines.length > 0) {
         e.preventDefault();
         if (hasInvalidDiscounts) {
-          showDiscountToast("Fix discounts before checkout — total cannot exceed 100%.");
+          showDiscountToast(t("fixDiscountsBeforeCheckout"));
         } else if (needsManagerForDiscount) {
           setPendingCheckout(true);
           setShowManagerPin(true);
@@ -773,14 +989,39 @@ export function PosScreen({
     const hit = lookupCatalogByBarcode(catalogSearchIndex, search);
     if (hit && search.length >= 4) {
       addProductByVariantId(hit.variantId);
+      return;
     }
-  }, [search, catalogSearchIndex, addProductByVariantId]);
+    // Truncated catalog: barcode-shaped input with no local hit → server exact lookup
+    if (
+      catalogTruncated &&
+      isBrowserOnline() &&
+      isValidBarcode(normalizeBarcode(search)) &&
+      search.length >= 4
+    ) {
+      let cancelled = false;
+      void fetchProductByBarcode(registerId, search).then((remote) => {
+        if (cancelled || !remote) return;
+        mergeCatalogItem(remote);
+        addProductByVariantId(remote.variantId);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [
+    search,
+    catalogSearchIndex,
+    addProductByVariantId,
+    catalogTruncated,
+    registerId,
+    mergeCatalogItem,
+  ]);
 
   async function openShift() {
     setShiftError(null);
 
     if (!isBrowserOnline()) {
-      setShiftError("Connect to the internet to open a new shift.");
+      setShiftError(t("connectToOpenShift"));
       return;
     }
 
@@ -873,17 +1114,24 @@ export function PosScreen({
         quantity: l.quantity,
         unit_price: l.unitPrice,
         line_total: l.unitPrice * l.quantity - l.discountAmount,
+        uom_code: l.uomCode || null,
       }));
 
       await decrementCachedPosStock(
         registerId,
-        lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity }))
+        lines.map((l) => ({
+          variantId: l.variantId,
+          quantity: l.quantity,
+          uomFactor: l.uomFactor ?? 1,
+        }))
       );
       setLocalCatalog((prev) =>
         prev.map((item) => {
-          const sold = lines.find((l) => l.variantId === item.variantId);
-          if (!sold) return item;
-          return { ...item, stock: Math.max(0, item.stock - sold.quantity) };
+          const soldBase = lines
+            .filter((l) => l.variantId === item.variantId)
+            .reduce((sum, l) => sum + l.quantity * (l.uomFactor ?? 1), 0);
+          if (!soldBase) return item;
+          return { ...item, stock: Math.max(0, item.stock - soldBase) };
         })
       );
 
@@ -905,6 +1153,7 @@ export function PosScreen({
       clear();
       clearCustomer();
       setShowPayment(false);
+      rotateDraftTicketId();
       return;
     }
 
@@ -976,7 +1225,8 @@ export function PosScreen({
     clear();
     clearCustomer();
     setShowPayment(false);
-    void refreshCatalog();
+    rotateDraftTicketId();
+    void refreshStock(soldVariantIds);
   }
 
   async function handleShiftClosed() {
@@ -1002,10 +1252,10 @@ export function PosScreen({
             </p>
           </div>
           <p className="mb-6 text-center text-sm font-medium text-slate-600">
-            Open a shift to start selling
+            {t("openShiftToSell")}
           </p>
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Opening float
+            {t("openingFloat")}
           </label>
           <Input
             type="number"
@@ -1019,20 +1269,20 @@ export function PosScreen({
             className="h-14 w-full cursor-pointer rounded-xl bg-pos-primary text-base font-semibold text-white shadow-md hover:bg-pos-primary-dark"
             onClick={openShift}
           >
-            Open shift
+            {t("openShift")}
           </Button>
           {shiftError && (
             <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{shiftError}</p>
           )}
           {!isBrowserOnline() && (
             <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Offline — reopen this register with an existing shift once you were online before.
+              {t("offlineReopenShift")}
             </p>
           )}
           {onStaffSignOut && (
             <Button variant="ghost" className="mt-4 w-full text-slate-500 hover:text-slate-900" onClick={onStaffSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
-              Switch staff
+              {t("switchStaff")}
             </Button>
           )}
           <div className="mt-2 flex justify-center">
@@ -1047,29 +1297,29 @@ export function PosScreen({
   return (
     <div className="pos-root pos-shell flex h-full flex-col overflow-hidden">
       {/* Top bar */}
-      <header className="pos-header flex h-14 shrink-0 items-center justify-between px-3 sm:h-16 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-sm font-bold text-white ring-1 ring-white/20 sm:h-10 sm:w-10">
+      <header className="pos-header flex h-12 shrink-0 items-center justify-between px-3 sm:h-14 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white ring-1 ring-white/20 sm:h-9 sm:w-9 sm:rounded-xl sm:text-sm">
             N
           </div>
           <div className="min-w-0">
-            <p className="pos-heading truncate text-sm font-semibold text-white sm:text-base">{registerName}</p>
+            <p className="pos-heading truncate text-sm font-semibold text-white">{registerName}</p>
             <p className="flex flex-wrap items-center gap-1 text-[10px] text-white/70 sm:gap-1.5 sm:text-xs">
-              <Store className="h-3.5 w-3.5" />
-              {storeName}
+              <Store className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              <span className="truncate">{storeName}</span>
               <span className="text-white/30">·</span>
               <CircleDot className="h-3 w-3 text-emerald-400" />
-              Shift open
+              <span className="hidden sm:inline">{t("shiftOpen")}</span>
               <PosSyncBadge onOpenQueue={() => setShowOfflineQueue(true)} />
               {!offline?.online && (
-                <span className="ml-1 rounded-md bg-amber-400/20 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
-                  Offline
+                <span className="ml-1 rounded-md bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">
+                  {t("offline")}
                 </span>
               )}
             </p>
           </div>
         </div>
-        <div className="hidden items-center gap-3 text-sm text-white/80 sm:flex">
+        <div className="hidden items-center gap-3 text-sm text-white/80 md:flex">
           {posStaffSession ? (
             <span className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 font-medium text-white">
               <User className="h-4 w-4" />
@@ -1079,50 +1329,53 @@ export function PosScreen({
             userEmail && <span>{userEmail}</span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <Button
             variant="outline"
             size="sm"
-            className="h-10 cursor-pointer border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            className="h-9 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white"
             onClick={() => setShowTools(true)}
-            title="POS tools"
-            aria-label="Open POS tools"
+            title={t("posTools")}
+            aria-label={t("openPosTools")}
           >
             <Wrench className="h-4 w-4" aria-hidden />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-10 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
-            onClick={() => setShowRefund(true)}
-            title="Void / refund (F7)"
-            aria-label="Void or refund sale"
-          >
-            <RotateCcw className="h-4 w-4 sm:mr-1.5" aria-hidden />
-            <span className="hidden sm:inline">Refunds</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-10 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
-            onClick={() => setShowCloseShift(true)}
-            title="Close shift (F6)"
-            aria-label="Close shift and print Z-report"
-          >
-            <DoorClosed className="h-4 w-4 sm:mr-1.5" aria-hidden />
-            <span className="hidden sm:inline">Close shift</span>
-          </Button>
-          <PosRegisterSwitcher registerId={registerId} registerName={registerName} />
+          {/* Secondary shift actions live in Tools on narrow viewports */}
+          <div className="hidden items-center gap-2 sm:flex">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
+              onClick={() => setShowRefund(true)}
+              title={t("voidRefundTitle")}
+              aria-label={t("voidRefundAria")}
+            >
+              <RotateCcw className="h-4 w-4 sm:mr-1.5" aria-hidden />
+              <span className="hidden md:inline">{t("refunds")}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
+              onClick={() => setShowCloseShift(true)}
+              title={t("closeShiftTitle")}
+              aria-label={t("closeShiftAria")}
+            >
+              <DoorClosed className="h-4 w-4 sm:mr-1.5" aria-hidden />
+              <span className="hidden md:inline">{t("closeShift")}</span>
+            </Button>
+            <PosRegisterSwitcher registerId={registerId} registerName={registerName} />
+          </div>
           {onStaffSignOut && (
             <Button
               variant="outline"
               size="sm"
-              className="h-10 cursor-pointer border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              className="h-9 cursor-pointer border-white/20 bg-white/10 px-2.5 text-white hover:bg-white/20 hover:text-white sm:px-3"
               onClick={onStaffSignOut}
-              aria-label="Switch staff user"
+              aria-label={t("switchStaffAria")}
             >
-              <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
-              Switch staff
+              <LogOut className="h-4 w-4 sm:mr-1.5" aria-hidden />
+              <span className="hidden sm:inline">{t("switchStaff")}</span>
             </Button>
           )}
         </div>
@@ -1138,33 +1391,33 @@ export function PosScreen({
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Products — ~70% */}
-        <div className="flex min-h-0 flex-[1.1] flex-col pb-20 lg:min-h-0 lg:flex-1 lg:pb-0">
-          <div className="shrink-0 space-y-4 border-b border-slate-200/80 bg-white px-3 py-3 sm:px-5 sm:py-4">
-            <label className="pos-search-wrap flex items-center gap-2 px-3">
-              <span className="sr-only">Search products by name, SKU, or barcode</span>
-              <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+        <div className="flex min-h-0 flex-[1.1] flex-col pb-16 lg:min-h-0 lg:flex-1 lg:pb-0">
+          <div className="shrink-0 space-y-2 border-b border-slate-200/80 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+            <label className="pos-search-wrap flex h-11 items-center gap-2 px-2.5 sm:h-12">
+              <span className="sr-only">{t("searchProducts")}</span>
+              <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
               <Input
                 ref={searchRef}
                 id="pos-product-search"
-                placeholder="Search name, SKU, or scan barcode (F2 · F8 checkout)"
+                placeholder={t("searchProducts")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-12 flex-1 border-0 bg-transparent pl-0 pr-0 text-base shadow-none focus-visible:ring-0"
+                className="h-9 flex-1 border-0 bg-transparent pl-0 pr-0 text-sm shadow-none focus-visible:ring-0 sm:text-[15px]"
                 autoFocus
                 aria-describedby="pos-search-hint"
               />
               <span id="pos-search-hint" className="sr-only">
-                Press F2 to focus search. Press F9 to open camera scanner.
+                {t("searchHint")}
               </span>
               <button
                 type="button"
                 onClick={() => void openCameraScanner()}
-                className="touch-target flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-pos-primary/40 hover:bg-pos-primary-soft-8 hover:text-pos-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
-                title="Scan with camera (F9)"
-                aria-label="Scan barcode with camera"
+                className="flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-600 hover:border-pos-primary/40 hover:bg-pos-primary-soft-8 hover:text-pos-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
+                title={t("scanCameraTitle")}
+                aria-label={t("scanCameraAria")}
               >
                 <ScanBarcode className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">Camera</span>
+                <span className="hidden sm:inline">{t("camera")}</span>
               </button>
             </label>
             <CategoryNav
@@ -1202,21 +1455,21 @@ export function PosScreen({
 
           {catalogStale && (
             <div className="mx-5 mb-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900">
-              Catalog may be outdated{catalogCachedAt ? ` (cached ${new Date(catalogCachedAt).toLocaleString()})` : ""}.
-              {!offline?.online ? " Stock levels reflect offline sales until sync." : " Refresh when online for latest stock."}
+              {t("catalogStale", { cached: catalogCachedAt ? t("catalogCached", { datetime: new Date(catalogCachedAt).toLocaleString() }) : "" })}
+              {!offline?.online ? t("catalogStaleOffline") : t("catalogStaleOnline")}
             </div>
           )}
 
-          <div className={cn("flex min-h-0 flex-1 flex-col", catalogDensity === "compact" ? "p-3" : "p-4 sm:p-5")}>
-            <div className="mb-3 flex items-center justify-between gap-2 sm:gap-3">
-              <p className="pos-heading min-w-0 truncate text-sm font-semibold text-slate-700" id="pos-catalog-heading">
-                {viewFavorites ? "Favorites" : viewRecent ? "Recent" : category === "all" ? "All products" : category}
+          <div className="flex min-h-0 flex-1 flex-col p-2 sm:p-3">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <p className="pos-heading min-w-0 truncate text-[13px] font-semibold text-slate-700" id="pos-catalog-heading">
+                {viewFavorites ? t("favorites") : viewRecent ? t("recent") : category === "all" ? t("allProducts") : category}
               </p>
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <div
-                  className="flex overflow-hidden rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+                  className="flex overflow-hidden rounded-md border border-slate-200 bg-white p-0.5"
                   role="group"
-                  aria-label="Product card size"
+                  aria-label={t("productCardSize")}
                 >
                   <button
                     type="button"
@@ -1224,18 +1477,16 @@ export function PosScreen({
                       if (catalogDensity !== "compact") toggleCatalogDensity();
                     }}
                     className={cn(
-                      "touch-target flex cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors sm:px-2.5",
+                      "flex h-7 cursor-pointer items-center justify-center gap-1 rounded px-2 text-[11px] font-semibold transition-colors",
                       catalogDensity === "compact"
-                        ? "bg-pos-primary text-white shadow-sm"
+                        ? "bg-pos-primary text-white"
                         : "text-slate-500 hover:text-slate-700"
                     )}
-                    title="Compact — more products on screen"
-                    aria-label="Compact product cards"
+                    title={t("compactTitle")}
+                    aria-label={t("compactAria")}
                     aria-pressed={catalogDensity === "compact"}
                   >
-                    <LayoutGrid className="h-4 w-4 shrink-0" />
-                    <span className="hidden sm:inline">Compact</span>
-                    <span className="sm:hidden">S</span>
+                    <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
                   </button>
                   <button
                     type="button"
@@ -1243,21 +1494,19 @@ export function PosScreen({
                       if (catalogDensity !== "comfortable") toggleCatalogDensity();
                     }}
                     className={cn(
-                      "touch-target flex cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors sm:px-2.5",
+                      "flex h-7 cursor-pointer items-center justify-center gap-1 rounded px-2 text-[11px] font-semibold transition-colors",
                       catalogDensity === "comfortable"
-                        ? "bg-pos-primary text-white shadow-sm"
+                        ? "bg-pos-primary text-white"
                         : "text-slate-500 hover:text-slate-700"
                     )}
-                    title="Large — bigger product cards"
-                    aria-label="Large product cards"
+                    title={t("largeTitle")}
+                    aria-label={t("largeAria")}
                     aria-pressed={catalogDensity === "comfortable"}
                   >
-                    <Rows3 className="h-4 w-4 shrink-0" />
-                    <span className="hidden sm:inline">Large</span>
-                    <span className="sm:hidden">L</span>
+                    <Rows3 className="h-3.5 w-3.5 shrink-0" />
                   </button>
                 </div>
-                <span className="rounded-lg bg-white px-2 py-1 text-[10px] font-semibold tabular-nums text-slate-500 shadow-sm ring-1 ring-slate-200 sm:px-3 sm:text-xs">
+                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">
                   {filtered.length}
                 </span>
               </div>
@@ -1267,13 +1516,15 @@ export function PosScreen({
                 id="pos-catalog-panel"
                 role="tabpanel"
                 aria-labelledby="pos-catalog-heading"
-                className="flex h-full min-h-[240px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white/60 text-slate-400"
+                className="flex h-full min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white/60 text-slate-400"
               >
-                <Search className="mb-4 h-12 w-12 opacity-30" aria-hidden />
-                <p className="pos-heading text-base font-semibold text-slate-500" role="status">
-                  No products found
+                <Search className="mb-2 h-8 w-8 opacity-30" aria-hidden />
+                <p className="pos-heading text-sm font-semibold text-slate-500" role="status">
+                  {serverSearchLoading ? t("searching") : t("noProductsFound")}
                 </p>
-                <p className="mt-1 text-sm">Try a different search or category</p>
+                {!serverSearchLoading && (
+                  <p className="mt-0.5 text-xs">{t("tryDifferentSearch")}</p>
+                )}
               </div>
             ) : (
               <div
@@ -1302,7 +1553,7 @@ export function PosScreen({
           <button
             type="button"
             className="fixed inset-0 z-30 bg-black/40 lg:hidden"
-            aria-label="Close cart overlay"
+            aria-label={t("closeCartOverlay")}
             onClick={() => setShowMobileCart(false)}
           />
         )}
@@ -1310,15 +1561,20 @@ export function PosScreen({
         {!showMobileCart && lines.length > 0 && (
         <button
           type="button"
-          className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 touch-target items-center justify-between rounded-2xl bg-pos-navy px-4 text-white shadow-xl sm:px-5 lg:hidden"
+          className="fixed inset-x-3 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 flex h-12 items-center justify-between gap-3 rounded-xl bg-pos-navy px-3 text-white shadow-lg lg:hidden"
           onClick={() => setShowMobileCart(true)}
-          aria-label={`Open cart, ${lines.reduce((s, l) => s + l.quantity, 0)} items, total ${formatCurrency(total, currency)}`}
+          aria-label={t("openCartAria", { count: lines.reduce((s, l) => s + l.quantity, 0), total: formatCurrency(total, currency) })}
         >
-            <span className="flex items-center gap-2 text-sm font-semibold sm:text-base">
-              <ShoppingCart className="h-5 w-5" />
-              Cart ({lines.reduce((s, l) => s + l.quantity, 0)})
+            <span className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
+              <ShoppingCart className="h-4 w-4 shrink-0" />
+              <span className="truncate">{t("cartWithCount", { count: lines.reduce((s, l) => s + l.quantity, 0) })}</span>
             </span>
-            <span className="font-bold tabular-nums">{formatCurrency(total, currency)}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="font-bold tabular-nums text-sm">{formatCurrency(total, currency)}</span>
+              <span className="rounded-md bg-pos-primary px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">
+                {t("pay")}
+              </span>
+            </span>
           </button>
         )}
 
@@ -1326,19 +1582,20 @@ export function PosScreen({
           className={cn(
             "flex min-h-0 flex-col",
             showMobileCart
-              ? "fixed inset-x-0 bottom-0 top-14 z-40 flex max-h-[calc(100dvh-3.5rem)] bg-white shadow-2xl sm:top-16"
+              ? "fixed inset-x-0 bottom-0 top-12 z-40 flex max-h-[calc(100dvh-3rem)] bg-white shadow-2xl sm:top-14 sm:max-h-[calc(100dvh-3.5rem)]"
               : "hidden",
             "lg:relative lg:inset-auto lg:top-auto lg:flex lg:max-h-none lg:shadow-none"
           )}
           role={showMobileCart ? "dialog" : undefined}
           aria-modal={showMobileCart ? true : undefined}
-          aria-label={showMobileCart ? "Shopping cart" : undefined}
+          aria-label={showMobileCart ? t("shoppingCart") : undefined}
         >
         <CartPanel
           lines={lines}
           currency={currency}
           subtotal={subtotal}
           tax={tax}
+          taxRate={taxRate}
           cartDiscount={cartDiscount}
           promoDiscount={promoDiscount}
           promoCode={promoCode}
@@ -1365,15 +1622,19 @@ export function PosScreen({
           maxCashierDiscountPct={maxCashierDiscountPct}
           discountPct={discountPct}
           needsManagerOverride={needsManagerForDiscount}
-          onDiscount={(variantId, amount) =>
-            applyDiscountWithPolicy({ type: "line", variantId, amount })
+          onDiscount={(variantId, amount, uomCode) =>
+            applyDiscountWithPolicy({ type: "line", variantId, amount, uomCode })
           }
+          onSetUom={(variantId, fromUom, toUom) => {
+            rememberPreferredSaleUom(variantId, toUom);
+            setLineUom(variantId, fromUom, toUom);
+          }}
           onCartDiscount={(amount) => applyDiscountWithPolicy({ type: "cart", amount })}
           onHold={hold}
           onRecallHeld={handleRecallHeld}
           onCheckout={() => {
             if (hasInvalidDiscounts) {
-              showDiscountToast("Fix discounts before checkout — total cannot exceed 100%.");
+              showDiscountToast(t("fixDiscountsBeforeCheckout"));
               return;
             }
             if (needsManagerForDiscount) {
@@ -1458,13 +1719,17 @@ export function PosScreen({
           staffRole={posStaffSession?.role}
           canVoidAsManager={!posStaffSession}
           onClose={() => setShowRefund(false)}
-          onVoided={() => void refreshCatalog()}
+          onVoided={() => {
+            // Refresh stock for currently cached catalog (lighter than full catalog RPC)
+            void refreshStock(localCatalog.map((c) => c.variantId));
+          }}
         />
       )}
 
       {showTools && (
         <PosToolsMenu
           registerId={registerId}
+          registerName={registerName}
           sessionId={session.id}
           sessionToken={posStaffSession?.token}
           onOpenCustomerDisplay={openCustomerDisplay}
@@ -1507,6 +1772,15 @@ export function PosScreen({
         />
       )}
 
+      {measureItem && (
+        <MeasureQtyModal
+          item={measureItem}
+          currency={currency}
+          onClose={() => setMeasureItem(null)}
+          onConfirm={({ qty, uom }) => confirmMeasuredQty(measureItem, qty, uom)}
+        />
+      )}
+
       {showShortcutsHelp && (
         <ShortcutsHelpModal onClose={() => setShowShortcutsHelp(false)} />
       )}
@@ -1522,8 +1796,8 @@ export function PosScreen({
       {showManagerPin && (
         <ManagerPinModal
           registerId={registerId}
-          title="Manager approval"
-          description={`Discount exceeds the ${maxCashierDiscountPct}% cashier limit (${discountPct.toFixed(1)}% applied). Enter a manager PIN to continue.`}
+          title={t("managerApproval")}
+          description={t("managerDiscountDesc", { limit: maxCashierDiscountPct, pct: discountPct.toFixed(1) })}
           onApproved={(pin) => {
             setDiscountOverride(true);
             setManagerDiscountPin(pin);
@@ -1536,7 +1810,7 @@ export function PosScreen({
                 promoDiscount
               );
               if (prep.blocked) {
-                showDiscountToast("Total discount cannot exceed 100% of merchandise value.");
+                showDiscountToast(t("discountExceeds100"));
                 setPendingDiscount(null);
               } else {
                 commitDiscount(prep, pendingDiscount);
@@ -1545,7 +1819,7 @@ export function PosScreen({
             }
             if (pendingCheckout) {
               if (hasInvalidDiscounts) {
-                showDiscountToast("Fix discounts before checkout — total cannot exceed 100%.");
+                showDiscountToast(t("fixDiscountsBeforeCheckout"));
                 setPendingCheckout(false);
                 return;
               }
@@ -1566,13 +1840,13 @@ export function PosScreen({
           <div className="mb-4 flex items-center justify-between">
             <span className="pos-heading flex items-center gap-2 text-sm font-bold text-slate-900">
               <Printer className="h-4 w-4" />
-              Receipt preview
+              {t("receiptPreview")}
             </span>
             <button
               type="button"
               onClick={() => setLastSale(null)}
               className="cursor-pointer rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
-              aria-label="Close receipt preview"
+              aria-label={t("closeReceiptPreview")}
             >
               <X className="h-4 w-4" aria-hidden />
             </button>

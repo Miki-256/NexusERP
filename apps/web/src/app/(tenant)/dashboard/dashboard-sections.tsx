@@ -1,10 +1,17 @@
+"use client";
+
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useFormatter, useTranslations } from "next-intl";
 import type { ErpAppId } from "@/lib/app-permissions";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { pctChange } from "@/lib/finance-dates";
 import { StatCard } from "@/components/layout/stat-card";
 import { StatusBadge } from "@/components/layout/status-badge";
+import {
+  MobileRecordCard,
+  MobileRecordCardRow,
+} from "@/components/layout/mobile-record-card";
 import {
   DataTable,
   DataTableBody,
@@ -58,6 +65,8 @@ const ActivityTimeline = dynamic(
   { loading: () => <ChartSkeleton className="h-48 rounded-lg" /> }
 );
 
+/* ActivityTimeline kept for desktop-only optional use below */
+
 export function DashboardKpis({
   bundle,
   currency,
@@ -67,29 +76,30 @@ export function DashboardKpis({
   currency: string;
   canAccessAccounting: boolean;
 }) {
+  const t = useTranslations("dashboard");
   const today = bundle.today_stats ?? {};
 
   if (!canAccessAccounting) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard
-          label="Revenue today (POS)"
+          label={t("salesToday")}
           value={formatCurrency(today.sales_total ?? 0, currency)}
-          sub={`${today.transaction_count ?? 0} transactions`}
+          sub={t("transactionsCount", { count: today.transaction_count ?? 0 })}
           icon={TrendingUp}
         />
         <StatCard
-          label="Cash collected today"
+          label={t("cashToday")}
           value={formatCurrency(today.cash_total ?? 0, currency)}
           icon={Banknote}
         />
         <StatCard
-          label="Mobile money today"
+          label={t("mobileMoneyToday")}
           value={formatCurrency(today.mobile_total ?? 0, currency)}
           icon={Smartphone}
         />
         <StatCard
-          label="Bank transfers today"
+          label={t("bankToday")}
           value={formatCurrency(today.bank_total ?? 0, currency)}
           icon={CreditCard}
         />
@@ -105,18 +115,22 @@ export function DashboardKpis({
   const closingCash = Number(bundle.mtd_cash_flow?.closing_cash ?? 0);
 
   return (
-    <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard
-          label="Revenue today (POS)"
+          label={t("revenueTodayPos")}
           value={formatCurrency(today.sales_total ?? 0, currency)}
-          sub={`${today.transaction_count ?? 0} transactions`}
+          sub={t("transactionsCount", { count: today.transaction_count ?? 0 })}
           icon={TrendingUp}
         />
         <StatCard
-          label="Net profit (MTD)"
+          label={t("netProfitMtd")}
           value={formatCurrency(pnl.net_profit ?? 0, currency)}
-          sub={netChange != null ? `${netChange >= 0 ? "+" : ""}${netChange}% vs last month` : "Month to date"}
+          sub={
+            netChange != null
+              ? t("vsLastMonth", { sign: netChange >= 0 ? "+" : "", pct: netChange })
+              : t("monthToDate")
+          }
           icon={Landmark}
           trend={
             netChange != null
@@ -126,43 +140,58 @@ export function DashboardKpis({
           highlight={(pnl.net_profit ?? 0) >= 0 ? "positive" : "negative"}
         />
         <StatCard
-          label="Cash position"
+          label={t("cashPosition")}
           value={formatCurrency(closingCash, currency)}
-          sub="Closing cash MTD"
+          sub={t("closingCashMtd")}
           icon={Wallet}
         />
         <StatCard
-          label="Receivables / Payables"
+          label={t("receivablesPayables")}
           value={formatCurrency(arTotal, currency)}
-          sub={`AP ${formatCurrency(apTotal, currency)} outstanding`}
+          sub={t("apOutstanding", { amount: formatCurrency(apTotal, currency) })}
           icon={FileText}
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Cash collected today"
-          value={formatCurrency(today.cash_total ?? 0, currency)}
-          icon={Banknote}
-        />
-        <StatCard
-          label="Mobile money today"
-          value={formatCurrency(today.mobile_total ?? 0, currency)}
-          icon={Smartphone}
-        />
-        <StatCard
-          label="Bank transfers today"
-          value={formatCurrency(today.bank_total ?? 0, currency)}
-          icon={CreditCard}
-        />
-        <StatCard
-          label="Ledger revenue (MTD)"
-          value={formatCurrency(pnl.revenue ?? 0, currency)}
-          sub="Accrual basis"
-          icon={ArrowUpRight}
-        />
-      </div>
-    </>
+      <details className="group rounded-lg border border-border bg-card open:pb-0">
+        <summary className="cursor-pointer list-none px-3 py-2 text-[13px] font-medium text-muted-foreground marker:content-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center justify-between gap-2">
+            {t("moreTodayMetrics")}
+            <ArrowDownRight className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+          </span>
+        </summary>
+        <div className="grid grid-cols-2 gap-2 border-t border-border p-2 sm:gap-3 xl:grid-cols-3 2xl:grid-cols-5">
+          <StatCard
+            label={t("cashToday")}
+            value={formatCurrency(today.cash_total ?? 0, currency)}
+            icon={Banknote}
+          />
+          <StatCard
+            label={t("mobileMoneyToday")}
+            value={formatCurrency(today.mobile_total ?? 0, currency)}
+            icon={Smartphone}
+          />
+          <StatCard
+            label={t("bankToday")}
+            value={formatCurrency(today.bank_total ?? 0, currency)}
+            icon={CreditCard}
+          />
+          <StatCard
+            label={t("tipsToday")}
+            value={formatCurrency(today.tips_total ?? 0, currency)}
+            sub={t("tipsSub")}
+            icon={ArrowUpRight}
+          />
+          <StatCard
+            label={t("ledgerRevenueMtd")}
+            value={formatCurrency(pnl.revenue ?? 0, currency)}
+            sub={t("ledgerRevenueSub")}
+            icon={ArrowUpRight}
+            className="col-span-2 xl:col-span-1"
+          />
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -173,6 +202,8 @@ export function DashboardFinancialPanel({
   bundle: DashboardBundle;
   currency: string;
 }) {
+  const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
   const pnl = bundle.mtd_pnl ?? {};
   const cf = bundle.mtd_cash_flow ?? {};
   const mtdFrom = bundle.mtd_from ?? "";
@@ -181,45 +212,53 @@ export function DashboardFinancialPanel({
 
   return (
     <ReportSection
-      title="Financial performance"
-      subtitle={`Month to date · ${mtdFrom} → ${mtdTo}`}
+      title={t("financialPerformance")}
+      subtitle={t("mtdRange", { from: mtdFrom, to: mtdTo })}
       actions={
         <Button variant="outline" size="sm" asChild>
-          <Link href="/financials">View statements</Link>
+          <Link
+            href={`/financials?pnl=gl&from=${encodeURIComponent(mtdFrom)}&to=${encodeURIComponent(mtdTo)}`}
+          >
+            {t("viewStatements")}
+          </Link>
         </Button>
       }
     >
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
         <StatementTable
           rows={[
-            { label: "Revenue", value: money(pnl.revenue), bold: true },
-            { label: "Cost of goods sold", value: `(${money(pnl.cogs)})`, indent: true },
-            { label: "Gross profit", value: money(pnl.gross_profit), bold: true, border: true },
-            { label: "Operating expenses", value: `(${money(pnl.operating_expenses)})`, indent: true },
-            { label: "Net profit", value: money(pnl.net_profit), bold: true, border: true },
+            { label: tc("revenue"), value: money(pnl.revenue), bold: true },
+            { label: t("costOfGoodsSold"), value: `(${money(pnl.cogs)})`, indent: true },
+            { label: tc("grossProfit"), value: money(pnl.gross_profit), bold: true, border: true },
+            {
+              label: tc("operatingExpenses"),
+              value: `(${money(pnl.operating_expenses)})`,
+              indent: true,
+            },
+            { label: tc("netProfit"), value: money(pnl.net_profit), bold: true, border: true },
           ]}
         />
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-xs text-muted-foreground">Gross margin</p>
+              <p className="text-xs text-muted-foreground">{t("grossMargin")}</p>
               <p className="text-lg font-semibold tabular-nums">{pnl.gross_margin_pct ?? 0}%</p>
             </div>
             <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-xs text-muted-foreground">Net margin</p>
+              <p className="text-xs text-muted-foreground">{t("netMargin")}</p>
               <p className="text-lg font-semibold tabular-nums">{pnl.net_margin_pct ?? 0}%</p>
             </div>
             <div className="rounded-md border border-border bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">Cash inflows</p>
+              <p className="text-xs text-muted-foreground">{t("cashInflows")}</p>
               <p className="text-lg font-semibold tabular-nums text-success">{money(cf?.inflows)}</p>
             </div>
             <div className="rounded-md border border-border bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">Cash outflows</p>
+              <p className="text-xs text-muted-foreground">{t("cashOutflows")}</p>
               <p className="text-lg font-semibold tabular-nums text-destructive">{money(cf?.outflows)}</p>
             </div>
           </div>
           <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-4 py-3">
-            <span className="text-sm font-medium">Net cash change (MTD)</span>
+            <span className="text-sm font-medium">{t("netCashChangeMtd")}</span>
             <span className="flex items-center gap-1 font-semibold tabular-nums">
               {(cf?.net_change ?? 0) >= 0 ? (
                 <ArrowUpRight className="h-4 w-4 text-success" />
@@ -243,10 +282,14 @@ export function DashboardSalesTrend({
   bundle: DashboardBundle;
   currency: string;
 }) {
+  const format = useFormatter();
+
   const chartData = (bundle.sales_trend_14d ?? []).map((row) => ({
-    label: new Date(`${row.date}T12:00:00`).toLocaleDateString(undefined, {
+    // Anchored to UTC noon so the label is identical on the server and the client.
+    label: format.dateTime(new Date(`${row.date}T12:00:00Z`), {
       month: "short",
       day: "numeric",
+      timeZone: "UTC",
     }),
     value: Number(row.total),
   }));
@@ -263,68 +306,102 @@ export function DashboardRecentSales({
   bundle: DashboardBundle;
   currency: string;
 }) {
+  const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
+  const format = useFormatter();
   const recentSales = bundle.recent_sales ?? [];
 
   const activity = recentSales.slice(0, 5).map((sale) => ({
-    title: `Sale ${sale.receipt_no}`,
+    title: t("saleWithReceipt", { receipt: sale.receipt_no }),
     meta: `${relationName(sale.stores)} · ${formatCurrency(sale.total, currency)}`,
-    time: new Date(sale.created_at).toLocaleString(),
+    time: format.dateTime(new Date(sale.created_at), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
   }));
 
   return (
     <>
       <Card className="border-border">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-base font-semibold">Recent transactions</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-semibold">{t("recentTransactions")}</CardTitle>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/sales">View all</Link>
+            <Link href="/sales">{t("viewAll")}</Link>
           </Button>
         </CardHeader>
         <CardContent className="p-0 pb-2">
-          <DataTable className="rounded-none border-0 shadow-none">
-            <table className="w-full">
-              <DataTableHeader>
-                <DataTableHead>Receipt</DataTableHead>
-                <DataTableHead>Store</DataTableHead>
-                <DataTableHead align="right">Amount</DataTableHead>
-                <DataTableHead>Status</DataTableHead>
-              </DataTableHeader>
-              <DataTableBody>
-                {recentSales.length === 0 ? (
-                  <DataTableEmpty colSpan={4} message="No sales yet." />
-                ) : (
-                  recentSales.map((sale) => (
-                    <DataTableRow key={sale.id}>
-                      <DataTableCell>
-                        <Link
-                          href={`/sales/${sale.id}`}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {sale.receipt_no}
-                        </Link>
-                      </DataTableCell>
-                      <DataTableCell className="text-muted-foreground">
-                        {relationName(sale.stores)}
-                      </DataTableCell>
-                      <DataTableCell align="right" className="font-mono font-medium tabular-nums">
+          <div className="space-y-2 px-3 pb-2 lg:hidden">
+            {recentSales.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">{t("noRecentSales")}</p>
+            ) : (
+              recentSales.map((sale) => (
+                <Link key={sale.id} href={`/sales/${sale.id}`} className="block">
+                  <MobileRecordCard>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{sale.receipt_no}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {relationName(sale.stores)}
+                        </p>
+                      </div>
+                      <StatusBadge status={sale.status} />
+                    </div>
+                    <MobileRecordCardRow className="mt-2">
+                      <span className="font-mono tabular-nums">
                         {formatCurrency(sale.total, currency)}
-                      </DataTableCell>
-                      <DataTableCell>
-                        <StatusBadge status={sale.status} />
-                      </DataTableCell>
-                    </DataTableRow>
-                  ))
-                )}
-              </DataTableBody>
-            </table>
-          </DataTable>
+                      </span>
+                    </MobileRecordCardRow>
+                  </MobileRecordCard>
+                </Link>
+              ))
+            )}
+          </div>
+          <div className="hidden lg:block">
+            <DataTable className="rounded-none border-0 shadow-none">
+              <table className="w-full">
+                <DataTableHeader>
+                  <DataTableHead>{tc("receipt")}</DataTableHead>
+                  <DataTableHead>{tc("store")}</DataTableHead>
+                  <DataTableHead align="right">{tc("amount")}</DataTableHead>
+                  <DataTableHead>{tc("status")}</DataTableHead>
+                </DataTableHeader>
+                <DataTableBody>
+                  {recentSales.length === 0 ? (
+                    <DataTableEmpty colSpan={4} message={t("noRecentSales")} />
+                  ) : (
+                    recentSales.map((sale) => (
+                      <DataTableRow key={sale.id}>
+                        <DataTableCell>
+                          <Link
+                            href={`/sales/${sale.id}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {sale.receipt_no}
+                          </Link>
+                        </DataTableCell>
+                        <DataTableCell className="text-muted-foreground">
+                          {relationName(sale.stores)}
+                        </DataTableCell>
+                        <DataTableCell align="right" className="font-mono font-medium tabular-nums">
+                          {formatCurrency(sale.total, currency)}
+                        </DataTableCell>
+                        <DataTableCell>
+                          <StatusBadge status={sale.status} />
+                        </DataTableCell>
+                      </DataTableRow>
+                    ))
+                  )}
+                </DataTableBody>
+              </table>
+            </DataTable>
+          </div>
         </CardContent>
       </Card>
 
       {activity.length > 0 && (
-        <Card className="mt-6 border-border">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Activity timeline</CardTitle>
+        <Card className="mt-3 hidden border-border lg:block lg:mt-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">{t("activityTimeline")}</CardTitle>
           </CardHeader>
           <CardContent>
             <ActivityTimeline items={activity} />
@@ -335,12 +412,32 @@ export function DashboardRecentSales({
   );
 }
 
-const FINANCE_SHORTCUTS: { href: string; label: string; icon: typeof Landmark; appId: ErpAppId }[] = [
-  { href: "/financials", label: "Financial statements", icon: Landmark, appId: "accounting" },
-  { href: "/reports", label: "Business reports", icon: Receipt, appId: "reports" },
-  { href: "/invoicing", label: "Accounts receivable", icon: FileText, appId: "invoicing" },
-  { href: "/purchasing", label: "Accounts payable", icon: ShoppingCart, appId: "purchasing" },
-  { href: "/expenses", label: "Expense register", icon: CreditCard, appId: "expenses" },
+const FINANCE_SHORTCUTS: {
+  href: string;
+  labelKey: string;
+  icon: typeof Landmark;
+  appId: ErpAppId;
+}[] = [
+  {
+    href: "/financials",
+    labelKey: "shortcuts.financialStatements",
+    icon: Landmark,
+    appId: "accounting",
+  },
+  { href: "/reports", labelKey: "shortcuts.businessReports", icon: Receipt, appId: "reports" },
+  {
+    href: "/invoicing",
+    labelKey: "shortcuts.accountsReceivable",
+    icon: FileText,
+    appId: "invoicing",
+  },
+  {
+    href: "/purchasing",
+    labelKey: "shortcuts.accountsPayable",
+    icon: ShoppingCart,
+    appId: "purchasing",
+  },
+  { href: "/expenses", labelKey: "shortcuts.expenseRegister", icon: CreditCard, appId: "expenses" },
 ];
 
 export function DashboardSidebar({
@@ -352,6 +449,10 @@ export function DashboardSidebar({
   currency: string;
   accessibleApps: ErpAppId[];
 }) {
+  const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
+  const tp = useTranslations("pos");
+
   const appSet = new Set(accessibleApps);
   const canAccessExpenses = appSet.has("expenses");
   const financeShortcuts = FINANCE_SHORTCUTS.filter((s) => appSet.has(s.appId));
@@ -361,16 +462,16 @@ export function DashboardSidebar({
   const productCount = bundle.product_count ?? 0;
 
   const paymentBreakdown = [
-    { label: "Cash", value: Number(s.cash_total ?? 0), color: "bg-slate-700" },
-    { label: "Mobile money", value: Number(s.mobile_total ?? 0), color: "bg-slate-500" },
-    { label: "Bank transfer", value: Number(s.bank_total ?? 0), color: "bg-violet-500" },
+    { label: tp("cash"), value: Number(s.cash_total ?? 0), color: "bg-slate-700" },
+    { label: tp("mobileMoney"), value: Number(s.mobile_total ?? 0), color: "bg-slate-500" },
+    { label: tp("bankTransfer"), value: Number(s.bank_total ?? 0), color: "bg-violet-500" },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 sm:space-y-4">
       <Card className="border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Today&apos;s payment mix</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">{t("todaysPaymentMix")}</CardTitle>
         </CardHeader>
         <CardContent>
           <MetricBarChart data={paymentBreakdown} />
@@ -378,27 +479,27 @@ export function DashboardSidebar({
       </Card>
 
       <Card className="border-border">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base font-semibold">Recent expenses</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-semibold">{t("recentExpenses")}</CardTitle>
           {canAccessExpenses && (
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/expenses">All</Link>
+              <Link href="/expenses">{tc("all")}</Link>
             </Button>
           )}
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-1.5">
           {!canAccessExpenses ? (
-            <p className="text-sm text-muted-foreground">Expense details require access to the Expenses app.</p>
+            <p className="text-sm text-muted-foreground">{t("expensesNoAccess")}</p>
           ) : recentExpenses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No expenses recorded yet.</p>
+            <p className="text-sm text-muted-foreground">{t("noExpensesYet")}</p>
           ) : (
             recentExpenses.map((e, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2 text-sm"
+                className="flex items-center justify-between rounded-md border border-border/60 px-2.5 py-1.5 text-sm"
               >
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{e.vendor_name || "Expense"}</p>
+                  <p className="truncate font-medium">{e.vendor_name || t("expense")}</p>
                   <p className="text-xs text-muted-foreground">{e.expense_date}</p>
                 </div>
                 <span className="shrink-0 font-mono font-medium tabular-nums">
@@ -411,30 +512,30 @@ export function DashboardSidebar({
       </Card>
 
       <Card className="border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Finance shortcuts</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">{t("financeShortcuts")}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
-          {financeShortcuts.map(({ href, label, icon: Icon }) => (
+        <CardContent className="space-y-1.5">
+          {financeShortcuts.map(({ href, labelKey, icon: Icon }) => (
             <Link
               key={href}
               href={href}
-              className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40"
+              className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-sm transition-colors hover:bg-muted/40"
             >
               <span className="flex items-center gap-2 text-muted-foreground">
                 <Icon className="h-4 w-4" />
-                {label}
+                {t(labelKey)}
               </span>
-              <span className="text-xs text-primary">Open →</span>
+              <span className="text-xs text-primary">{t("openLink")}</span>
             </Link>
           ))}
           {financeShortcuts.length === 0 && (
-            <p className="text-sm text-muted-foreground">No finance modules assigned to your role.</p>
+            <p className="text-sm text-muted-foreground">{t("noFinanceModules")}</p>
           )}
-          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
+          <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 px-2.5 py-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Package className="h-4 w-4" />
-              Active products
+              {t("activeProducts")}
             </div>
             <span className="font-semibold tabular-nums">{productCount}</span>
           </div>

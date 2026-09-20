@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -14,9 +14,26 @@ import { ReceiptPrint } from "@/components/pos/receipt-print";
 import { SalesActions } from "@/app/(tenant)/sales/sales-actions";
 import { useToast } from "@/components/ui/toast";
 import type { SaleDetailBundle, SaleDetailLine } from "@/lib/sales-register";
+import { DEFAULT_ORG_TIMEZONE, formatOrgDateTimeFull } from "@/lib/finance-dates";
 import { Mail, RotateCcw } from "lucide-react";
 
 type RefundMethod = "cash" | "store_credit";
+
+function lineExTaxAmount(line: {
+  line_total: number;
+  tax_amount?: number | null;
+  unit_price: number;
+  quantity: number;
+  discount_amount?: number | null;
+}): number {
+  const tax = Number(line.tax_amount ?? 0);
+  if (tax > 0) return Math.round((Number(line.line_total) - tax) * 100) / 100;
+  return (
+    Math.round(
+      (Number(line.unit_price) * Number(line.quantity) - Number(line.discount_amount ?? 0)) * 100
+    ) / 100
+  );
+}
 
 export function SaleDetailClient({
   bundle,
@@ -24,12 +41,14 @@ export function SaleDetailClient({
   orgName,
   receiptFooter,
   canManage,
+  timeZone = DEFAULT_ORG_TIMEZONE,
 }: {
   bundle: SaleDetailBundle;
   currency: string;
   orgName: string;
   receiptFooter?: string | null;
   canManage: boolean;
+  timeZone?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -38,16 +57,57 @@ export function SaleDetailClient({
   const payments = bundle.payments;
   const returns = bundle.returns;
   const audit = bundle.audit;
+  const fmt = (iso: string) => formatOrgDateTimeFull(iso, timeZone);
 
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
   const [returnReason, setReturnReason] = useState("");
   const [refundMethod, setRefundMethod] = useState<RefundMethod>("cash");
   const [busy, setBusy] = useState(false);
   const [showReturnForm, setShowReturnForm] = useState(false);
+  const [ledgerStatus, setLedgerStatus] = useState<{
+    posted: boolean;
+    journalId?: string;
+    failedError?: string | null;
+  } | null>(null);
 
   const money = (n: number) => formatCurrency(n, currency);
   const hasPending = payments.some((p) => p.status === "pending");
   const canReturn = canManage && (sale.status === "completed" || sale.status === "returned");
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    void (async () => {
+      const [{ data: je }, { data: queue }] = await Promise.all([
+        supabase
+          .from("journal_entries")
+          .select("id")
+          .eq("organization_id", sale.organization_id as string)
+          .eq("source_type", "sale")
+          .eq("source_id", sale.id as string)
+          .maybeSingle(),
+        supabase
+          .from("sale_ledger_post_queue")
+          .select("last_error, attempts")
+          .eq("sale_id", sale.id as string)
+          .maybeSingle(),
+      ]);
+      if (cancelled) return;
+      setLedgerStatus({
+        posted: Boolean(je?.id),
+        journalId: je?.id,
+        failedError:
+          queue && Number(queue.attempts) > 0
+            ? (queue.last_error as string | null)
+            : queue?.last_error
+              ? (queue.last_error as string)
+              : null,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sale.id, sale.organization_id]);
 
   const returnLines = useMemo(
     () =>
@@ -129,7 +189,7 @@ export function SaleDetailClient({
   function shareReceipt() {
     const subject = encodeURIComponent(`Receipt ${sale.receipt_no}`);
     const body = encodeURIComponent(
-      `${orgName}\nReceipt: ${sale.receipt_no}\nDate: ${new Date(sale.created_at).toLocaleString()}\nTotal: ${money(sale.total)}\n\nView in NexusERP: ${window.location.href}`
+      `${orgName}\nReceipt: ${sale.receipt_no}\nDate: ${fmt(sale.created_at)}\nTotal: ${money(sale.total)}\n\nView in NexusERP: ${window.location.href}`
     );
     window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
   }
@@ -139,6 +199,18 @@ export function SaleDetailClient({
       <div className="space-y-6">
         <FormCard title="Sale info">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-muted-foreground">Ledger</dt>
+              <dd className="font-medium">
+                {ledgerStatus == null
+                  ? "…"
+                  : ledgerStatus.posted
+                    ? "Posted"
+                    : ledgerStatus.failedError
+                      ? `Failed to post — ${ledgerStatus.failedError}`
+                      : "Not on the ledger"}
+              </dd>
+            </div>
             <div>
               <dt className="text-muted-foreground">Store</dt>
               <dd className="font-medium">{sale.store_name ?? "—"}</dd>
@@ -229,7 +301,7 @@ export function SaleDetailClient({
                         )}
                       </p>
                     </div>
-                    <span className="font-mono font-medium">{money(line.line_total)}</span>
+                    <span className="font-mono font-medium">{money(lineExTaxAmount(line))}</span>
                   </div>
                   {showReturnForm && available > 0 && canReturn && (
                     <div className="mt-2 flex items-center gap-2">
@@ -265,7 +337,7 @@ export function SaleDetailClient({
                     <span className="font-mono">{money(ret.total)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(ret.created_at).toLocaleString()} · {ret.reason}
+                    {fmt(ret.created_at)} · {ret.reason}
                   </p>
                 </li>
               ))}
@@ -281,7 +353,7 @@ export function SaleDetailClient({
                   <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
                   <div>
                     <p className="font-medium capitalize">{entry.action.replace(/_/g, " ")}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">{fmt(entry.created_at)}</p>
                   </div>
                 </li>
               ))}
@@ -302,7 +374,7 @@ export function SaleDetailClient({
                     <p className="font-medium capitalize">{p.method.replace(/_/g, " ")}</p>
                     <p className="text-xs text-muted-foreground">
                       {p.reference && `Ref: ${p.reference} · `}
-                      {new Date(p.created_at).toLocaleString()}
+                      {fmt(p.created_at)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -390,6 +462,8 @@ export function SaleDetailClient({
             quantity: l.quantity,
             unit_price: l.unit_price,
             line_total: l.line_total,
+            tax_amount: l.tax_amount,
+            discount_amount: l.discount_amount,
           }))}
           payments={payments.map((p) => ({
             method: p.method,
@@ -404,6 +478,7 @@ export function SaleDetailClient({
           footer={receiptFooter ?? null}
           saleId={sale.id as string}
           pollPaymentStatus={hasPending}
+          timeZone={timeZone}
         />
       </div>
     </div>

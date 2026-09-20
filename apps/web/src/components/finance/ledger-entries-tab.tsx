@@ -20,7 +20,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SELECT_CLS } from "@/lib/ui-classes";
+import { DEFAULT_ORG_TIMEZONE, formatOrgDateTimeFull } from "@/lib/finance-dates";
 import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { localeToBcp47, type AppLocale } from "@/i18n/config";
 import { cn } from "@/lib/utils";
 
 export type LedgerLineRow = {
@@ -51,20 +54,32 @@ export type LedgerEntryRow = {
 
 const PAGE_SIZE = 25;
 
-function accountInfo(line: LedgerLineRow) {
+function accountInfo(line: LedgerLineRow): { code: string; name: string | null; type: string } {
   if (line.account_code) {
     return { code: line.account_code, name: line.account_name ?? "", type: line.account_type ?? "" };
   }
   const a = line.accounts;
-  if (!a) return { code: "—", name: "Unknown", type: "" };
+  if (!a) return { code: "—", name: null, type: "" };
   const row = Array.isArray(a) ? a[0] : a;
   return { code: row.code, name: row.name, type: row.account_type };
 }
 
-function sourceLink(entry: LedgerEntryRow): { href: string; label: string } | null {
+function tipAmountFromEntry(entry: LedgerEntryRow): number {
+  return entry.journal_entry_lines.reduce((sum, line) => {
+    const info = accountInfo(line);
+    const isTipAccount =
+      info.code === "2160" ||
+      /tip/i.test(info.name ?? "") ||
+      /tip/i.test(line.description ?? "");
+    if (!isTipAccount) return sum;
+    return sum + Number(line.credit || 0);
+  }, 0);
+}
+
+function sourceLink(entry: LedgerEntryRow): { href: string; labelKey: "viewSale" | "sourceExpense" } | null {
   if (!entry.source_type || !entry.source_id) return null;
-  if (entry.source_type === "sale") return { href: `/sales/${entry.source_id}`, label: "View sale" };
-  if (entry.source_type === "expense") return { href: "/expenses", label: "Expenses" };
+  if (entry.source_type === "sale") return { href: `/sales/${entry.source_id}`, labelKey: "viewSale" };
+  if (entry.source_type === "expense") return { href: "/expenses", labelKey: "sourceExpense" };
   return null;
 }
 
@@ -101,6 +116,7 @@ export function LedgerEntriesTab({
   to,
   canManage = false,
   entries: initialEntries,
+  timeZone = DEFAULT_ORG_TIMEZONE,
 }: {
   orgId?: string;
   currency: string;
@@ -108,9 +124,13 @@ export function LedgerEntriesTab({
   to: string;
   canManage?: boolean;
   entries?: LedgerEntryRow[];
+  timeZone?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const t = useTranslations("finance");
+  const tCommon = useTranslations("common");
+  const locale = useLocale() as AppLocale;
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -120,7 +140,7 @@ export function LedgerEntriesTab({
   const [loading, setLoading] = useState(Boolean(orgId));
   const [reversingId, setReversingId] = useState<string | null>(null);
 
-  const money = (n: number) => formatCurrency(n, currency);
+  const money = (n: number) => formatCurrency(n, currency, localeToBcp47(locale));
   const serverMode = Boolean(orgId);
 
   const loadPage = useCallback(async () => {
@@ -160,7 +180,7 @@ export function LedgerEntriesTab({
       const lineHit = e.journal_entry_lines.some((l) => {
         const acc = accountInfo(l);
         return (
-          acc.name.toLowerCase().includes(q) ||
+          (acc.name ?? "").toLowerCase().includes(q) ||
           acc.code.toLowerCase().includes(q) ||
           (l.description ?? "").toLowerCase().includes(q)
         );
@@ -205,7 +225,7 @@ export function LedgerEntriesTab({
             reference: e.reference ?? "",
             source: e.source_type ?? "manual",
             account_code: acc.code,
-            account: acc.name,
+            account: acc.name ?? "",
             description: l.description ?? "",
             debit: l.debit || "",
             credit: l.credit || "",
@@ -235,10 +255,10 @@ export function LedgerEntriesTab({
     });
     setReversingId(null);
     if (error) {
-      toast({ title: "Reverse failed", description: error.message, variant: "destructive" });
+      toast({ title: t("reverseFailed"), description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Journal entry reversed" });
+    toast({ title: t("journalReversed") });
     if (serverMode) void loadPage();
     router.refresh();
   }
@@ -250,16 +270,21 @@ export function LedgerEntriesTab({
         setSearch(v);
         setPage(1);
       }}
-      placeholder="Search memo, account, reference…"
+      placeholder={t("searchLedgerPlaceholder")}
     />
   );
 
   return (
     <ReportSection
-      title="General ledger entries"
-      subtitle={`${totals.count} journal entries${serverMode ? " in period" : ""}`}
+      title={t("glEntries")}
+      subtitle={
+        serverMode
+          ? t("glEntriesCountPeriod", { count: totals.count })
+          : t("glEntriesCount", { count: totals.count })
+      }
       actions={
         <ExportCsvButton
+          label={tCommon("exportCsv")}
           filename={`ledger-entries-${from}-${to}`}
           rows={exportRows}
           columns={[
@@ -286,19 +311,19 @@ export function LedgerEntriesTab({
             setPage(1);
           }}
         >
-          <option value="all">All sources</option>
-          <option value="sale">Sales</option>
-          <option value="expense">Expenses</option>
-          <option value="manual">Manual</option>
-          <option value="invoice">Invoices</option>
-          <option value="credit_note">Credit notes</option>
+          <option value="all">{t("allSources")}</option>
+          <option value="sale">{t("sourceSale")}</option>
+          <option value="expense">{t("sourceExpense")}</option>
+          <option value="manual">{t("sourceManual")}</option>
+          <option value="invoice">{t("sourceInvoice")}</option>
+          <option value="credit_note">{t("sourceCreditNote")}</option>
         </select>
       </div>
 
       {loading && (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading ledger…
+          {t("loadingLedger")}
         </div>
       )}
 
@@ -306,12 +331,13 @@ export function LedgerEntriesTab({
         <div className="space-y-2">
           {paged.length === 0 ? (
             <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-              No ledger entries in this period. Post sales and expenses to populate the ledger.
+              {t("noLedgerEntries")}
             </div>
           ) : (
             paged.map((entry) => {
               const isOpen = expanded.has(entry.id);
               const entryDebits = entry.journal_entry_lines.reduce((s, l) => s + Number(l.debit), 0);
+              const tipAmt = entry.source_type === "sale" ? tipAmountFromEntry(entry) : 0;
               const link = sourceLink(entry);
               return (
                 <div key={entry.id} className="overflow-hidden rounded-lg border border-border bg-card">
@@ -325,21 +351,27 @@ export function LedgerEntriesTab({
                     ) : (
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
-                    <div className="grid min-w-0 flex-1 gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="grid min-w-0 flex-1 gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-6">
                       <div>
-                        <p className="text-xs text-muted-foreground">Date</p>
+                        <p className="text-xs text-muted-foreground">{tCommon("date")}</p>
                         <p className="text-sm font-medium">{entry.entry_date}</p>
                       </div>
                       <div className="min-w-0 lg:col-span-2">
-                        <p className="text-xs text-muted-foreground">Memo</p>
+                        <p className="text-xs text-muted-foreground">{tCommon("memo")}</p>
                         <p className="truncate text-sm">{entry.memo || entry.reference || "—"}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Source</p>
-                        <p className="text-sm capitalize">{entry.source_type?.replace(/_/g, " ") ?? "Manual"}</p>
+                        <p className="text-xs text-muted-foreground">{tCommon("source")}</p>
+                        <p className="text-sm capitalize">
+                          {entry.source_type?.replace(/_/g, " ") ?? t("sourceManual")}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Entry total</p>
+                        <p className="text-xs text-muted-foreground">{tCommon("tip")}</p>
+                        <p className="font-mono text-sm">{tipAmt > 0 ? money(tipAmt) : "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">{t("entryTotal")}</p>
                         <p className="font-mono text-sm font-semibold">{money(entryDebits)}</p>
                       </div>
                     </div>
@@ -352,15 +384,20 @@ export function LedgerEntriesTab({
                     <div className="border-t bg-muted/10 px-4 py-4">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                         <span>
-                          Posted {new Date(entry.created_at).toLocaleString()}
+                          {t("postedAt", { at: formatOrgDateTimeFull(entry.created_at, timeZone) })}
                           {entry.journal_code ? ` · ${entry.journal_code}` : ""}
+                          {tipAmt > 0 ? ` · ${t("tipPayableNote", { amount: money(tipAmt) })}` : ""}
                         </span>
-                        {entry.reference && <span>Ref: {entry.reference}</span>}
+                        {entry.reference && (
+                          <span>
+                            {tCommon("reference")}: {entry.reference}
+                          </span>
+                        )}
                         {link && (
                           <Button variant="outline" size="sm" asChild>
                             <Link href={link.href}>
                               <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                              {link.label}
+                              {t(link.labelKey)}
                             </Link>
                           </Button>
                         )}
@@ -376,20 +413,20 @@ export function LedgerEntriesTab({
                               disabled={reversingId === entry.id}
                               onClick={() => void handleReverse(entry.id)}
                             >
-                              {reversingId === entry.id ? "Reversing…" : "Reverse entry"}
+                              {reversingId === entry.id ? t("reversing") : t("reverseEntry")}
                             </Button>
                           )}
                         {entry.reversal_entry_id && (
-                          <span className="text-amber-700">Reversed</span>
+                          <span className="text-amber-700">{t("reversed")}</span>
                         )}
                       </div>
                       <DataTable>
                         <table className="w-full text-sm">
                           <DataTableHeader>
-                            <DataTableHead>Account</DataTableHead>
-                            <DataTableHead>Description</DataTableHead>
-                            <DataTableHead align="right">Debit</DataTableHead>
-                            <DataTableHead align="right">Credit</DataTableHead>
+                            <DataTableHead>{tCommon("account")}</DataTableHead>
+                            <DataTableHead>{tCommon("description")}</DataTableHead>
+                            <DataTableHead align="right">{tCommon("debit")}</DataTableHead>
+                            <DataTableHead align="right">{tCommon("credit")}</DataTableHead>
                           </DataTableHeader>
                           <DataTableBody>
                             {entry.journal_entry_lines.map((line) => {
@@ -398,7 +435,7 @@ export function LedgerEntriesTab({
                                 <DataTableRow key={line.id}>
                                   <DataTableCell>
                                     <p className="font-mono text-xs text-muted-foreground">{acc.code}</p>
-                                    <p className="font-medium">{acc.name}</p>
+                                    <p className="font-medium">{acc.name ?? tCommon("unknown")}</p>
                                   </DataTableCell>
                                   <DataTableCell className="text-muted-foreground">
                                     {line.description || "—"}

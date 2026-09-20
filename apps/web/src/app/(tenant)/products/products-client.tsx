@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { TabBar } from "@/components/layout/tab-bar";
 import { PAGE_SHELL } from "@/lib/ui-classes";
+import { useTranslations } from "next-intl";
 import {
   DataTable,
   DataTableBody,
@@ -21,6 +22,8 @@ import {
   DataTableRow,
 } from "@/components/layout/data-table";
 import { ProductForm, type ProductFormValues } from "@/components/products/product-form";
+import { ProductUomManager } from "@/components/products/product-uom-manager";
+import { applyProductUomPreset } from "@/lib/scm/apply-product-uom-preset";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { CategoriesTab } from "./categories-tab";
 import { ProductImportTab } from "@/components/products/product-import-tab";
@@ -73,6 +76,8 @@ export function ProductsClient({
   searchQuery: string;
   productCountByCategory: Record<string, number>;
 }) {
+  const t = useTranslations("products");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("products");
@@ -81,6 +86,9 @@ export function ProductsClient({
   const [loading, setLoading] = useState(false);
   const [extendedLoading, setExtendedLoading] = useState(false);
   const [extendedFields, setExtendedFields] = useState<Partial<ProductExtendedFields>>({});
+  const [editUoms, setEditUoms] = useState<
+    { uom_code: string; conversion_factor: number; is_base: boolean; is_purchase: boolean; is_sale: boolean }[]
+  >([]);
   const [trackLots, setTrackLots] = useState(false);
   const [searchInput, setSearchInput] = useState(searchQuery);
   const formRef = useRef<HTMLDivElement>(null);
@@ -100,6 +108,20 @@ export function ProductsClient({
     navigateList(1, searchInput);
   }
 
+  // Debounced live filter — typing SKU/name must filter without requiring Enter.
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    const applied = searchQuery.trim();
+    if (trimmed === applied) return;
+    const id = window.setTimeout(() => navigateList(1, searchInput), 280);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on typed search
+  }, [searchInput]);
+
   const isFormOpen = mode === "create" || mode === "edit";
 
   const categoriesForSelect = useMemo(
@@ -118,12 +140,19 @@ export function ProductsClient({
   function openEdit(product: Product) {
     setEditingProduct(product);
     setExtendedFields({});
+    setEditUoms([]);
     setTrackLots(false);
     setMode("edit");
     setExtendedLoading(true);
     void (async () => {
       const supabase = createClient();
-      const { data } = await supabase.rpc("get_product_detail", { p_product_id: product.id });
+      const [{ data }, { data: uomData }] = await Promise.all([
+        supabase.rpc("get_product_detail", { p_product_id: product.id }),
+        supabase
+          .from("product_uoms")
+          .select("uom_code, conversion_factor, is_base, is_purchase, is_sale")
+          .eq("product_id", product.id),
+      ]);
       const detail = (data ?? {}) as { product?: Record<string, unknown> };
       const p = detail.product;
       if (p) {
@@ -141,6 +170,9 @@ export function ProductsClient({
         });
         setTrackLots(Boolean(p.track_lots));
       }
+      setEditUoms(
+        (uomData as typeof editUoms | null) ?? []
+      );
       setExtendedLoading(false);
     })();
     requestAnimationFrame(() => {
@@ -182,8 +214,8 @@ export function ProductsClient({
     const existing = products.find((p) => p.id === row.product_id);
     if (existing) {
       toast({
-        title: "Barcode already in catalog",
-        description: `Opening "${existing.name}" for edit.`,
+        title: t("toast.barcodeExists"),
+        description: t("toast.barcodeExistsDesc", { name: existing.name }),
       });
       openEdit(existing);
     }
@@ -242,7 +274,11 @@ export function ProductsClient({
 
     if (fnError || !data) {
       setLoading(false);
-      toast({ title: "Could not save product", description: fnError?.message ?? "Unknown error", variant: "destructive" });
+      toast({
+        title: t("toast.saveFailed"),
+        description: fnError?.message ?? tCommon("unknownError"),
+        variant: "destructive",
+      });
       return;
     }
 
@@ -255,9 +291,9 @@ export function ProductsClient({
     if (reorderError) {
       setLoading(false);
       toast({
-        title: "Product saved but reorder point failed",
+        title: t("toast.reorderFailed"),
         description: reorderError.message.includes("Could not find the function")
-          ? "Apply migration 20260618000034_inventory_advanced.sql in Supabase."
+          ? t("toast.applyMigration", { file: "20260618000034_inventory_advanced.sql" })
           : reorderError.message,
         variant: "destructive",
       });
@@ -265,6 +301,24 @@ export function ProductsClient({
       router.refresh();
       return;
     }
+
+    if (values.uomPreset && values.uomPreset !== "each") {
+      const pack = parseFloat(values.packSize) || 24;
+      const { error: uomError } = await applyProductUomPreset(
+        supabase,
+        result.product_id,
+        values.uomPreset,
+        pack
+      );
+      if (uomError) {
+        toast({
+          title: t("uom.presetFailed"),
+          description: uomError,
+          variant: "destructive",
+        });
+      }
+    }
+
     try {
       if (imageFile) {
         const imageUrl = await uploadProductImage(supabase, organizationId, result.product_id, imageFile);
@@ -284,8 +338,8 @@ export function ProductsClient({
     } catch (err) {
       setLoading(false);
       toast({
-        title: "Product saved but photo upload failed",
-        description: err instanceof Error ? err.message : "Upload error",
+        title: t("toast.photoFailed"),
+        description: err instanceof Error ? err.message : t("toast.uploadError"),
         variant: "destructive",
       });
       closeForm();
@@ -294,7 +348,7 @@ export function ProductsClient({
     }
 
     setLoading(false);
-    toast({ title: "Product created", description: `"${values.name}" was added successfully.` });
+    toast({ title: t("toast.created"), description: t("toast.createdDesc", { name: values.name }) });
     closeForm();
     router.refresh();
   }
@@ -331,7 +385,7 @@ export function ProductsClient({
 
       setLoading(false);
       if (fnError) {
-        toast({ title: "Could not update product", description: fnError.message, variant: "destructive" });
+        toast({ title: t("toast.updateRpcFailed"), description: fnError.message, variant: "destructive" });
         return;
       }
       const { error: reorderError } = await supabase.rpc("set_product_reorder_point", {
@@ -348,38 +402,38 @@ export function ProductsClient({
       });
       if (reorderError) {
         toast({
-          title: "Product saved but reorder point failed",
+          title: t("toast.reorderFailed"),
           description: reorderError.message.includes("Could not find the function")
-            ? "Apply migration 20260618000034_inventory_advanced.sql in Supabase."
+            ? t("toast.applyMigration", { file: "20260618000034_inventory_advanced.sql" })
             : reorderError.message,
           variant: "destructive",
         });
       } else if (extendedError) {
         toast({
-          title: "Product saved but master data failed",
+          title: t("toast.masterDataFailed"),
           description: extendedError.message.includes("Could not find the function")
-            ? "Apply SCM Wave 1 migrations in Supabase."
+            ? t("toast.applyScmWave1")
             : extendedError.message,
           variant: "destructive",
         });
       } else if (lotError) {
         toast({
-          title: "Product saved but lot tracking failed",
+          title: t("toast.lotTrackingFailed"),
           description: lotError.message.includes("Could not find the function")
-            ? "Apply SCM Wave 2 migrations in Supabase."
+            ? t("toast.applyScmWave2")
             : lotError.message,
           variant: "destructive",
         });
       } else {
-        toast({ title: "Product updated", description: `"${values.name}" was saved.` });
+        toast({ title: t("toast.updated"), description: t("toast.updatedDesc", { name: values.name }) });
       }
       closeForm();
       router.refresh();
     } catch (err) {
       setLoading(false);
       toast({
-        title: "Update failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("toast.updateFailed"),
+        description: err instanceof Error ? err.message : tCommon("unknownError"),
         variant: "destructive",
       });
     }
@@ -394,7 +448,7 @@ export function ProductsClient({
     });
     if (fnError) {
       setLoading(false);
-      toast({ title: "Could not remove product", description: fnError.message, variant: "destructive" });
+      toast({ title: t("toast.removeFailed"), description: fnError.message, variant: "destructive" });
       return;
     }
     const result = (data ?? {}) as { image_url?: string | null; name?: string };
@@ -407,8 +461,8 @@ export function ProductsClient({
     }
     setLoading(false);
     toast({
-      title: "Product removed",
-      description: `"${result.name ?? product.name}" is now inactive.`,
+      title: t("toast.removed"),
+      description: t("toast.removedDesc", { name: result.name ?? product.name }),
     });
     if (editingProduct?.id === product.id) closeForm();
     router.refresh();
@@ -441,11 +495,11 @@ export function ProductsClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        title="Products"
+        title={t("title")}
         description={
           tab === "products"
-            ? `${products.length} product${products.length === 1 ? "" : "s"} · ${categories.length} categor${categories.length === 1 ? "y" : "ies"}`
-            : `${categories.length} categor${categories.length === 1 ? "y" : "ies"} for your catalog`
+            ? t("summary", { products: products.length, categories: categories.length })
+            : t("categoriesSummary", { count: categories.length })
         }
         action={
           canManage && tab === "products" ? (
@@ -454,11 +508,11 @@ export function ProductsClient({
               className="shadow-sm"
             >
               {isFormOpen ? (
-                "Cancel"
+                tCommon("cancel")
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  Add product
+                  {t("addProduct")}
                 </>
               )}
             </Button>
@@ -468,21 +522,21 @@ export function ProductsClient({
 
       <TabBar
         tabs={[
-          { key: "products" as const, label: "Catalog", count: products.length },
+          { key: "products" as const, label: t("catalog"), count: products.length },
           ...(canManage
             ? [
-                { key: "import" as const, label: "Import" },
-                { key: "receive" as const, label: "Receive" },
+                { key: "import" as const, label: t("import") },
+                { key: "receive" as const, label: t("receive") },
               ]
             : []),
-          { key: "categories" as const, label: "Categories", count: categories.length },
+          { key: "categories" as const, label: t("categories"), count: categories.length },
         ]}
         value={tab}
         onChange={(next) => {
           setTab(next);
           if (next !== "products") closeForm();
         }}
-        className="mb-6"
+        className="mb-4"
       />
 
       {tab === "import" && canManage && (
@@ -516,20 +570,21 @@ export function ProductsClient({
         search={searchInput}
         onSearchChange={setSearchInput}
         onSearchSubmit={submitSearch}
-        placeholder="Search name, SKU, or barcode…"
-        className="mb-4"
+        placeholder={t("searchNameSkuBarcode")}
+        className="mb-3"
       />
 
       {mode === "create" && canManage && (
-        <div ref={formRef} className="mb-6">
+        <div ref={formRef} className="mb-4">
           <ProductForm
           formKey="create"
-          title="New product"
-          submitLabel="Save product"
+          title={t("newProduct")}
+          submitLabel={t("saveProduct")}
           loading={loading}
           categories={categoriesForSelect}
           stores={stores}
           showStockFields
+          showUomCreatePricing
           onBarcodeDuplicate={handleBarcodeDuplicate}
           onSubmit={handleCreate}
           onCancel={closeForm}
@@ -538,29 +593,48 @@ export function ProductsClient({
       )}
 
       {mode === "edit" && canManage && editingProduct && (
-        <div ref={formRef} className="mb-6">
+        <div ref={formRef} className="mb-4 space-y-4">
           <ProductForm
           formKey={`${editingProduct.id}-${extendedLoading ? "loading" : "ready"}`}
-          title={`Edit — ${editingProduct.name}`}
-          submitLabel="Save changes"
+          title={t("editTitle", { name: editingProduct.name })}
+          submitLabel={t("saveChanges")}
           loading={loading || extendedLoading}
           categories={categoriesForSelect}
           stores={stores}
           showActiveToggle
           showExtendedFields={!extendedLoading}
+          purchaseUomCode={
+            editUoms.find((u) => u.is_purchase && !u.is_base)?.uom_code ??
+            editUoms.find((u) => u.is_purchase)?.uom_code
+          }
+          purchaseFactor={
+            editUoms.find((u) => u.is_purchase && !u.is_base)?.conversion_factor ??
+            editUoms.find((u) => u.is_purchase)?.conversion_factor
+          }
+          saleUomCode={
+            editUoms.find((u) => u.is_sale && !u.is_base)?.uom_code ??
+            editUoms.find((u) => u.is_sale)?.uom_code
+          }
+          saleFactor={
+            editUoms.find((u) => u.is_sale && !u.is_base)?.conversion_factor ??
+            editUoms.find((u) => u.is_sale)?.conversion_factor
+          }
           initialValues={editInitialValues}
           existingImageUrl={editingProduct.image_url}
           onBarcodeDuplicate={handleBarcodeDuplicate}
           onSubmit={handleUpdate}
           onCancel={closeForm}
         />
+          {!extendedLoading && (
+            <ProductUomManager productId={editingProduct.id} canManage={canManage} />
+          )}
         </div>
       )}
 
       <div className="space-y-3 lg:hidden">
         {products.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            No products yet. Add your first product to start selling.
+            {t("empty")}
           </p>
         ) : (
           products.map((p) => (
@@ -576,21 +650,21 @@ export function ProductsClient({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{p.categories?.name ?? "Uncategorized"}</p>
+                  <p className="text-xs text-muted-foreground">{p.categories?.name ?? tCommon("uncategorized")}</p>
                 </div>
                 <Badge variant={p.is_active ? "success" : "secondary"}>
-                  {p.is_active ? "Active" : "Inactive"}
+                  {p.is_active ? tCommon("active") : tCommon("inactive")}
                 </Badge>
               </div>
               <div className="space-y-1.5">
-                <MobileRecordCardRow label="Sell">{formatCurrency(p.sell_price, currency)}</MobileRecordCardRow>
-                <MobileRecordCardRow label="SKU">{p.sku ?? "—"}</MobileRecordCardRow>
+                <MobileRecordCardRow label={tCommon("sell")}>{formatCurrency(p.sell_price, currency)}</MobileRecordCardRow>
+                <MobileRecordCardRow label={tCommon("sku")}>{p.sku ?? "—"}</MobileRecordCardRow>
               </div>
               {canManage && (
                 <div className="mt-3 flex justify-end gap-2 border-t border-border pt-3">
                   <Button size="sm" variant="outline" onClick={() => openEdit(p)}>
                     <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                    Edit
+                    {tCommon("edit")}
                   </Button>
                 </div>
               )}
@@ -611,20 +685,20 @@ export function ProductsClient({
       <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableHead>Product</DataTableHead>
-              <DataTableHead hideBelow="md">SKU</DataTableHead>
-              <DataTableHead hideBelow="lg">Category</DataTableHead>
-              <DataTableHead align="right" hideBelow="xl">Cost</DataTableHead>
-              <DataTableHead align="right">Sell</DataTableHead>
-              <DataTableHead align="right" hideBelow="xl">Reorder at</DataTableHead>
-              <DataTableHead hideBelow="md">Status</DataTableHead>
-              {canManage && <DataTableHead align="right">Actions</DataTableHead>}
+              <DataTableHead>{tCommon("product")}</DataTableHead>
+              <DataTableHead hideBelow="md">{tCommon("sku")}</DataTableHead>
+              <DataTableHead hideBelow="lg">{tCommon("category")}</DataTableHead>
+              <DataTableHead align="right" hideBelow="xl">{tCommon("cost")}</DataTableHead>
+              <DataTableHead align="right">{tCommon("sell")}</DataTableHead>
+              <DataTableHead align="right" hideBelow="xl">{t("reorderAt")}</DataTableHead>
+              <DataTableHead hideBelow="md">{tCommon("status")}</DataTableHead>
+              {canManage && <DataTableHead align="right">{tCommon("actions")}</DataTableHead>}
             </DataTableHeader>
             <DataTableBody>
               {products.length === 0 ? (
                 <DataTableEmpty
                   colSpan={canManage ? 8 : 7}
-                  message="No products yet. Add your first product to start selling."
+                  message={t("empty")}
                 />
               ) : (
                 products.map((p) => (
@@ -661,7 +735,7 @@ export function ProductsClient({
                     </DataTableCell>
                     <DataTableCell>
                       <Badge variant={p.is_active ? "success" : "secondary"}>
-                        {p.is_active ? "Active" : "Inactive"}
+                        {p.is_active ? tCommon("active") : tCommon("inactive")}
                       </Badge>
                     </DataTableCell>
                     {canManage && (
@@ -669,11 +743,11 @@ export function ProductsClient({
                         <div className="flex flex-wrap justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
                             <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                            Edit
+                            {tCommon("edit")}
                           </Button>
                           <ConfirmDeleteButton
-                            label="Remove"
-                            message="Remove from catalog? Product stays in sales history."
+                            label={tCommon("remove")}
+                            message={t("removeConfirm")}
                             onConfirm={() => deactivateProduct(p)}
                           />
                         </div>

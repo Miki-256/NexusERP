@@ -14,17 +14,20 @@ export function usePosCart() {
       promotionName: s.promotionName,
       promotionId: s.promotionId,
       heldCarts: s.heldCarts,
+      cartRestoreFailed: s.cartRestoreFailed,
       addLine: s.addLine,
       updateQuantity: s.updateQuantity,
       removeLine: s.removeLine,
       setCartDiscount: s.setCartDiscount,
       setLineDiscount: s.setLineDiscount,
+      setLineUom: s.setLineUom,
       applyPromotion: s.applyPromotion,
       clearPromotion: s.clearPromotion,
       clear: s.clear,
       hold: s.hold,
       recall: s.recall,
       initForRegister: s.initForRegister,
+      acknowledgeCartRestoreFailed: s.acknowledgeCartRestoreFailed,
     }))
   );
 }

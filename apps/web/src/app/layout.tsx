@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { Open_Sans, Poppins } from "next/font/google";
+import { Noto_Sans_Ethiopic, Open_Sans, Poppins } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AuthHashHandler } from "@/components/auth/auth-hash-handler";
+import { getMessages, getRequestLocale } from "@/i18n/request";
+import { cn } from "@/lib/utils";
 
 const openSans = Open_Sans({
   subsets: ["latin"],
@@ -22,11 +24,14 @@ const poppins = Poppins({
   adjustFontFallback: true,
 });
 
-/** Inlined so PageHeader description paints before the main CSS bundle. */
-const CRITICAL_LCP_CSS = `
-.page-header-desc{max-width:42rem;font-size:.875rem;line-height:1.625;color:hsl(215 16% 42%)}
-.dark .page-header-desc{color:hsl(215 16% 58%)}
-`;
+const notoEthiopic = Noto_Sans_Ethiopic({
+  subsets: ["ethiopic"],
+  weight: ["400", "600", "700"],
+  variable: "--font-noto-ethiopic",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: true,
+});
 
 export const metadata: Metadata = {
   title: "Nexus ERP",
@@ -39,23 +44,38 @@ export const viewport = {
   viewportFit: "cover" as const,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getRequestLocale();
+  const messages = await getMessages(locale);
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
-        <style dangerouslySetInnerHTML={{ __html: CRITICAL_LCP_CSS }} />
+        {/*
+          Theme boot must run before paint. suppressHydrationWarning avoids false
+          mismatches when browser extensions inject <style>/<script> into <head>.
+        */}
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('nexus-theme');var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.classList.toggle('dark',d)}catch(e){}})()`,
           }}
         />
       </head>
-      <body className={`${openSans.variable} ${poppins.variable} font-sans antialiased`}>
-        <Providers>
+      <body
+        className={cn(
+          openSans.variable,
+          poppins.variable,
+          notoEthiopic.variable,
+          "font-sans antialiased"
+        )}
+        suppressHydrationWarning
+      >
+        <Providers locale={locale} messages={messages}>
           <AuthHashHandler />
           {children}
         </Providers>
