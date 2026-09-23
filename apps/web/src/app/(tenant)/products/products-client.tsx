@@ -495,7 +495,8 @@ export function ProductsClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        title={t("title")}
+      compact
+      title={t("title")}
         description={
           tab === "products"
             ? t("summary", { products: products.length, categories: categories.length })

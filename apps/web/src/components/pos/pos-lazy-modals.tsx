@@ -61,5 +61,5 @@ export const PosToolsMenu = dynamic(
   { ssr: false }
 );
 
-export type { BarcodeScanResult } from "./barcode-scanner-modal";
+export type { BarcodeScanResult, BarcodeScanHandler } from "./barcode-scanner-modal";
 export type { PosCustomer } from "./customer-lookup-modal";

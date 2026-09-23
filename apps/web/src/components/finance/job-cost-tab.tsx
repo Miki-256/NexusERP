@@ -228,7 +228,7 @@ export function JobCostTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <StatCard label="Project revenue" value={money(totals.revenue)} sub={`${from} → ${to}`} icon={Briefcase} />
         <StatCard label="Project cost" value={money(totals.cost)} icon={Hammer} />
         <StatCard label="Project margin" value={money(totals.margin)} icon={Building2} />
@@ -370,7 +370,7 @@ export function JobCostTab({
           </div>
 
           {detail && (
-            <div className="mb-4 grid gap-4 sm:grid-cols-4">
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
               <StatCard label="Budget cost" value={money(Number(detail.budget_cost))} icon={Hammer} />
               <StatCard label="Actual cost" value={money(Number(detail.actual_cost))} icon={Hammer} />
               <StatCard label="Revenue" value={money(Number(detail.actual_revenue))} icon={Briefcase} />

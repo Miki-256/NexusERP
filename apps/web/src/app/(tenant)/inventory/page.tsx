@@ -50,6 +50,7 @@ export default async function InventoryPage({
       search={search}
       canManage={ctx.canManageApp("inventory")}
       currency={ctx.organization.currency ?? "USD"}
+      timeZone={ctx.organization.timezone?.trim() || "Africa/Addis_Ababa"}
     />
   );
 }

@@ -580,7 +580,8 @@ export function PurchasingClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        breadcrumb={t("title")}
+      compact
+      breadcrumb={t("title")}
         title={t("title")}
         description={t("description")}
         action={
@@ -613,28 +614,28 @@ export function PurchasingClient({
       <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <ChartCard title={t("charts.openApByVendor")} subtitle={t("charts.unpaidBills")}>
           {apByVendor.length > 0 ? (
-            <FinanceDonutChart data={apByVendor} formatValue={money} innerRadius={44} height={240} />
+            <FinanceDonutChart data={apByVendor} formatValue={money} innerRadius={44} height={180} />
           ) : (
             <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noOpenBills")}</p>
           )}
         </ChartCard>
         <ChartCard title={t("charts.poValueByStatus")} subtitle={t("charts.allPos")}>
           {poByStatus.length > 0 ? (
-            <FinanceBarChart data={poByStatus} formatValue={money} height={240} />
+            <FinanceBarChart data={poByStatus} formatValue={money} height={180} />
           ) : (
             <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noPos")}</p>
           )}
         </ChartCard>
         <ChartCard title={t("charts.billsByStatus")} subtitle={t("charts.vendorPayables")}>
           {billsByStatus.length > 0 ? (
-            <FinanceDonutChart data={billsByStatus} formatValue={money} innerRadius={44} height={240} />
+            <FinanceDonutChart data={billsByStatus} formatValue={money} innerRadius={44} height={180} />
           ) : (
             <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noBills")}</p>
           )}
         </ChartCard>
         <ChartCard title={t("charts.spendTrend")} subtitle={t("charts.spendTrendSub")}>
           {spendTrend.length > 0 ? (
-            <TrendAreaChart data={spendTrend} formatValue={money} height={240} />
+            <TrendAreaChart data={spendTrend} formatValue={money} height={180} />
           ) : (
             <p className="py-12 text-center text-sm text-muted-foreground">{t("charts.noSpendHistory")}</p>
           )}

@@ -47,9 +47,11 @@ export type InventoryLevelPageRow = {
   updated_at: string;
   variant_name: string;
   variant_barcode: string | null;
+  product_id?: string;
   product_name: string;
   sell_price: number;
   reorder_point: number;
+  base_uom_code?: string;
 };
 
 export const INVENTORY_PAGE_SIZE = 50;

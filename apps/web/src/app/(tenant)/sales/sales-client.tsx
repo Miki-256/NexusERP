@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { formatCurrency, cn } from "@/lib/utils";
@@ -43,6 +43,7 @@ import { Banknote, BarChart3, Receipt, ShoppingCart, TrendingUp } from "lucide-r
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
 import { useTranslations } from "next-intl";
 import { DEFAULT_ORG_TIMEZONE, formatOrgDateTime, utcDayRangeForCalendarDate } from "@/lib/finance-dates";
+import { refreshPreservingTenantScroll } from "@/lib/tenant-scroll";
 
 type FilterState = {
   from: string;
@@ -93,6 +94,33 @@ export function SalesClient({
   const [searchInput, setSearchInput] = useState(filters.search ?? "");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [tab, setTab] = useState<"register" | "analytics">("register");
+
+  // Cross-device: payments confirmed on another device must clear the banner here
+  useEffect(() => {
+    let last = 0;
+    function refreshIfStale() {
+      const now = Date.now();
+      if (now - last < 4_000) return;
+      last = now;
+      refreshPreservingTenantScroll(router);
+    }
+    function onVisible() {
+      if (document.visibilityState === "visible") refreshIfStale();
+    }
+    function onFocus() {
+      refreshIfStale();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshIfStale();
+    }, 20_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(interval);
+    };
+  }, [router]);
 
   const rows = registerData.rows ?? [];
   const summary = registerData.summary ?? {
@@ -161,7 +189,8 @@ export function SalesClient({
   return (
     <div className={cn(PAGE_SHELL, isPending && "opacity-70 transition-opacity")}>
       <PageHeader
-        breadcrumb={t("title")}
+      compact
+      breadcrumb={t("title")}
         title={t("registerTitle")}
         description={t("description")}
       />
@@ -228,7 +257,7 @@ export function SalesClient({
           <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
             <ChartCard title={t("salesTrend")} subtitle={t("dailyCompleted")}>
               {dailyTrend.length > 0 ? (
-                <TrendAreaChart data={dailyTrend} formatValue={money} height={220} />
+                <TrendAreaChart data={dailyTrend} formatValue={money} height={180} />
               ) : (
                 <p className="py-12 text-center text-sm text-muted-foreground">{tCommon("noResults")}</p>
               )}

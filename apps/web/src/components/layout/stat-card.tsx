@@ -21,17 +21,17 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card px-5 py-4",
+        "rounded-lg border border-border bg-card px-2.5 py-2 sm:px-3 sm:py-2.5",
         className
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <p className="enterprise-kpi-label">{label}</p>
-        {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground/50" strokeWidth={1.5} />}
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" strokeWidth={1.5} />}
       </div>
       <p
         className={cn(
-          "mt-2 text-2xl font-semibold tabular-nums tracking-tight",
+          "mt-1 text-kpi",
           highlight === "positive" && "text-success",
           highlight === "negative" && "text-destructive"
         )}
@@ -39,7 +39,7 @@ export function StatCard({
         {value}
       </p>
       {(sub || trend) && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <div className="mt-0.5 flex flex-wrap items-center gap-2">
           {trend && (
             <span
               className={cn(

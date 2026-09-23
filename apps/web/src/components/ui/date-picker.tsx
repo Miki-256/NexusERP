@@ -135,7 +135,7 @@ export function DatePicker({
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "h-10 w-full justify-start gap-2 px-3 font-normal",
+          "h-9 w-full justify-start gap-2 px-3 font-normal",
           !value && "text-muted-foreground",
           open && "border-primary ring-2 ring-primary/20",
           className

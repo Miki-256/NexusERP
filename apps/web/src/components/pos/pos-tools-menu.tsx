@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,9 +33,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { usePosModal } from "./use-pos-modal";
+import { PosRegisterSwitcher } from "./pos-register-switcher";
 
 export function PosToolsMenu({
   registerId,
+  registerName,
   sessionId,
   sessionToken,
   onOpenCustomerDisplay,
@@ -46,6 +49,7 @@ export function PosToolsMenu({
   onClose,
 }: {
   registerId: string;
+  registerName: string;
   sessionId?: string;
   sessionToken?: string;
   onOpenCustomerDisplay: () => void;
@@ -56,6 +60,8 @@ export function PosToolsMenu({
   onOpenOfflineQueue: () => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("pos");
+  const tCommon = useTranslations("common");
   const [mounted, setMounted] = useState(false);
   const offline = useOfflineOptional();
   const [escposUrl, setEscposUrl] = useState(getEscPosPrintUrl());
@@ -77,9 +83,7 @@ export function PosToolsMenu({
   }
 
   function installPwaHint() {
-    alert(
-      "Install POS:\n\n• Chrome/Android: Menu → Install app / Add to Home screen\n• iOS Safari: Share → Add to Home Screen\n\nThen open from your home screen for full-screen kiosk mode."
-    );
+    alert(t("installPwaHint"));
   }
 
   async function exportShift() {
@@ -89,7 +93,7 @@ export function PosToolsMenu({
     try {
       await downloadShiftCsv(sessionId, sessionToken, registerNameSlug(registerId));
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "Export failed");
+      setExportError(err instanceof Error ? err.message : t("exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -118,14 +122,14 @@ export function PosToolsMenu({
                 <Wrench className="h-4 w-4" />
               </div>
               <h2 id="pos-tools-title" className="pos-heading text-base font-bold text-slate-900 sm:text-lg">
-                POS tools
+                {t("posTools")}
               </h2>
             </div>
             <button
               type="button"
               onClick={onClose}
               className="cursor-pointer rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-              aria-label="Close"
+              aria-label={tCommon("close")}
             >
               <X className="h-5 w-5" />
             </button>
@@ -134,8 +138,16 @@ export function PosToolsMenu({
           <div className="px-4 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-5">
             <div className="mb-4 rounded-xl border-2 border-sky-200 bg-sky-50 p-3">
               <p className="mb-2.5 text-xs font-bold uppercase tracking-wide text-sky-800">
-                Shift actions
+                {t("shiftActions")}
               </p>
+              <div className="mb-2 sm:hidden">
+                <PosRegisterSwitcher
+                  registerId={registerId}
+                  registerName={registerName}
+                  tone="onLight"
+                  alwaysShowLabel
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -144,7 +156,7 @@ export function PosToolsMenu({
                   onClick={() => onOpenRefund?.()}
                 >
                   <RotateCcw className="h-5 w-5 shrink-0" />
-                  Refunds
+                  {t("refunds")}
                 </Button>
                 <Button
                   type="button"
@@ -153,20 +165,20 @@ export function PosToolsMenu({
                   onClick={() => onOpenCloseShift?.()}
                 >
                   <DoorClosed className="h-5 w-5 shrink-0" />
-                  Close shift
+                  {t("closeShift")}
                 </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Tools</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{t("tools")}</p>
               <Button
                 variant="outline"
                 className="h-11 w-full cursor-pointer justify-start gap-2 border-slate-200 bg-white text-slate-900 shadow-sm hover:bg-slate-50"
                 onClick={onOpenCustomerDisplay}
               >
                 <Monitor className="h-4 w-4 shrink-0" />
-                Open customer display
+                {t("openCustomerDisplay")}
               </Button>
               <Button
                 variant="outline"
@@ -174,7 +186,7 @@ export function PosToolsMenu({
                 onClick={onOpenScanner}
               >
                 <Smartphone className="h-4 w-4 shrink-0" />
-                Camera barcode scan
+                {t("cameraBarcodeScan")}
               </Button>
               <Button
                 variant="outline"
@@ -182,7 +194,7 @@ export function PosToolsMenu({
                 onClick={onOpenShortcuts}
               >
                 <Keyboard className="h-4 w-4 shrink-0" />
-                Keyboard shortcuts
+                {t("keyboardShortcuts")}
               </Button>
               <Button
                 variant="outline"
@@ -190,10 +202,10 @@ export function PosToolsMenu({
                 onClick={onOpenOfflineQueue}
               >
                 <CloudUpload className="h-4 w-4 shrink-0" />
-                Offline sync queue
+                {t("offlineSyncQueue")}
                 {(offline?.failedCount ?? 0) > 0 && (
                   <span className="ml-auto rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
-                    {offline?.failedCount} failed
+                    {t("failedCountBadge", { count: offline?.failedCount || 0 })}
                   </span>
                 )}
               </Button>
@@ -205,7 +217,7 @@ export function PosToolsMenu({
                   onClick={() => void exportShift()}
                 >
                   <Download className="h-4 w-4 shrink-0" />
-                  {exportBusy ? "Exporting…" : "Export shift CSV"}
+                  {exportBusy ? t("exporting") : t("exportShiftCsv")}
                 </Button>
               )}
               {exportError && <p className="text-xs text-red-600">{exportError}</p>}
@@ -215,12 +227,12 @@ export function PosToolsMenu({
                 onClick={installPwaHint}
               >
                 <Smartphone className="h-4 w-4 shrink-0" />
-                Install as app (PWA)
+                {t("installAsApp")}
               </Button>
             </div>
 
             <div className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-900">Checkout</p>
+              <p className="text-sm font-semibold text-slate-900">{t("checkout")}</p>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
                 <input
                   type="checkbox"
@@ -231,7 +243,7 @@ export function PosToolsMenu({
                   }}
                   className="h-4 w-4 accent-sky-600"
                 />
-                Auto-print receipt after sale
+                {t("autoPrintReceipt")}
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
                 <input
@@ -243,14 +255,14 @@ export function PosToolsMenu({
                   }}
                   className="h-4 w-4 accent-sky-600"
                 />
-                Auto-return to catalog after sale
+                {t("autoReturnCatalog")}
               </label>
             </div>
 
             <div className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Printer className="h-4 w-4" />
-                ESC/POS thermal printer
+                {t("escPosThermalPrinter")}
               </div>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
                 <input
@@ -259,31 +271,29 @@ export function PosToolsMenu({
                   onChange={(e) => setEscposOn(e.target.checked)}
                   className="h-4 w-4 accent-sky-600"
                 />
-                Send receipts to local print bridge
+                {t("sendReceiptsToBridge")}
               </label>
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-700">Bridge URL (default localhost:17832)</Label>
+                <Label className="text-xs text-slate-700">{t("bridgeUrlLabel")}</Label>
                 <Input
                   value={escposUrl}
                   onChange={(e) => setEscposUrl(e.target.value)}
                   className="h-10 border-slate-300 bg-white font-mono text-xs text-slate-900"
                 />
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-600">
-                Run a local ESC/POS bridge that accepts POST /print with raw bytes. Browser print is used when disabled.
-              </p>
+              <p className="text-[11px] leading-relaxed text-slate-600">{t("escPosBridgeHelp")}</p>
               <Button
                 size="sm"
                 variant="outline"
                 className="cursor-pointer border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
                 onClick={saveEscPos}
               >
-                Save print settings
+                {t("savePrintSettings")}
               </Button>
             </div>
 
             <p className="mt-4 text-center font-mono text-[10px] text-slate-400">
-              Register {registerId.slice(0, 8)}…
+              {t("registerIdShort", { id: registerId.slice(0, 8) })}
             </p>
           </div>
         </div>

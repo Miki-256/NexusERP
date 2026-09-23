@@ -179,7 +179,7 @@ export function FinancialPerformanceTab({
   const policies = dashboard.partition_policies ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <ReportSection
         title="Report cache"
         subtitle="Speed up P&amp;L, balance sheet, trial balance, cash flow, and executive dashboards"
@@ -245,7 +245,7 @@ export function FinancialPerformanceTab({
           )}
         </form>
         <p className="mt-3 text-sm text-muted-foreground">{settings.read_replica_note}</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">Cache entries</p>
             <p className="text-xl font-semibold">{cache.entries ?? 0}</p>
@@ -271,7 +271,7 @@ export function FinancialPerformanceTab({
         title="Data volume"
         subtitle="Live vs archived row counts"
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
           {[
             ["Journal entries", counts.journal_entries],
             ["JE lines", counts.journal_entry_lines],
@@ -304,14 +304,13 @@ export function FinancialPerformanceTab({
         }
       >
         <DataTable>
+          <table className="w-full">
           <DataTableHeader>
-            <DataTableRow>
               <DataTableHead>Table</DataTableHead>
               <DataTableHead>Strategy</DataTableHead>
               <DataTableHead>Retention</DataTableHead>
               <DataTableHead>Active</DataTableHead>
               <DataTableHead>Last run</DataTableHead>
-            </DataTableRow>
           </DataTableHeader>
           <DataTableBody>
             {policies.length === 0 ? (
@@ -328,6 +327,7 @@ export function FinancialPerformanceTab({
               ))
             )}
           </DataTableBody>
+          </table>
         </DataTable>
         <p className="mt-3 text-sm text-muted-foreground">
           Maintenance defaults to dry run. Live archive moves eligible posted journal entries with no expense

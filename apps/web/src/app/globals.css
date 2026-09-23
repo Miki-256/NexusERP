@@ -1,3 +1,19 @@
+/* Critical LCP / locale chrome — kept at top of the CSS bundle (not an inline
+   <style> in layout) so browser extensions that inject Font Awesome / other
+   head styles cannot collide with React hydration. */
+.page-header-desc {
+  max-width: 42rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: hsl(215 16% 42%);
+}
+.dark .page-header-desc {
+  color: hsl(215 16% 58%);
+}
+html[lang="am"] body {
+  font-family: var(--font-noto-ethiopic), var(--font-open-sans), system-ui, sans-serif;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -22,6 +38,25 @@
     --input: 214 32% 88%;
     --ring: 222 47% 11%;
     --radius: 0.375rem;
+    --overlay-radius: 0.5rem;
+    --control-h: 2.25rem;
+    --control-h-sm: 2rem;
+    --control-h-lg: 2.75rem;
+    /* Wave 1A density — tighter ERP chrome so content sits higher above the fold */
+    --space-panel: 0.5rem;
+    --space-panel-md: 0.75rem;
+    --space-section: 0.5rem;
+    --space-section-md: 0.75rem;
+    --content-pt: 0.5rem;
+    --content-pt-sm: 0.75rem;
+    --content-pt-lg: 0.75rem;
+    --content-px: 0.75rem;
+    --content-px-sm: 1rem;
+    --content-px-lg: 1.25rem;
+    --z-header: 30;
+    --z-overlay: 50;
+    --z-toast: 110;
+    --z-popover: 200;
     --sidebar: 222 47% 11%;
     --sidebar-foreground: 210 40% 98%;
     --sidebar-muted: 215 16% 65%;
@@ -133,7 +168,48 @@
   }
 
   .enterprise-panel-header {
-    @apply flex flex-wrap items-start justify-between gap-3 border-b border-border bg-muted/40 px-5 py-3.5;
+    @apply flex flex-wrap items-start justify-between gap-2 border-b border-border bg-muted/40 px-2.5 py-2 md:gap-2 md:px-3 md:py-2;
+  }
+
+  .enterprise-panel-body {
+    padding: var(--space-panel);
+  }
+
+  @media (min-width: 768px) {
+    .enterprise-panel-body {
+      padding: var(--space-panel-md);
+    }
+  }
+
+  /* Dense ERP chrome on phones / tablet portrait (< lg shell breakpoint) */
+  @media (max-width: 1023px) {
+    .enterprise-panel-header {
+      @apply gap-2 px-3 py-2;
+    }
+
+    .enterprise-panel-body {
+      padding: var(--space-panel);
+    }
+
+    .ui-dense .enterprise-panel-header {
+      @apply py-2;
+    }
+
+    .ui-dense .enterprise-panel-body {
+      padding: 0.625rem;
+    }
+  }
+
+  .text-kpi {
+    @apply font-heading text-lg font-semibold tracking-tight tabular-nums sm:text-xl;
+  }
+
+  .text-caption {
+    @apply text-xs text-muted-foreground;
+  }
+
+  .text-table-head {
+    @apply text-xs font-semibold uppercase tracking-wide text-muted-foreground;
   }
 
   /* EFM Wave 17 — Fiori-style financial shell */
@@ -149,11 +225,13 @@
     box-shadow: var(--shadow-sm);
   }
 
-  .financial-shell-compact .fiori-tile {
+  .financial-shell-compact .fiori-tile,
+  .ui-dense .fiori-tile {
     @apply p-3;
   }
 
-  .financial-shell-compact .fiori-kpi-card {
+  .financial-shell-compact .fiori-kpi-card,
+  .ui-dense .fiori-kpi-card {
     @apply p-3;
   }
 
@@ -291,6 +369,40 @@
   }
 }
 
+@keyframes nexus-ambient-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(3%, -2%, 0) scale(1.04);
+  }
+  66% {
+    transform: translate3d(-2%, 3%, 0) scale(0.98);
+  }
+}
+
+@keyframes nexus-mark-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes nexus-tip-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes nexus-stagger-in {
   from {
     opacity: 0;
@@ -346,6 +458,68 @@
   animation: nexus-loader-slide 1.2s ease-in-out infinite;
 }
 
+.nexus-session-loader {
+  background: hsl(var(--background) / 0.88);
+  backdrop-filter: blur(12px);
+}
+
+.nexus-session-ambient {
+  pointer-events: none;
+  position: absolute;
+  inset: -20%;
+  overflow: hidden;
+}
+
+.nexus-session-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: 0.55;
+  animation: nexus-ambient-drift 14s ease-in-out infinite;
+  will-change: transform;
+}
+
+.nexus-session-blob-a {
+  width: min(52vw, 28rem);
+  height: min(52vw, 28rem);
+  top: 12%;
+  left: 8%;
+  background: hsl(var(--primary) / 0.22);
+}
+
+.nexus-session-blob-b {
+  width: min(48vw, 26rem);
+  height: min(48vw, 26rem);
+  right: 6%;
+  bottom: 18%;
+  background: hsl(var(--primary) / 0.14);
+  animation-duration: 18s;
+  animation-direction: reverse;
+}
+
+.nexus-session-blob-c {
+  width: min(36vw, 18rem);
+  height: min(36vw, 18rem);
+  left: 42%;
+  top: 58%;
+  background: hsl(var(--foreground) / 0.06);
+  animation-duration: 16s;
+  animation-delay: -4s;
+}
+
+.nexus-session-mark {
+  animation: nexus-mark-breathe 3.2s ease-in-out infinite;
+}
+
+.nexus-session-mark-core {
+  letter-spacing: -0.02em;
+}
+
+.nexus-session-tip {
+  animation: nexus-tip-fade 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  min-height: 1.25rem;
+}
+
 .nexus-page-loader-card {
   @apply rounded-2xl border border-border/50 bg-card/90 shadow-elevated-lg backdrop-blur-xl;
 }
@@ -383,7 +557,10 @@
   .nexus-orbit,
   .nexus-loader-bar,
   .nexus-stagger-item,
-  .nexus-progress-bar {
+  .nexus-progress-bar,
+  .nexus-session-blob,
+  .nexus-session-mark,
+  .nexus-session-tip {
     animation: none !important;
   }
 }

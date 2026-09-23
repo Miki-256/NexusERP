@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartCard, FinanceBarChart, PnlWaterfallChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceBarChart, PnlWaterfallChart } from "@/components/charts/finance-charts-lazy";
 import { formatCurrency } from "@/lib/utils";
 
 type PnlSnapshot = {
@@ -44,11 +44,11 @@ export function DashboardFinancialCharts({
           opex={pnl.operating_expenses ?? 0}
           netProfit={pnl.net_profit ?? 0}
           formatValue={money}
-          height={220}
+          height={180}
         />
       </ChartCard>
       <ChartCard title="Cash movement" subtitle={`${currency} · month to date`}>
-        <FinanceBarChart data={cashData} formatValue={money} height={220} />
+        <FinanceBarChart data={cashData} formatValue={money} height={180} />
         <div className="mt-3 grid grid-cols-2 gap-3 border-t pt-3">
           <div>
             <p className="text-xs text-muted-foreground">Gross margin</p>

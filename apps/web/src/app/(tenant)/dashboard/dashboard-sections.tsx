@@ -42,7 +42,7 @@ import {
 import type { DashboardBundle } from "./dashboard-bundle";
 
 function ChartSkeleton({ className }: { className?: string }) {
-  return <Skeleton className={className ?? "h-80 rounded-lg"} />;
+  return <Skeleton className={className ?? "h-48 rounded-lg"} />;
 }
 
 const SalesTrendChart = dynamic(

@@ -203,7 +203,7 @@ export function FailedClient({
       />
       <CommunicationsSubNav active="/communications/failed" />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard label="Failed (retryable)" value={String(summary.failed ?? 0)} icon={RefreshCw} />
         <StatCard label="Dead letter" value={String(summary.dead_letter ?? 0)} icon={AlertTriangle} />
         <StatCard label="Cancelled" value={String(summary.cancelled ?? 0)} icon={Ban} />

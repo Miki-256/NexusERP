@@ -42,6 +42,45 @@ run("Tenant isolation — RPC guards", () => {
     ).rejects.toThrow(/access denied|not authenticated|permission denied/i);
   });
 
+  it("rejects complete_sale for a foreign organization", async () => {
+    const token = await signIn();
+    const workspace = await rpc<{ organization?: { id?: string } }>(token, "get_my_workspace");
+    const homeOrgId = workspace.organization?.id;
+    expect(homeOrgId).toBeTruthy();
+    expect(homeOrgId).not.toBe(FOREIGN_ORG_ID);
+
+    const registers = await restGet<{ id: string; store_id: string }[]>(
+      token,
+      "registers",
+      `organization_id=eq.${homeOrgId}&is_active=eq.true&select=id,store_id&limit=1`
+    );
+    const register = registers[0];
+    expect(register).toBeTruthy();
+
+    await expect(
+      rpc(token, "complete_sale", {
+        p_organization_id: FOREIGN_ORG_ID,
+        p_store_id: register.store_id,
+        p_register_id: register.id,
+        p_session_id: null,
+        p_idempotency_key: "00000000-0000-4000-8000-000000000099",
+        p_lines: [
+          {
+            variantId: "00000000-0000-4000-8000-000000000001",
+            productName: "foreign-org probe",
+            quantity: 1,
+            unitPrice: 1,
+            discountAmount: 0,
+          },
+        ],
+        p_discount_amount: 0,
+        p_customer_name: null,
+        p_customer_phone: null,
+        p_payments: [{ method: "cash", amount: 1, cashTendered: 1 }],
+      })
+    ).rejects.toThrow(/access denied|not authenticated|permission denied|organization/i);
+  });
+
   it("allows list_accounts only for the signed-in workspace org", async () => {
     const token = await signIn();
     const workspace = await rpc<{ organization?: { id?: string } }>(token, "get_my_workspace");

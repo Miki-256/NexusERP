@@ -64,13 +64,32 @@ export function setDefaultPaymentMethod(
   localStorage.setItem(DEFAULT_PAYMENT_KEY(registerId), method);
 }
 
-export function getCatalogDensity(registerId: string): PosCatalogDensity {
+/** Explicit user preference, or null when never set for this register. */
+export function getStoredCatalogDensity(registerId: string): PosCatalogDensity | null {
   try {
     const raw = localStorage.getItem(CATALOG_DENSITY_KEY(registerId));
-    return raw === "comfortable" ? "comfortable" : "compact";
+    if (raw === "comfortable" || raw === "compact") return raw;
+    return null;
   } catch {
-    return "compact";
+    return null;
   }
+}
+
+/**
+ * Stored preference wins. Otherwise compact under 768px, comfortable on larger viewports.
+ */
+export function resolveCatalogDensity(
+  registerId: string,
+  viewportWidth: number
+): PosCatalogDensity {
+  const stored = getStoredCatalogDensity(registerId);
+  if (stored) return stored;
+  return viewportWidth < 768 ? "compact" : "comfortable";
+}
+
+/** @deprecated Prefer resolveCatalogDensity with viewport width for mobile defaults. */
+export function getCatalogDensity(registerId: string): PosCatalogDensity {
+  return getStoredCatalogDensity(registerId) ?? "compact";
 }
 
 export function setCatalogDensity(registerId: string, density: PosCatalogDensity) {

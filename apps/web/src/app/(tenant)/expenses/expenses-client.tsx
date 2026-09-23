@@ -32,7 +32,7 @@ import {
   FinanceBarChart,
   FinanceDonutChart,
   TrendAreaChart,
-} from "@/components/charts/finance-charts";
+} from "@/components/charts/finance-charts-lazy";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { PieChart, Receipt, Wallet } from "lucide-react";
 import type { ExpenseRow } from "./page";
@@ -159,12 +159,13 @@ export function ExpensesClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        breadcrumb="Accounts payable & opex"
+      compact
+      breadcrumb="Accounts payable & opex"
         title="Expense Register"
         description="Operating expenses posted to the general ledger. Export for bookkeeping, tax prep, or management review."
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard label="Total recorded" value={formatCurrency(total, currency)} sub="All time" icon={Wallet} />
         <StatCard label="Month to date" value={formatCurrency(mtdTotal, currency)} icon={PieChart} />
         <StatCard label="Records" value={initialExpenses.length} sub={`${filtered.length} shown`} icon={Receipt} />
@@ -180,14 +181,14 @@ export function ExpensesClient({
         </ChartCard>
         <ChartCard title="Payment methods" subtitle="How expenses were paid">
           {byPayment.length > 0 ? (
-            <FinanceBarChart data={byPayment.map((d, i) => ({ ...d, fill: undefined }))} formatValue={money} height={220} />
+            <FinanceBarChart data={byPayment.map((d, i) => ({ ...d, fill: undefined }))} formatValue={money} height={180} />
           ) : (
             <p className="py-12 text-center text-sm text-muted-foreground">No data</p>
           )}
         </ChartCard>
         <ChartCard title="Monthly trend" subtitle="Last 6 months">
           {expenseTrend.length > 0 ? (
-            <TrendAreaChart data={expenseTrend} formatValue={money} height={220} />
+            <TrendAreaChart data={expenseTrend} formatValue={money} height={180} />
           ) : (
             <p className="py-12 text-center text-sm text-muted-foreground">No data</p>
           )}

@@ -207,7 +207,7 @@ export function FxCurrenciesTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard
           label="Functional currency"
           value={currency}
@@ -333,7 +333,7 @@ export function FxCurrenciesTab({
         </div>
 
         {preview && (
-          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3">
             <StatCard label="Unrealized gain" value={money(preview.total_gain)} sub="Before posting" />
             <StatCard label="Unrealized loss" value={money(preview.total_loss)} sub="Before posting" />
           </div>

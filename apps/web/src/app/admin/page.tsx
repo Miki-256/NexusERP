@@ -37,7 +37,7 @@ export default async function AdminOverviewPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard label="Organizations" value={s.org_count ?? 0} icon={Building2} />
         <StatCard label="Active" value={s.orgs_active ?? 0} highlight="positive" />
         <StatCard

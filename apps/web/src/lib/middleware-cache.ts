@@ -56,7 +56,7 @@ export async function getMaintenanceStatus(
   return maintenance;
 }
 
-type AccessBlockCache = { blocked: boolean; ts: number };
+type AccessBlockCache = { blocked: boolean; ts: number; userId?: string };
 
 function parseAccessBlockCookie(raw: string | undefined): AccessBlockCache | null {
   if (!raw) return null;
@@ -74,20 +74,24 @@ function parseAccessBlockCookie(raw: string | undefined): AccessBlockCache | nul
 export async function getUserAccessBlocked(
   request: NextRequest,
   supabase: SupabaseClient,
-  response: NextResponse
+  response: NextResponse,
+  userId: string
 ): Promise<boolean> {
   const cached = parseAccessBlockCookie(request.cookies.get(ACCESS_BLOCK_COOKIE)?.value);
-  if (cached) return cached.blocked;
+  // Must be scoped to the signed-in user — a prior blocked session must not lock out the next login.
+  if (cached && cached.userId === userId) return cached.blocked;
 
-  const { data: blocked } = await supabase.rpc("user_access_blocked");
-  const isBlocked = blocked === true;
+  const { data: blocked, error } = await supabase.rpc("user_access_blocked");
+  // Fail open on RPC errors — a false "blocked" signs the user out and looks like a login loop.
+  const isBlocked = !error && blocked === true;
 
   response.cookies.set(
     ACCESS_BLOCK_COOKIE,
-    JSON.stringify({ blocked: isBlocked, ts: Date.now() }),
+    JSON.stringify({ blocked: isBlocked, ts: Date.now(), userId }),
     {
       httpOnly: true,
       sameSite: "lax",
+      secure: process.env.VERCEL === "1" || process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 120,
     }

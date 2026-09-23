@@ -28,6 +28,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { LaunchpadArea, LaunchpadTile, FinancialShellTab } from "@/lib/finance/financial-shell-config";
 
@@ -84,8 +85,11 @@ function LaunchpadTileButton({
   onSelect: (tab: FinancialShellTab) => void;
   compact?: boolean;
 }) {
+  const t = useTranslations("finance");
   const Icon = ICONS[tile.icon] ?? LayoutDashboard;
   const accent = ACCENT[tile.accent] ?? ACCENT.gray;
+  const labelKey = `launchpadTiles.${tile.tab}.label`;
+  const descriptionKey = `launchpadTiles.${tile.tab}.description`;
 
   return (
     <button
@@ -99,8 +103,10 @@ function LaunchpadTileButton({
       )}
     >
       <Icon className="mb-3 h-5 w-5 text-foreground/80 transition-transform duration-200 group-hover:scale-105" strokeWidth={1.5} />
-      <span className="font-medium text-foreground">{tile.label}</span>
-      <span className={cn("mt-1 text-muted-foreground", compact ? "text-xs" : "text-sm")}>{tile.description}</span>
+      <span className="font-medium text-foreground">{t.has(labelKey) ? t(labelKey) : tile.label}</span>
+      <span className={cn("mt-1 text-muted-foreground", compact ? "text-xs" : "text-sm")}>
+        {t.has(descriptionKey) ? t(descriptionKey) : tile.description}
+      </span>
     </button>
   );
 }
@@ -118,14 +124,15 @@ export function FinancialLaunchpad({
   compact?: boolean;
   kpis?: { label: string; value: string; sub?: string }[];
 }) {
+  const t = useTranslations("finance");
   const pinned = catalog
     .flatMap((a) => a.tiles)
-    .filter((t) => pinnedTabs.includes(t.tab));
+    .filter((tile) => pinnedTabs.includes(tile.tab));
 
   return (
     <div className="space-y-8">
       {kpis && kpis.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
           {kpis.map((k) => (
             <div key={k.label} className="fiori-kpi-card rounded-lg border bg-card p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{k.label}</p>
@@ -138,8 +145,8 @@ export function FinancialLaunchpad({
 
       {pinned.length > 0 && (
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Pinned</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">{t("pinned")}</h2>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             {pinned.map((tile) => (
               <LaunchpadTileButton key={tile.tab} tile={tile} onSelect={onSelectTab} compact={compact} />
             ))}
@@ -147,19 +154,27 @@ export function FinancialLaunchpad({
         </section>
       )}
 
-      {catalog.map((area) => (
+      {catalog.map((area) => {
+        const areaLabelKey = `launchpadAreas.${area.id}.label`;
+        const areaDescriptionKey = `launchpadAreas.${area.id}.description`;
+        return (
         <section key={area.id}>
           <div className="mb-3">
-            <h2 className="text-sm font-semibold text-foreground">{area.label}</h2>
-            <p className="text-sm text-muted-foreground">{area.description}</p>
+            <h2 className="text-sm font-semibold text-foreground">
+              {t.has(areaLabelKey) ? t(areaLabelKey) : area.label}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {t.has(areaDescriptionKey) ? t(areaDescriptionKey) : area.description}
+            </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
             {area.tiles.map((tile) => (
               <LaunchpadTileButton key={tile.tab} tile={tile} onSelect={onSelectTab} compact={compact} />
             ))}
           </div>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }

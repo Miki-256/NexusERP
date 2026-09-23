@@ -98,6 +98,7 @@ Seeded per organization by `ensure_default_accounts(org_id)`:
 | 2310 | Gift Cards | Liability | Unredeemed gift cards |
 | 3000 | Owner Equity | Equity | Opening equity |
 | 3900 | Retained Earnings | Equity | P&L roll-forward |
+| 2160 | Tip Payable | Liability | POS tips held for payout (not revenue) |
 | 4000 | Sales Revenue | Income | Product/service revenue |
 | 5000 | Cost of Goods Sold | Expense | Inventory cost of sales |
 | 6000 | Operating Expenses | Expense | General OpEx |
@@ -159,32 +160,43 @@ sequenceDiagram
 | Line | Debit | Credit | Account |
 |------|-------|--------|---------|
 | Payment received | ✓ | | 1000 / 1010 / 1020 / 1100 / 2300 / 2310 |
-| Revenue | | ✓ | 4000 Sales Revenue |
+| Revenue (merchandise net of discount) | | ✓ | 4000 Sales Revenue |
+| Tip collected | | ✓ | 2160 Tip Payable |
 | Tax collected | | ✓ | 2100 Tax Payable |
 | COGS | ✓ | | 5000 COGS |
 | Inventory relief | | ✓ | 1200 Inventory |
 
+**Tips:** Tip amounts credit **2160 Tip Payable**, not Sales Revenue. Clearing tip payable (staff payout) is a separate manual journal / future payout flow — not included in POS checkout posting.
+
 **Rules:**
-- GL posting is **async** (queue) so checkout stays fast.
-- Skipped if any payment is still `pending` (e.g. mobile money awaiting confirmation).
+- When `pos_auto_post_sales` is on and payments are settled (cash / confirmed), `complete_sale` **posts the journal in the same transaction** as checkout. Failure raises and rolls back the sale (no silent Unposted).
+- Pending mobile money: enqueue; `maybe_auto_post_sale` sync-posts after confirm (falls back to queue on error).
 - Skipped if org setting `pos_auto_post_sales` is false (banner on `/financials` lets managers batch-post).
 - **Idempotent:** one JE per sale (`source_type = 'sale'`, `source_id = sale_id`).
+- Queue worker only deletes a row when a JE exists; otherwise increments `attempts` / `last_error`.
 
 **Key functions:**
 
 | Function | Role |
 |----------|------|
-| `complete_sale(...)` | POS checkout (operational) |
-| `enqueue_sale_ledger_post(sale_id)` | Add sale to GL queue |
+| `complete_sale(...)` | POS checkout + sync GL when auto-post |
+| `enqueue_sale_ledger_post(sale_id)` | Queue for async / retry path |
 | `process_sale_ledger_post_queue(limit)` | Worker drains queue |
-| `post_sale_to_ledger_internal(sale_id)` | Build & post sale JE |
-| `maybe_auto_post_sale(sale_id)` | Re-enqueue after mobile money confirms |
+| `post_sale_to_ledger_internal(sale_id)` | Build & post sale JE; invalidates report cache |
+| `maybe_auto_post_sale(sale_id)` | Sync post after mobile money confirms |
 | `count_unposted_sales(org_id)` | How many sales lack GL |
-| `post_unposted_sales_batch(org_id)` | Manual / banner batch post |
+| `post_unposted_sales_batch(org_id)` | Manual / banner batch post (backfill) |
 
-**Worker:** Vercel cron hits `/api/webhooks/process-queue` (also processes refunds, notifications, security alerts).
+**Worker:** Vercel cron hits `/api/webhooks/process-queue` daily on Hobby; GitHub Actions `*/5` when secrets set. Cash auto-post no longer depends on cron.
 
----
+### Business date & timezone
+
+- Persist instants as `timestamptz` (UTC).
+- Display sale/payment/movement/receipt times in the **organization timezone** (default `Africa/Addis_Ababa`).
+- Sale JE `entry_date` = calendar date of `sales.created_at` in the org timezone (not UTC `::date`).
+- Report day filters should use org-local day bounds (`utcDayRangeForCalendarDate` / SQL `AT TIME ZONE`).
+
+**Default tax rate** for POS comes from `organizations.tax_rate` (and `tax_inclusive`); shown on cart as `Tax {rate}%`.
 
 ### 3.2 Sale void & partial return
 

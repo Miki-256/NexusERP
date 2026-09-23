@@ -265,7 +265,7 @@ export function FpaTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <StatCard label="YTD revenue" value={money(Number(ytd.revenue))} sub={`Through ${asOf}`} icon={TrendingUp} />
         <StatCard label="YTD net profit" value={money(Number(ytd.net_profit))} icon={LineChart} />
         <StatCard
@@ -417,7 +417,7 @@ export function FpaTab({
         </div>
 
         {forecastDetail && (
-          <div className="mb-4 grid gap-4 sm:grid-cols-3">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
             <StatCard label="Actual net (MTD/complete)" value={money(actualTotal)} icon={LineChart} />
             <StatCard label="Projected net" value={money(projectedTotal)} icon={TrendingUp} />
             <StatCard label="Total horizon net" value={money(Number(forecastDetail.total_net_profit))} icon={GitCompare} />

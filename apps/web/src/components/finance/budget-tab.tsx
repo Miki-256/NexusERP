@@ -153,7 +153,7 @@ export function BudgetTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard label="Budgets" value={String(budgets.length)} icon={Target} />
         <StatCard
           label="Selected budget"

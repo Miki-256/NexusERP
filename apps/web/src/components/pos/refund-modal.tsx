@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,8 @@ export function RefundModal({
   onClose: () => void;
   onVoided: () => void;
 }) {
+  const t = useTranslations("pos");
+  const tCommon = useTranslations("common");
   const [sales, setSales] = useState<SessionSale[]>([]);
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -61,6 +64,13 @@ export function RefundModal({
 
   const canVoid = canVoidAsManager || staffRole === "manager";
   const hasCustomer = Boolean(selectedSale?.customerId ?? selectedSale?.customerName);
+
+  const statusLabel = (status: string) => {
+    if (status === "completed") return tCommon("statusCompleted");
+    if (status === "returned") return tCommon("statusReturned");
+    if (status === "voided") return tCommon("statusVoided");
+    return status;
+  };
 
   const loadSales = useCallback(async () => {
     setLoading(true);
@@ -164,19 +174,19 @@ export function RefundModal({
     if (!selectedSale || !canVoid || !sessionToken) return;
     const trimmedReason = reason.trim();
     if (!trimmedReason) {
-      setError("Enter a reason for the return.");
+      setError(t("errEnterReturnReason"));
       return;
     }
     if (!isBrowserOnline()) {
-      setError("Connect to the internet to process returns.");
+      setError(t("errConnectForReturns"));
       return;
     }
     if (selectedReturnLines.length === 0) {
-      setError("Select at least one item to return.");
+      setError(t("errSelectItemToReturn"));
       return;
     }
     if (refundMethod === "store_credit" && !hasCustomer) {
-      setError("Store credit refund requires a customer on the sale.");
+      setError(t("errStoreCreditNeedsCustomer"));
       return;
     }
 
@@ -242,17 +252,17 @@ export function RefundModal({
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
             <h2 id="pos-refund-title" className="pos-heading text-lg font-bold text-white">
-              {selectedSale ? "Process return" : "Void / refund"}
+              {selectedSale ? t("processReturn") : t("voidRefund")}
             </h2>
             <p className="text-xs text-white/70">
-              {selectedSale ? selectedSale.receiptNo : "Current shift sales"}
+              {selectedSale ? selectedSale.receiptNo : t("currentShiftSales")}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            aria-label="Close refund dialog"
+            aria-label={t("closeRefundDialog")}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
@@ -262,24 +272,24 @@ export function RefundModal({
           <>
             <div className="border-b border-slate-100 p-4">
               <Input
-                placeholder="Filter by receipt or customer…"
-                aria-label="Filter sales by receipt or customer"
+                placeholder={t("filterByReceiptOrCustomer")}
+                aria-label={t("filterSalesAria")}
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               />
               {!canVoid && (
-                <p className="mt-2 text-xs text-amber-700">Manager access required to void or return sales.</p>
+                <p className="mt-2 text-xs text-amber-700">{t("managerAccessRequired")}</p>
               )}
             </div>
 
             <ul className="flex-1 overflow-y-auto p-2" aria-live="polite">
               {loading && (
                 <li className="p-4 text-center text-sm text-slate-500" role="status" aria-busy="true">
-                  Loading…
+                  {tCommon("loading")}
                 </li>
               )}
               {!loading && filtered.length === 0 && (
-                <li className="p-8 text-center text-sm text-slate-500">No sales this shift</li>
+                <li className="p-8 text-center text-sm text-slate-500">{t("noSalesThisShift")}</li>
               )}
               {filtered.map((s) => (
                 <li
@@ -299,7 +309,7 @@ export function RefundModal({
                           : "text-xs font-medium text-amber-700"
                       }
                     >
-                      {s.status}
+                      {statusLabel(s.status)}
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -313,7 +323,7 @@ export function RefundModal({
                         onClick={() => void openReturnFlow(s)}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        Return
+                        {t("return")}
                       </Button>
                     )}
                   </div>
@@ -334,15 +344,15 @@ export function RefundModal({
                 className="flex cursor-pointer items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back to sales
+                {t("backToSales")}
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
               <div className="mb-4 flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-800">Select items to return</p>
+                <p className="text-sm font-semibold text-slate-800">{t("selectItemsToReturn")}</p>
                 <Button type="button" size="sm" variant="outline" className="cursor-pointer" onClick={fillAllRemaining}>
-                  Return all remaining
+                  {t("returnAllRemaining")}
                 </Button>
               </div>
 
@@ -359,8 +369,10 @@ export function RefundModal({
                             <p className="truncate text-xs text-slate-500">{line.variant_name}</p>
                           )}
                           <p className="text-xs text-slate-500">
-                            Sold {line.quantity}
-                            {line.returned_quantity > 0 ? ` · ${line.returned_quantity} already returned` : ""}
+                            {t("soldQty", { quantity: line.quantity })}
+                            {line.returned_quantity > 0
+                              ? ` · ${t("alreadyReturned", { count: line.returned_quantity })}`
+                              : ""}
                           </p>
                         </div>
                         <span className="shrink-0 text-sm font-semibold tabular-nums">
@@ -368,7 +380,7 @@ export function RefundModal({
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-slate-500">Return qty</Label>
+                        <Label className="text-xs text-slate-500">{t("returnQty")}</Label>
                         <Input
                           type="number"
                           min={0}
@@ -389,7 +401,7 @@ export function RefundModal({
               </ul>
 
               <div className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-                <Label className="text-sm font-semibold">Refund method</Label>
+                <Label className="text-sm font-semibold">{t("refundMethod")}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -401,7 +413,7 @@ export function RefundModal({
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
-                    Cash / original
+                    {t("cashOrOriginal")}
                   </button>
                   <button
                     type="button"
@@ -416,24 +428,24 @@ export function RefundModal({
                   >
                     <span className="flex items-center gap-1.5">
                       <Gift className="h-4 w-4" />
-                      Store credit
+                      {t("storeCredit")}
                     </span>
                   </button>
                 </div>
                 {!hasCustomer && (
-                  <p className="text-xs text-slate-500">Store credit requires a customer on the sale.</p>
+                  <p className="text-xs text-slate-500">{t("storeCreditRequiresCustomer")}</p>
                 )}
                 <div className="space-y-1.5">
-                  <Label htmlFor="return-reason">Reason</Label>
+                  <Label htmlFor="return-reason">{tCommon("reason")}</Label>
                   <Input
                     id="return-reason"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="Damaged item, wrong size, etc."
+                    placeholder={t("reasonPlaceholder")}
                   />
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                  <span className="font-medium text-slate-600">Estimated refund</span>
+                  <span className="font-medium text-slate-600">{t("estimatedRefund")}</span>
                   <span className="font-bold tabular-nums text-pos-primary">
                     {formatCurrency(estimatedRefund, currency)}
                   </span>
@@ -448,7 +460,11 @@ export function RefundModal({
                 aria-busy={busy}
                 onClick={() => void submitReturn()}
               >
-                {busy ? "Processing…" : isFullReturn ? "Complete full return" : "Process partial return"}
+                {busy
+                  ? t("processing")
+                  : isFullReturn
+                    ? t("completeFullReturn")
+                    : t("processPartialReturn")}
               </Button>
             </div>
           </div>
@@ -459,7 +475,7 @@ export function RefundModal({
         {!selectedSale && (
           <div className="border-t border-slate-100 p-4">
             <Button variant="outline" className="w-full cursor-pointer" onClick={onClose}>
-              Close (Esc)
+              {t("closeEsc")}
             </Button>
           </div>
         )}

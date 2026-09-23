@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_CATEGORIES, appIconById, type SerializedNavApp } from "@/lib/apps-registry";
+import { useTranslations } from "next-intl";
 import { useShell } from "@/components/layout/shell-context";
 import { usePlatformAdmin } from "@/components/layout/use-platform-admin";
 import { useNavigation } from "@/components/layout/navigation-context";
@@ -44,18 +45,18 @@ function NavLink({
       onClick={onNavigate}
       title={collapsed ? label : undefined}
       className={cn(
-        "group relative flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors duration-150",
+        "group relative flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors duration-150",
         active
           ? "bg-white/10 text-sidebar-foreground"
           : "text-sidebar-muted hover:bg-white/[0.05] hover:text-sidebar-foreground",
         pending && !active && "bg-white/[0.06] text-sidebar-foreground",
-        collapsed && "justify-center px-2"
+        collapsed && "justify-center px-1.5"
       )}
     >
       {active && (
-        <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-foreground/80" />
+        <span className="absolute left-0 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-foreground/80" />
       )}
-      <Icon className={cn("h-[18px] w-[18px] shrink-0 opacity-90", active && "text-sidebar-foreground")} strokeWidth={1.5} />
+      <Icon className={cn("h-4 w-4 shrink-0 opacity-90", active && "text-sidebar-foreground")} strokeWidth={1.5} />
       {!collapsed && <span className="truncate">{label}</span>}
     </Link>
   );
@@ -106,60 +107,67 @@ function SidebarInner({
   navApps,
   collapsed,
   onNavigate,
+  hideBrand = false,
 }: {
   orgName: string;
   userId: string;
   navApps: SerializedNavApp[];
   collapsed: boolean;
   onNavigate?: () => void;
+  /** When true, brand row is rendered by the mobile drawer shell. */
+  hideBrand?: boolean;
 }) {
   const pathname = usePathname();
   const { toggleSidebar } = useShell();
   const { pendingPath } = useNavigation();
   const { isPlatformAdmin } = usePlatformAdmin(userId);
+  const tNav = useTranslations("nav");
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
   const groups = APP_CATEGORIES.map((cat) => ({
-    label: cat.label,
+    key: cat.key,
+    label: tNav(`categories.${cat.key}`),
     items: navApps.filter((a) => a.category === cat.key),
   })).filter((g) => g.items.length > 0);
 
   const showBilling = navApps.some((a) => a.id === "settings");
 
   return (
-    <>
-      <div className={cn("flex h-14 items-center border-b border-sidebar-border", collapsed ? "justify-center px-2" : "justify-between px-3")}>
-        <div className={cn("flex items-center gap-2.5 min-w-0", collapsed && "justify-center")}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-bold text-sidebar-foreground">
-            N
+    <div className="flex min-h-0 flex-1 flex-col">
+      {!hideBrand && (
+        <div className={cn("flex h-14 shrink-0 items-center border-b border-sidebar-border", collapsed ? "justify-center px-2" : "justify-between px-3")}>
+          <div className={cn("flex items-center gap-2.5 min-w-0", collapsed && "justify-center")}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-bold text-sidebar-foreground">
+              N
+            </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="truncate font-heading text-sm font-semibold text-sidebar-foreground">Nexus ERP</p>
+                <p className="truncate text-xs text-sidebar-muted">{orgName}</p>
+              </div>
+            )}
           </div>
           {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate font-heading text-sm font-semibold text-sidebar-foreground">Nexus ERP</p>
-              <p className="truncate text-xs text-sidebar-muted">{orgName}</p>
-            </div>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="hidden rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-white/5 hover:text-white lg:block"
+              aria-label={tNav("collapseSidebar")}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
           )}
         </div>
-        {!collapsed && (
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="hidden rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-white/5 hover:text-white lg:block"
-            aria-label="Collapse sidebar"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      )}
 
-      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-4 scrollbar-thin">
-        <NavGroup label="Home" collapsed={collapsed}>
+      <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain px-2 py-2 scrollbar-thin [-webkit-overflow-scrolling:touch]">
+        <NavGroup label={tNav("apps.dashboard.name")} collapsed={collapsed}>
           <NavLink
             href="/dashboard"
-            label="Apps"
+            label={tNav("apps.dashboard.name")}
             icon={LayoutGrid}
             active={isActive("/dashboard")}
             collapsed={collapsed}
@@ -169,12 +177,12 @@ function SidebarInner({
         </NavGroup>
 
         {groups.map((group) => (
-          <NavGroup key={group.label} label={group.label} collapsed={collapsed}>
+          <NavGroup key={group.key} label={group.label} collapsed={collapsed}>
             {group.items.map((item) => (
               <NavLink
                 key={item.href}
                 href={item.href}
-                label={item.name}
+                label={tNav(`apps.${item.id}.name`)}
                 icon={appIconById(item.id)}
                 active={isActive(item.href)}
                 collapsed={collapsed}
@@ -182,10 +190,10 @@ function SidebarInner({
                 pending={pendingPath === item.href || pendingPath?.startsWith(item.href + "/")}
               />
             ))}
-            {group.label === "Settings" && showBilling && (
+            {group.key === "settings" && showBilling && (
               <NavLink
                 href="/settings/billing"
-                label="Billing & plan"
+                label={tNav("billing")}
                 icon={CreditCard}
                 active={isActive("/settings/billing")}
                 collapsed={collapsed}
@@ -201,7 +209,7 @@ function SidebarInner({
             href="/pos"
             prefetch
             onClick={onNavigate}
-            title={collapsed ? "Open POS" : undefined}
+            title={collapsed ? tNav("openPos") : undefined}
             className={cn(
               "flex cursor-pointer items-center gap-3 rounded-md border px-2.5 py-2.5 text-sm font-medium transition-colors duration-150",
               isActive("/pos")
@@ -211,12 +219,12 @@ function SidebarInner({
             )}
           >
             <ShoppingCart className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && "Open POS"}
+            {!collapsed && tNav("openPos")}
           </Link>
           {isPlatformAdmin && (
             <NavLink
               href="/admin"
-              label="Super Admin"
+              label={tNav("superAdmin")}
               icon={ShieldCheck}
               active={isActive("/admin")}
               collapsed={collapsed}
@@ -227,18 +235,18 @@ function SidebarInner({
       </nav>
 
       {collapsed && (
-        <div className="hidden border-t border-sidebar-border p-2 lg:block">
+        <div className="hidden shrink-0 border-t border-sidebar-border p-2 lg:block">
           <button
             type="button"
             onClick={toggleSidebar}
             className="flex w-full items-center justify-center rounded-lg p-2 text-sidebar-muted transition-colors hover:bg-white/5 hover:text-white"
-            aria-label="Expand sidebar"
+            aria-label={tNav("expandSidebar")}
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -252,6 +260,7 @@ export function Sidebar({
   navApps: SerializedNavApp[];
 }) {
   const { sidebarCollapsed, mobileOpen, setMobileOpen } = useShell();
+  const tNav = useTranslations("nav");
 
   return (
     <>
@@ -259,7 +268,7 @@ export function Sidebar({
       <aside
         className={cn(
           "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-300 ease-out lg:flex",
-          sidebarCollapsed ? "w-[68px]" : "w-60"
+          sidebarCollapsed ? "w-14" : "w-60"
         )}
       >
         <SidebarInner
@@ -277,26 +286,38 @@ export function Sidebar({
             type="button"
             className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
+            aria-label={tNav("closeMenu")}
           />
-          <aside className="absolute left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-[min(18rem,85vw)] flex-col bg-sidebar text-sidebar-foreground shadow-elevated-lg animate-slide-in-from-left safe-area-top">
-            <div className="flex shrink-0 items-center justify-end border-b border-sidebar-border p-2">
+          <aside className="absolute left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-[min(17.5rem,88vw)] flex-col overflow-hidden bg-sidebar text-sidebar-foreground shadow-elevated-lg animate-slide-in-from-left safe-area-top pb-[env(safe-area-inset-bottom,0px)]">
+            <div className="relative flex h-14 shrink-0 items-center border-b border-sidebar-border px-3 pr-12">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-xs font-bold text-sidebar-foreground">
+                  N
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-heading text-sm font-semibold text-sidebar-foreground">
+                    Nexus ERP
+                  </p>
+                  <p className="truncate text-xs text-sidebar-muted">{orgName}</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="touch-target rounded-lg p-2 text-sidebar-muted hover:bg-white/5 hover:text-white"
-                aria-label="Close menu"
+                className="absolute right-2 top-1/2 -translate-y-1/2 touch-target rounded-md p-1.5 text-sidebar-muted hover:bg-white/5 hover:text-white"
+                aria-label={tNav("closeMenu")}
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom,0px)]">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <SidebarInner
                 orgName={orgName}
                 userId={userId}
                 navApps={navApps}
                 collapsed={false}
                 onNavigate={() => setMobileOpen(false)}
+                hideBrand
               />
             </div>
           </aside>

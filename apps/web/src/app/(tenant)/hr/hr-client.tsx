@@ -26,6 +26,7 @@ import { formatCurrency } from "@/lib/utils";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Plus, Pencil, X, UserRound, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobile-record-card";
 import { ConfirmDeleteButton } from "@/components/layout/confirm-delete-button";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
@@ -153,6 +154,7 @@ export function HrClient({
   webhookDeliveries: HrWebhookDeliveryRow[];
   webhookDeliveryTotal: number;
 }) {
+  const t = useTranslations("hr");
   const router = useRouter();
   const [tab, setTab] = useState<
     | "employees"
@@ -168,19 +170,19 @@ export function HrClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        title="Human Resources"
-        description={`${employeeTotal} employee${employeeTotal === 1 ? "" : "s"}`}
+        title={t("title")}
+        description={t("employeeCount", { count: employeeTotal })}
         action={
           <TabBar
             tabs={[
-              { key: "employees" as const, label: "Employees" },
-              { key: "organization" as const, label: "Organization" },
-              ...(canManage ? [{ key: "payroll" as const, label: "Payroll" }] : []),
-              ...(canManage ? [{ key: "performance" as const, label: "Performance" }] : []),
-              ...(canManage ? [{ key: "benefits" as const, label: "Benefits" }] : []),
-              ...(canManage ? [{ key: "analytics" as const, label: "Analytics" }] : []),
-              ...(canManage ? [{ key: "lifecycle" as const, label: "Lifecycle" }] : []),
-              ...(canManage ? [{ key: "integrations" as const, label: "Integrations" }] : []),
+              { key: "employees" as const, label: t("title") },
+              { key: "organization" as const, label: t("organization") },
+              ...(canManage ? [{ key: "payroll" as const, label: t("payroll") }] : []),
+              ...(canManage ? [{ key: "performance" as const, label: t("performance") }] : []),
+              ...(canManage ? [{ key: "benefits" as const, label: t("benefits") }] : []),
+              ...(canManage ? [{ key: "analytics" as const, label: t("analytics") }] : []),
+              ...(canManage ? [{ key: "lifecycle" as const, label: t("lifecycle") }] : []),
+              ...(canManage ? [{ key: "integrations" as const, label: t("integrations") }] : []),
             ]}
             value={tab}
             onChange={setTab}
@@ -297,6 +299,8 @@ function EmployeesTab({
   teamMembers: { user_id: string; email: string; display_name: string }[];
   onChanged: () => void;
 }) {
+  const t = useTranslations("hr");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -376,7 +380,7 @@ function EmployeesTab({
 
   async function saveEmployee(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return toast({ title: "Name required", variant: "destructive" });
+    if (!name.trim()) return toast({ title: t("nameRequired"), variant: "destructive" });
     setBusy(true);
     const supabase = createClient();
     const payload = {
@@ -415,7 +419,7 @@ function EmployeesTab({
       savedId = res.data?.id;
     }
     setBusy(false);
-    if (err) return toast({ title: "Could not save", description: err.message, variant: "destructive" });
+    if (err) return toast({ title: t("couldNotSave"), description: err.message, variant: "destructive" });
 
     const priorUserId = editingId
       ? employees.find((e) => e.id === editingId)?.user_id ?? ""
@@ -427,11 +431,11 @@ function EmployeesTab({
         p_user_id: linkedUserId || null,
       });
       if (linkErr) {
-        toast({ title: "Saved, but link failed", description: linkErr.message, variant: "destructive" });
+        toast({ title: t("savedLinkFailed"), description: linkErr.message, variant: "destructive" });
       }
     }
 
-    toast({ title: formMode === "edit" ? "Employee updated" : "Employee added", description: name });
+    toast({ title: formMode === "edit" ? t("employeeUpdated") : t("employeeAdded"), description: name });
     resetForm();
     onChanged();
   }
@@ -445,12 +449,12 @@ function EmployeesTab({
       .eq("organization_id", organizationId);
     if (err) {
       return toast({
-        title: "Could not delete employee",
+        title: t("couldNotDelete"),
         description: deleteBlockedMessage(err),
         variant: "destructive",
       });
     }
-    toast({ title: "Employee deleted", description: employeeName });
+    toast({ title: t("employeeDeleted"), description: employeeName });
     if (editingId === id) resetForm();
     onChanged();
   }
@@ -463,12 +467,12 @@ function EmployeesTab({
             {open ? (
               <>
                 <X className="h-4 w-4" />
-                Close
+                {tCommon("close")}
               </>
             ) : (
               <>
                 <Plus className="h-4 w-4" />
-                Add Employee
+                {t("addEmployee")}
               </>
             )}
           </Button>
@@ -476,40 +480,40 @@ function EmployeesTab({
       )}
 
       {open && canManage && (
-        <FormCard title={formMode === "edit" ? "Edit Employee" : "New Employee"}>
+        <FormCard title={formMode === "edit" ? t("editEmployee") : t("newEmployee")}>
             <form onSubmit={saveEmployee} className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label>Name</Label>
+                <Label>{tCommon("name")}</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Position</Label>
+                <Label>{tCommon("position")}</Label>
                 <Input value={position} onChange={(e) => setPosition(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Employment Type</Label>
+                <Label>{t("employmentType")}</Label>
                 <select
                   className={SELECT_CLS}
                   value={type}
                   onChange={(e) => setType(e.target.value as Employee["employment_type"])}
                 >
-                  <option value="full_time">Full time</option>
-                  <option value="part_time">Part time</option>
-                  <option value="contract">Contract</option>
+                  <option value="full_time">{t("fullTime")}</option>
+                  <option value="part_time">{t("partTime")}</option>
+                  <option value="contract">{t("contract")}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>Email</Label>
+                <Label>{tCommon("email")}</Label>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Phone</Label>
+                <Label>{tCommon("phone")}</Label>
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Store</Label>
+                <Label>{tCommon("store")}</Label>
                 <select className={SELECT_CLS} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
-                  <option value="">— None —</option>
+                  <option value="">{tCommon("none")}</option>
                   {stores.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -518,7 +522,7 @@ function EmployeesTab({
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>Base Salary</Label>
+                <Label>{t("baseSalary")}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -527,43 +531,43 @@ function EmployeesTab({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Pay Method</Label>
+                <Label>{t("payMethod")}</Label>
                 <select
                   className={SELECT_CLS}
                   value={method}
                   onChange={(e) => setMethod(e.target.value as PayMethod)}
                 >
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="cash">Cash</option>
-                  <option value="mobile_money">Mobile money</option>
+                  <option value="bank_transfer">{t("bankTransfer")}</option>
+                  <option value="cash">{t("cash")}</option>
+                  <option value="mobile_money">{t("mobileMoney")}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>Hire Date</Label>
+                <Label>{t("hireDate")}</Label>
                 <DatePicker value={hireDate} onChange={setHireDate} />
               </div>
               {formMode === "edit" && (
                 <div className="space-y-2">
-                  <Label>Status</Label>
+                  <Label>{tCommon("status")}</Label>
                   <select
                     className={SELECT_CLS}
                     value={status}
                     onChange={(e) => setStatus(e.target.value as Employee["status"])}
                   >
-                    <option value="active">Active</option>
-                    <option value="on_leave">On leave</option>
-                    <option value="terminated">Terminated</option>
+                    <option value="active">{t("statusActive")}</option>
+                    <option value="on_leave">{t("statusOnLeave")}</option>
+                    <option value="terminated">{t("statusTerminated")}</option>
                   </select>
                 </div>
               )}
               <div className="space-y-2 sm:col-span-2">
-                <Label>Link ERP user (self-service)</Label>
+                <Label>{t("linkUser")}</Label>
                 <select
                   className={SELECT_CLS}
                   value={linkedUserId}
                   onChange={(e) => setLinkedUserId(e.target.value)}
                 >
-                  <option value="">— Not linked —</option>
+                  <option value="">{t("notLinked")}</option>
                   {teamMembers.map((m) => (
                     <option key={m.user_id} value={m.user_id}>
                       {m.display_name} ({m.email})
@@ -573,10 +577,10 @@ function EmployeesTab({
               </div>
               <div className="flex gap-2 sm:col-span-3">
                 <Button type="submit" disabled={busy} className="cursor-pointer">
-                  {busy ? "Saving…" : formMode === "edit" ? "Update" : "Save"}
+                  {busy ? tCommon("saving") : formMode === "edit" ? tCommon("update") : tCommon("save")}
                 </Button>
                 <Button type="button" variant="outline" onClick={resetForm} className="cursor-pointer">
-                  Cancel
+                  {tCommon("cancel")}
                 </Button>
               </div>
             </form>
@@ -585,7 +589,7 @@ function EmployeesTab({
 
       <TableToolbar
         search={searchInput}
-        placeholder="Search employees…"
+        placeholder={t("searchEmployees")}
         onSearchChange={setSearchInput}
         onSearchSubmit={() => setQuery({ q: searchInput || null, page: "1" })}
         filterOpen={filterOpen}
@@ -597,17 +601,17 @@ function EmployeesTab({
             value={statusFilter ?? ""}
             onChange={(e) => setQuery({ status: e.target.value || null, page: "1" })}
           >
-            <option value="">All statuses</option>
-            <option value="active">Active</option>
-            <option value="on_leave">On leave</option>
-            <option value="terminated">Terminated</option>
+            <option value="">{tCommon("allStatuses")}</option>
+            <option value="active">{t("statusActive")}</option>
+            <option value="on_leave">{t("statusOnLeave")}</option>
+            <option value="terminated">{t("statusTerminated")}</option>
           </select>
         }
       />
 
       <div className="space-y-3 lg:hidden">
         {employees.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">No employees yet.</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">{t("noEmployees")}</p>
         ) : (
           employees.map((e) => (
             <MobileRecordCard key={e.id}>
@@ -618,32 +622,32 @@ function EmployeesTab({
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{e.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {e.position || "No position"}
+                    {e.position || t("noPosition")}
                     {e.org_unit_name ? ` · ${e.org_unit_name}` : ""}
                   </p>
                 </div>
                 <StatusBadge status={e.status} />
               </div>
               <div className="space-y-1.5">
-                <MobileRecordCardRow label="Type">
+                <MobileRecordCardRow label={tCommon("type")}>
                   <span className="capitalize">{e.employment_type.replace("_", " ")}</span>
                 </MobileRecordCardRow>
-                <MobileRecordCardRow label="Salary">{formatSalary(e.base_salary)}</MobileRecordCardRow>
+                <MobileRecordCardRow label={t("salary")}>{formatSalary(e.base_salary)}</MobileRecordCardRow>
               </div>
               {canManage && (
                 <div className="mt-3 flex justify-end gap-2 border-t border-border pt-3">
                   <Button variant="outline" size="sm" className="cursor-pointer" asChild>
                     <Link href={`/hr/employees/${e.id}`}>
                       <ExternalLink className="h-3.5 w-3.5" />
-                      Profile
+                      {tCommon("profile")}
                     </Link>
                   </Button>
                   <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => openEdit(e)}>
                     <Pencil className="h-3.5 w-3.5" />
-                    Edit
+                    {tCommon("edit")}
                   </Button>
                   <ConfirmDeleteButton
-                    message="Remove this employee? Use Edit → Terminated to keep payroll history."
+                    message={t("removeConfirm")}
                     onConfirm={() => deleteEmployee(e.id, e.name)}
                   />
                 </div>
@@ -657,17 +661,17 @@ function EmployeesTab({
       <DataTable>
         <table className="w-full">
           <DataTableHeader>
-            <DataTableHead>Name</DataTableHead>
-            <DataTableHead>Position</DataTableHead>
-            <DataTableHead>Department</DataTableHead>
-            <DataTableHead>Type</DataTableHead>
-            <DataTableHead>Status</DataTableHead>
-            <DataTableHead align="right">Base Salary</DataTableHead>
-            {canManage && <DataTableHead align="right">Actions</DataTableHead>}
+            <DataTableHead>{tCommon("name")}</DataTableHead>
+            <DataTableHead>{tCommon("position")}</DataTableHead>
+            <DataTableHead>{t("department")}</DataTableHead>
+            <DataTableHead>{tCommon("type")}</DataTableHead>
+            <DataTableHead>{tCommon("status")}</DataTableHead>
+            <DataTableHead align="right">{t("baseSalary")}</DataTableHead>
+            {canManage && <DataTableHead align="right">{tCommon("actions")}</DataTableHead>}
           </DataTableHeader>
           <DataTableBody>
             {employees.length === 0 ? (
-              <DataTableEmpty colSpan={canManage ? 7 : 6} message="No employees yet." />
+              <DataTableEmpty colSpan={canManage ? 7 : 6} message={t("noEmployees")} />
             ) : (
               employees.map((e) => (
                 <DataTableRow key={e.id}>
@@ -687,15 +691,15 @@ function EmployeesTab({
                         <Button variant="outline" size="sm" className="cursor-pointer" asChild>
                           <Link href={`/hr/employees/${e.id}`}>
                             <ExternalLink className="h-3.5 w-3.5" />
-                            Profile
+                            {tCommon("profile")}
                           </Link>
                         </Button>
                         <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => openEdit(e)}>
                           <Pencil className="h-3.5 w-3.5" />
-                          Edit
+                          {tCommon("edit")}
                         </Button>
                         <ConfirmDeleteButton
-                          message="Remove this employee? Use Edit → Terminated to keep payroll history."
+                          message={t("removeConfirm")}
                           onConfirm={() => deleteEmployee(e.id, e.name)}
                         />
                       </div>

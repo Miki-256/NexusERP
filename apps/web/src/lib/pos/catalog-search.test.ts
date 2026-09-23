@@ -84,4 +84,20 @@ describe("filterCatalogItems", () => {
     const items = filterCatalogItems(sample, index, { ...baseOpts, search: "lat" });
     expect(items.some((i) => i.variantId === "v2")).toBe(true);
   });
+
+  it("matches exact SKU", () => {
+    const items = filterCatalogItems(sample, index, { ...baseOpts, search: "ESP-01" });
+    expect(items).toHaveLength(1);
+    expect(items[0]?.variantId).toBe("v1");
+  });
+
+  it("matches partial SKU", () => {
+    const items = filterCatalogItems(sample, index, { ...baseOpts, search: "LAT" });
+    expect(items.some((i) => i.variantId === "v2")).toBe(true);
+  });
+
+  it("returns empty for unknown SKU", () => {
+    const items = filterCatalogItems(sample, index, { ...baseOpts, search: "UAT-MISSING-999" });
+    expect(items).toHaveLength(0);
+  });
 });

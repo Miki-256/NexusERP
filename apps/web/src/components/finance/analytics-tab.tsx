@@ -19,7 +19,7 @@ import {
   DataTableRow,
 } from "@/components/layout/data-table";
 import { formatCurrency } from "@/lib/utils";
-import { ChartCard, FinanceBarChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceBarChart } from "@/components/charts/finance-charts-lazy";
 
 export type DepartmentRow = {
   id: string;
@@ -110,7 +110,7 @@ export function AnalyticsTab({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <TabBar
         tabs={[
           { key: "store" as const, label: "By store" },

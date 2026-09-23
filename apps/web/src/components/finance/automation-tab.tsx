@@ -398,14 +398,12 @@ export function AutomationTab({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableRow>
                 <DataTableHead>Name</DataTableHead>
                 <DataTableHead>Type</DataTableHead>
                 <DataTableHead>Condition</DataTableHead>
                 <DataTableHead>Last triggered</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 {canManage && <DataTableHead align="right">Action</DataTableHead>}
-              </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {rules.length === 0 ? (
@@ -445,7 +443,6 @@ export function AutomationTab({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableRow>
                 <DataTableHead>Name</DataTableHead>
                 <DataTableHead>Report</DataTableHead>
                 <DataTableHead>Cadence</DataTableHead>
@@ -453,7 +450,6 @@ export function AutomationTab({
                 <DataTableHead>Next run</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 {canManage && <DataTableHead align="right">Action</DataTableHead>}
-              </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {schedules.length === 0 ? (

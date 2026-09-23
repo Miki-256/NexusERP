@@ -29,7 +29,7 @@ import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobil
 import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { groupByField } from "@/lib/finance-aggregates";
-import { ChartCard, FinanceDonutChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceDonutChart } from "@/components/charts/finance-charts-lazy";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { AlertCircle, FileText, Landmark, Wallet } from "lucide-react";
 import type { InvoiceRow, CreditNoteRow } from "./page";
@@ -257,7 +257,8 @@ export function InvoicingClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        breadcrumb="Accounts receivable"
+      compact
+      breadcrumb="Accounts receivable"
         title="Customer Invoicing"
         description="Create, post, and collect on customer invoices and credit notes. Posted documents update the general ledger."
       />
@@ -275,7 +276,7 @@ export function InvoicingClient({
 
       {mainTab === "invoices" && (
         <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard label="Open AR" value={money(summary.arOpen)} sub={`${summary.openCount} invoices`} icon={FileText} />
         <StatCard label="Collected" value={money(summary.paidTotal)} icon={Wallet} />
         <StatCard

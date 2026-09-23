@@ -100,7 +100,7 @@ export function AgingTab({
         onChange={setSub}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
         {Object.entries(active.buckets).map(([key, val]) => (
           <StatCard key={key} label={BUCKET_LABELS[key] ?? key} value={money(val)} />
         ))}

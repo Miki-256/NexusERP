@@ -11,6 +11,7 @@ import { ZReportPrint, type ZReportData } from "./z-report-print";
 import { downloadShiftCsv } from "@/lib/pos/shift-export";
 import { X, Printer, Download } from "lucide-react";
 import { usePosModal } from "./use-pos-modal";
+import { useTranslations } from "next-intl";
 
 type ShiftSummary = {
   sessionId: string;
@@ -20,6 +21,7 @@ type ShiftSummary = {
   saleCount: number;
   voidCount: number;
   grossTotal: number;
+  tipsTotal?: number;
   expectedCash: number;
   paymentBreakdown: { method: string; total: number }[];
 };
@@ -43,6 +45,8 @@ export function CloseShiftModal({
   onClosed: () => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("pos");
+  const tCommon = useTranslations("common");
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [closingCash, setClosingCash] = useState("");
   const [loading, setLoading] = useState(true);
@@ -86,6 +90,7 @@ export function CloseShiftModal({
       saleCount: summary!.saleCount,
       voidCount: summary!.voidCount,
       grossTotal: summary!.grossTotal,
+      tipsTotal: summary!.tipsTotal ?? 0,
       openingFloat: summary!.openingFloat,
       expectedCash: summary!.expectedCash,
       closingCash: closing,
@@ -110,7 +115,7 @@ export function CloseShiftModal({
     try {
       await downloadShiftCsv(sessionId, sessionToken, registerName.replace(/\s+/g, "-").toLowerCase());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      setError(err instanceof Error ? err.message : t("exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -118,7 +123,7 @@ export function CloseShiftModal({
 
   async function closeShift() {
     if (!isBrowserOnline()) {
-      setError("Connect to the internet to close the shift.");
+      setError(t("connectToCloseShift"));
       return;
     }
     setClosing(true);
@@ -173,7 +178,7 @@ export function CloseShiftModal({
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
             <h2 id="pos-close-shift-title" className="pos-heading text-lg font-bold text-white">
-              Close shift · Z-report
+              {t("closeShiftZReport")}
             </h2>
             <p className="text-xs text-white/70">{registerName} · {storeName}</p>
           </div>
@@ -181,7 +186,7 @@ export function CloseShiftModal({
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            aria-label="Close close shift dialog"
+            aria-label={t("closeCloseShiftDialog")}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
@@ -190,7 +195,7 @@ export function CloseShiftModal({
         <div className="flex-1 overflow-y-auto p-5">
           {loading && (
             <p className="text-sm text-slate-500" role="status" aria-busy="true">
-              Loading shift summary…
+              {t("loadingShiftSummary")}
             </p>
           )}
           {error && !summary && <p className="text-sm text-red-600">{error}</p>}
@@ -199,26 +204,32 @@ export function CloseShiftModal({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Sales</p>
+                  <p className="text-xs text-slate-500">{t("sales")}</p>
                   <p className="text-lg font-bold tabular-nums">{summary.saleCount}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Gross total</p>
+                  <p className="text-xs text-slate-500">{t("grossTotal")}</p>
                   <p className="text-lg font-bold tabular-nums">{formatCurrency(summary.grossTotal, currency)}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Opening float</p>
+                  <p className="text-xs text-slate-500">{t("tip")}</p>
+                  <p className="text-lg font-bold tabular-nums">
+                    {formatCurrency(summary.tipsTotal ?? 0, currency)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">{t("openingFloat")}</p>
                   <p className="font-semibold tabular-nums">{formatCurrency(summary.openingFloat, currency)}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Expected cash</p>
+                  <p className="text-xs text-slate-500">{t("expectedCash")}</p>
                   <p className="font-semibold tabular-nums">{formatCurrency(summary.expectedCash, currency)}</p>
                 </div>
               </div>
 
               {summary.paymentBreakdown.length > 0 && (
                 <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Payment mix</p>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{t("paymentMix")}</p>
                   <ul className="space-y-1 text-sm">
                     {summary.paymentBreakdown.map((p) => (
                       <li key={p.method} className="flex justify-between capitalize">
@@ -231,11 +242,13 @@ export function CloseShiftModal({
               )}
 
               {summary.voidCount > 0 && (
-                <p className="text-sm text-amber-700">{summary.voidCount} voided sale(s) this shift</p>
+                <p className="text-sm text-amber-700">
+                  {t("voidedSalesThisShift", { count: summary.voidCount })}
+                </p>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="closing-cash">Counted cash in drawer</Label>
+                <Label htmlFor="closing-cash">{t("countedCashInDrawer")}</Label>
                 <Input
                   id="closing-cash"
                   type="number"
@@ -246,8 +259,9 @@ export function CloseShiftModal({
                 />
                 {Math.abs(cashVariance) > 0.01 && (
                   <p className={cashVariance >= 0 ? "text-sm text-emerald-700" : "text-sm text-red-600"}>
-                    Variance: {cashVariance >= 0 ? "+" : ""}
-                    {formatCurrency(cashVariance, currency)}
+                    {t("variance", {
+                      amount: `${cashVariance >= 0 ? "+" : ""}${formatCurrency(cashVariance, currency)}`,
+                    })}
                   </p>
                 )}
               </div>
@@ -259,7 +273,7 @@ export function CloseShiftModal({
 
         <div className="flex flex-col gap-2 border-t border-slate-100 p-4 sm:flex-row">
           <Button variant="outline" className="flex-1 cursor-pointer" onClick={onClose} disabled={closing}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
           <Button
             variant="outline"
@@ -268,7 +282,7 @@ export function CloseShiftModal({
             disabled={loading || !summary || exportBusy}
           >
             <Download className="h-4 w-4" />
-            {exportBusy ? "…" : "CSV"}
+            {exportBusy ? "…" : t("csv")}
           </Button>
           <Button
             variant="outline"
@@ -277,14 +291,14 @@ export function CloseShiftModal({
             disabled={loading || !summary}
           >
             <Printer className="h-4 w-4" />
-            Print Z-report
+            {t("printZReport")}
           </Button>
           <Button
             className="flex-[2] cursor-pointer bg-pos-primary hover:bg-pos-primary-dark"
             onClick={closeShift}
             disabled={closing || loading || !summary}
           >
-            {closing ? "Closing…" : "Close shift"}
+            {closing ? "…" : t("closeShift")}
           </Button>
         </div>
       </div>

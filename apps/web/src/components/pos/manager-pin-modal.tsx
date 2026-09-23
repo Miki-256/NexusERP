@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -21,6 +22,7 @@ export function ManagerPinModal({
   onApproved: (pin: string) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("pos");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,7 +43,7 @@ export function ManagerPinModal({
     }
     const result = data as { approved?: boolean; reason?: string };
     if (!result.approved) {
-      setError(result.reason ?? "Manager PIN required");
+      setError(result.reason ?? t("managerPinRequired"));
       return;
     }
     onApproved(pin);
@@ -70,7 +72,7 @@ export function ManagerPinModal({
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-lg p-1 text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
-            aria-label="Close manager PIN dialog"
+            aria-label={t("closeManagerPinDialog")}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
@@ -80,7 +82,7 @@ export function ManagerPinModal({
         </p>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="mgr-pin">Manager PIN</Label>
+            <Label htmlFor="mgr-pin">{t("managerPin")}</Label>
             <PasswordInput
               id="mgr-pin"
               inputMode="numeric"
@@ -89,7 +91,7 @@ export function ManagerPinModal({
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               className="h-12 text-center text-lg tracking-widest"
-              toggleLabel="Show manager PIN"
+              toggleLabel={t("showManagerPin")}
             />
           </div>
           {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
@@ -99,7 +101,7 @@ export function ManagerPinModal({
             disabled={loading}
             aria-busy={loading}
           >
-            {loading ? "Verifying…" : "Approve override"}
+            {loading ? t("verifying") : t("approveOverride")}
           </Button>
         </form>
       </div>

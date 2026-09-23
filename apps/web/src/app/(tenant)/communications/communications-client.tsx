@@ -13,7 +13,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/layout/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChartCard, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts-lazy";
 import { CommunicationsSubNav } from "./communications-sub-nav";
 import type {
   NotificationCenterAnalytics,
@@ -52,7 +52,7 @@ export function CommunicationsClient({
 
       {canManage ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
             <StatCard label="Sent today" value={String(stats.sent_today ?? 0)} icon={Bell} />
             <StatCard label="Queued" value={String(stats.queued ?? 0)} icon={Clock} />
             <StatCard label="Failed" value={String(stats.failed ?? 0)} icon={AlertTriangle} />

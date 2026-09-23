@@ -4,20 +4,17 @@ import Link from "next/link";
 import {
   AlertTriangle,
   BarChart3,
-  Bell,
   Calendar,
-  Clock,
   FileText,
   History,
   LayoutDashboard,
   ListOrdered,
-  Mail,
   ScrollText,
   Settings,
   Users,
   Zap,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const ITEMS = [
   { href: "/communications", label: "Dashboard", icon: LayoutDashboard },
@@ -35,15 +32,29 @@ const ITEMS = [
 
 export function CommunicationsSubNav({ active }: { active: string }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {ITEMS.map((item) => (
-        <Button key={item.href} variant={active === item.href ? "default" : "outline"} size="sm" asChild>
-          <Link href={item.href}>
-            <item.icon className="h-4 w-4" />
+    <div
+      className="flex gap-0.5 overflow-x-auto border-b border-border scrollbar-thin"
+      role="navigation"
+      aria-label="Communications"
+    >
+      {ITEMS.map((item) => {
+        const selected = active === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "relative -mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150",
+              selected
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+            )}
+          >
+            <item.icon className="h-3.5 w-3.5 shrink-0" />
             {item.label}
           </Link>
-        </Button>
-      ))}
+        );
+      })}
     </div>
   );
 }

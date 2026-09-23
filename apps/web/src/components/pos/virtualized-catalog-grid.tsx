@@ -7,34 +7,36 @@ import { ProductCard, type PosCatalogItem } from "./product-card";
 import type { PosCatalogDensity } from "@/lib/pos/pos-preferences";
 
 function columnsForWidth(width: number, compact: boolean): number {
+  // Dense POS grid — more products visible, less scrolling
   if (compact) {
-    if (width >= 1920) return 7;
-    if (width >= 1536) return 6;
-    if (width >= 1280) return 5;
-    if (width >= 1024) return 4;
+    if (width >= 1920) return 8;
+    if (width >= 1536) return 7;
+    if (width >= 1280) return 6;
+    if (width >= 1024) return 5;
     if (width >= 768) return 4;
-    if (width >= 640) return 3;
-    if (width >= 360) return 2;
-    return 1;
+    if (width >= 480) return 3;
+    if (width >= 340) return 2;
+    return 2;
   }
-  if (width >= 1536) return 5;
-  if (width >= 1280) return 4;
-  if (width >= 1024) return 3;
+  if (width >= 1536) return 6;
+  if (width >= 1280) return 5;
+  if (width >= 1024) return 4;
   if (width >= 768) return 3;
-  if (width >= 480) return 2;
-  return 1;
+  if (width >= 480) return 3;
+  return 2;
 }
 
-/** Must match rendered ProductCard height or content (price, name) gets clipped. */
+/** Must match rendered ProductCard height or content gets clipped. */
 function rowHeightFor(density: PosCatalogDensity, width: number, columnCount: number): number {
-  const isMobile = width < 768;
-  if (isMobile) {
-    if (density === "compact") {
-      return columnCount === 1 ? 200 : 180;
-    }
-    return columnCount === 1 ? 320 : 300;
+  const hasRoom = width >= 768;
+  // Compact tiles: name + price + stock row (± optional small image)
+  if (density === "compact") {
+    if (!hasRoom) return columnCount >= 3 ? 108 : 118;
+    return 124;
   }
-  return density === "compact" ? 180 : 320;
+  // Comfortable still denser than old e-commerce cards
+  if (!hasRoom) return 140;
+  return 156;
 }
 
 const CatalogProductCard = memo(function CatalogProductCard({
@@ -135,7 +137,7 @@ export const VirtualizedCatalogGrid = memo(function VirtualizedCatalogGrid({
   );
   const rowHeight = rowHeightFor(density, containerWidth, columnCount);
   const rowCount = Math.ceil(items.length / columnCount);
-  const gap = density === "compact" && !isMobileViewport ? 8 : 12;
+  const gap = density === "compact" ? 6 : 8;
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
@@ -163,7 +165,7 @@ export const VirtualizedCatalogGrid = memo(function VirtualizedCatalogGrid({
               key={virtualRow.key}
               className={cn(
                 "absolute left-0 top-0 grid w-full",
-                gap === 8 ? "gap-2" : "gap-3"
+                gap === 6 ? "gap-1.5" : "gap-2"
               )}
               style={{
                 height: `${virtualRow.size}px`,

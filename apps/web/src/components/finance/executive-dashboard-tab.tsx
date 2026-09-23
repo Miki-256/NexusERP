@@ -19,7 +19,7 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
-import { ChartCard, TrendAreaChart } from "@/components/charts/finance-charts";
+import { ChartCard, TrendAreaChart } from "@/components/charts/finance-charts-lazy";
 import { formatCurrency } from "@/lib/utils";
 import { SELECT_CLS } from "@/lib/ui-classes";
 import {
@@ -253,8 +253,8 @@ export function ExecutiveDashboardTab({
   const selectedKpiMeta = kpis.find((k) => k.key === selectedKpi);
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         {kpis.map((kpi) => {
           const Icon = KPI_ICONS[kpi.key] ?? Landmark;
           const targetSub =
@@ -309,7 +309,7 @@ export function ExecutiveDashboardTab({
               primaryLabel="Revenue"
               secondaryLabel="Net profit"
               formatValue={money}
-              height={260}
+              height={200}
             />
           ) : (
             <p className="py-16 text-center text-sm text-muted-foreground">No trend data for this period.</p>
@@ -369,8 +369,8 @@ export function ExecutiveDashboardTab({
           <p className="py-8 text-center text-sm text-muted-foreground">Loading drill-down…</p>
         ) : (
           <DataTable>
+            <table className="w-full">
             <DataTableHeader>
-              <DataTableRow>
                 <DataTableHead>Type</DataTableHead>
                 <DataTableHead>Reference</DataTableHead>
                 <DataTableHead>Date</DataTableHead>
@@ -378,7 +378,6 @@ export function ExecutiveDashboardTab({
                 <DataTableHead className="text-right">Amount</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 <DataTableHead className="w-12"><span className="sr-only">Link</span></DataTableHead>
-              </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {(drilldown?.rows ?? []).length === 0 ? (
@@ -409,6 +408,7 @@ export function ExecutiveDashboardTab({
                 ))
               )}
             </DataTableBody>
+            </table>
           </DataTable>
         )}
       </ReportSection>

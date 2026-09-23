@@ -13,11 +13,17 @@ import type { WorkspaceSummary } from "@/lib/active-org";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { PlatformBannerLoader } from "@/components/layout/platform-banner-loader";
 import { SupportSessionBanner } from "@/components/layout/support-session-banner";
+import { LocaleBootstrap } from "@/components/i18n/locale-bootstrap";
+import { InteractionRecovery } from "@/components/layout/interaction-recovery";
 import type { ActiveSupportSession } from "@/lib/admin-types";
 import { cn } from "@/lib/utils";
 
 const Sidebar = dynamic(
-  () => import("@/components/layout/sidebar").then((m) => m.Sidebar),
+  () =>
+    import("@/components/layout/sidebar").then((m) => {
+      if (!m.Sidebar) throw new Error("Sidebar export missing");
+      return { default: m.Sidebar };
+    }),
   { ssr: false, loading: () => <SidebarPlaceholder /> }
 );
 
@@ -67,15 +73,15 @@ function MainContent({ children }: { children: React.ReactNode }) {
     >
       {isNavigating && (
         <div
-          className="pointer-events-none absolute inset-0 z-10 bg-background/20 backdrop-blur-[1px]"
+          className="pointer-events-none absolute inset-0 z-10 bg-background/10"
           aria-hidden
         />
       )}
       {/* Avoid padding shorthand here — it overrides pb-mobile-nav on small screens. */}
       <div
         className={cn(
-          "relative mx-auto max-w-[1400px] px-3 pt-3 pb-mobile-nav transition-all duration-300 ease-out sm:px-5 sm:pt-5 lg:px-7 lg:pb-7 lg:pt-7",
-          isNavigating && "scale-[0.998] opacity-60"
+          "relative mx-auto max-w-[1400px] px-3 pt-2 pb-mobile-nav transition-opacity duration-150 ease-out sm:px-4 sm:pt-3 lg:px-5 lg:pb-4 lg:pt-3",
+          isNavigating && "opacity-80"
         )}
       >
         {children}
@@ -87,6 +93,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
 export function TenantShell({
   orgName,
   activeOrganizationId,
+  orgDefaultLocale,
   workspaces,
   userId,
   userEmail,
@@ -99,6 +106,7 @@ export function TenantShell({
 }: {
   orgName: string;
   activeOrganizationId: string;
+  orgDefaultLocale?: string | null;
   workspaces: WorkspaceSummary[];
   userId: string;
   userEmail?: string | null;
@@ -113,6 +121,8 @@ export function TenantShell({
     <NavigationProvider>
       <NavigationProgress />
       <ShellProvider>
+        <LocaleBootstrap orgDefaultLocale={orgDefaultLocale} />
+        <InteractionRecovery />
         <div className="flex min-h-screen bg-background">
           <Sidebar orgName={orgName} userId={userId} navApps={navApps} />
           <div className="flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

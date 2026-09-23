@@ -648,7 +648,8 @@ export function FinancialsClient({
   return (
     <div className={cn(PAGE_SHELL, compact && "financial-shell-compact space-y-4")}>
       <PageHeader
-        breadcrumb={<FinancialShellBreadcrumb area={area} tab={tab} />}
+      compact
+      breadcrumb={<FinancialShellBreadcrumb area={area} tab={tab} />}
         title={t("pageTitle")}
         description={t("pageDescription", { period, currency })}
         action={

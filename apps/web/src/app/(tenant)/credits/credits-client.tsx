@@ -26,9 +26,10 @@ import { MobileRecordCard, MobileRecordCardRow } from "@/components/layout/mobil
 import { ResponsiveTableLayout } from "@/components/layout/responsive-table-layout";
 import { formatCurrency, relationName } from "@/lib/utils";
 import { groupByField } from "@/lib/finance-aggregates";
-import { ChartCard, FinanceBarChart, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceBarChart, FinanceDonutChart, TrendAreaChart } from "@/components/charts/finance-charts-lazy";
 import { PAGE_SHELL, SELECT_CLS } from "@/lib/ui-classes";
 import { Gift, History, Users } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { CreditRow, CreditTx } from "./page";
 import { GiftCardsPanel } from "./gift-cards-panel";
 
@@ -47,6 +48,8 @@ export function CreditsClient({
   transactions: CreditTx[];
   customers: { id: string; name: string | null }[];
 }) {
+  const t = useTranslations("credits");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const { toast } = useToast();
   const [tab, setTab] = useState<"balances" | "history" | "gift_cards">("balances");
@@ -69,10 +72,10 @@ export function CreditsClient({
     () =>
       groupByField(
         credits,
-        (c) => relationName(c.customers as { name: string } | { name: string }[] | null) || "Unknown",
+        (c) => relationName(c.customers as { name: string } | { name: string }[] | null) || tCommon("unknown"),
         (c) => Number(c.balance)
       ).slice(0, 8),
-    [credits]
+    [credits, tCommon]
   );
 
   const issuanceTrend = useMemo(() => {
@@ -102,8 +105,8 @@ export function CreditsClient({
       p_reason: reason || null,
     });
     setBusy(false);
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
-    toast({ title: "Credit issued" });
+    if (error) return toast({ title: t("issueFailed"), description: error.message, variant: "destructive" });
+    toast({ title: t("creditIssued") });
     setAmount("");
     setReason("");
     router.refresh();
@@ -112,53 +115,59 @@ export function CreditsClient({
   return (
     <div className={PAGE_SHELL}>
       <PageHeader
-        breadcrumb="Customer credits"
-        title="Store Credit & Liabilities"
-        description="Track customer credit balances and issuance history for refunds, promotions, and loyalty programs."
+      compact
+      breadcrumb={t("breadcrumb")}
+        title={t("title")}
+        description={t("description")}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Outstanding credit" value={money(totalOutstanding)} icon={Gift} />
-        <StatCard label="Customers with balance" value={credits.length} icon={Users} />
-        <StatCard label="Issuance volume" value={money(txVolume)} sub={`${transactions.length} transactions`} icon={History} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <StatCard label={t("outstanding")} value={money(totalOutstanding)} icon={Gift} />
+        <StatCard label={t("customersWithBalance")} value={credits.length} icon={Users} />
+        <StatCard
+          label={t("issuanceVolume")}
+          value={money(txVolume)}
+          sub={t("transactionsCount", { count: transactions.length })}
+          icon={History}
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <ChartCard title="Balance by customer" subtitle="Top accounts">
+      <div className="grid gap-3 lg:grid-cols-3 lg:gap-4">
+        <ChartCard title={t("balanceByCustomer")} subtitle={t("topAccounts")}>
           {balanceByCustomer.length > 0 ? (
             <FinanceDonutChart data={balanceByCustomer} formatValue={money} innerRadius={48} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No balances yet</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noBalances")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Issuance trend" subtitle="Last 6 months">
+        <ChartCard title={t("issuanceTrend")} subtitle={t("lastSixMonths")}>
           {issuanceTrend.length > 0 ? (
-            <TrendAreaChart data={issuanceTrend} formatValue={money} height={220} />
+            <TrendAreaChart data={issuanceTrend} formatValue={money} height={180} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No issuance history</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noIssuanceHistory")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Average per customer" subtitle="Outstanding liability">
+        <ChartCard title={t("avgPerCustomer")} subtitle={t("outstandingLiability")}>
           {credits.length > 0 ? (
             <FinanceBarChart
               data={[
-                { name: "Avg balance", value: totalOutstanding / credits.length },
-                { name: "Largest", value: Math.max(...credits.map((c) => Number(c.balance))) },
+                { name: t("avgBalance"), value: totalOutstanding / credits.length },
+                { name: t("largest"), value: Math.max(...credits.map((c) => Number(c.balance))) },
               ]}
               formatValue={money}
-              height={220}
+              height={180}
             />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No data</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{tCommon("noData")}</p>
           )}
         </ChartCard>
       </div>
 
       <TabBar
         tabs={[
-          { key: "balances" as const, label: "Balances" },
-          { key: "history" as const, label: "History" },
-          { key: "gift_cards" as const, label: "Gift cards" },
+          { key: "balances" as const, label: t("tabs.balances") },
+          { key: "history" as const, label: t("tabs.history") },
+          { key: "gift_cards" as const, label: t("tabs.giftCards") },
         ]}
         value={tab}
         onChange={setTab}
@@ -176,33 +185,33 @@ export function CreditsClient({
       {tab !== "gift_cards" && (
         <>
       {canManage && tab === "balances" && (
-        <FormCard title="Issue credit" onSubmit={issueCredit}>
+        <FormCard title={t("issueCredit")} onSubmit={issueCredit}>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label>Customer</Label>
+              <Label>{tCommon("customer")}</Label>
               <select className={SELECT_CLS} value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                 {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name ?? "Unnamed"}</option>
+                  <option key={c.id} value={c.id}>{c.name ?? tCommon("unnamed")}</option>
                 ))}
               </select>
             </div>
             <div className="space-y-2">
-              <Label>Amount</Label>
+              <Label>{tCommon("amount")}</Label>
               <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Reason</Label>
+              <Label>{tCommon("reason")}</Label>
               <Input value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
           </div>
-          <Button type="submit" disabled={busy}>Issue credit</Button>
+          <Button type="submit" disabled={busy}>{t("issueCredit")}</Button>
         </FormCard>
       )}
 
       {tab === "balances" ? (
         <ReportSection
-          title="Credit balances"
-          subtitle={`${credits.length} customers`}
+          title={t("creditBalances")}
+          subtitle={t("customersCount", { count: credits.length })}
           actions={
             <ExportCsvButton
               filename="customer-credit-balances"
@@ -220,7 +229,7 @@ export function CreditsClient({
         <ResponsiveTableLayout
           mobile={
             credits.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">No credit balances yet.</p>
+              <p className="py-10 text-center text-sm text-muted-foreground">{t("noCreditBalances")}</p>
             ) : (
               credits.map((c) => (
                 <MobileRecordCard key={c.id}>
@@ -238,12 +247,12 @@ export function CreditsClient({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableHead>Customer</DataTableHead>
-              <DataTableHead align="right">Balance</DataTableHead>
+              <DataTableHead>{tCommon("customer")}</DataTableHead>
+              <DataTableHead align="right">{tCommon("balance")}</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
               {credits.length === 0 ? (
-                <DataTableEmpty colSpan={2} message="No credit balances yet." />
+                <DataTableEmpty colSpan={2} message={t("noCreditBalances")} />
               ) : (
                 credits.map((c) => (
                   <DataTableRow key={c.id}>
@@ -261,8 +270,8 @@ export function CreditsClient({
         </ReportSection>
       ) : (
         <ReportSection
-          title="Credit transaction history"
-          subtitle={`${transactions.length} entries`}
+          title={t("txHistory")}
+          subtitle={t("entriesCount", { count: transactions.length })}
           actions={
             <ExportCsvButton
               filename="credit-transactions"
@@ -284,7 +293,7 @@ export function CreditsClient({
         <ResponsiveTableLayout
           mobile={
             transactions.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">No credit transactions.</p>
+              <p className="py-10 text-center text-sm text-muted-foreground">{t("noCreditTx")}</p>
             ) : (
               transactions.map((t) => (
                 <MobileRecordCard key={t.id}>
@@ -297,7 +306,7 @@ export function CreditsClient({
                     </div>
                     <p className="shrink-0 font-mono font-semibold">{money(t.amount)}</p>
                   </div>
-                  <MobileRecordCardRow label="Date">
+                  <MobileRecordCardRow label={tCommon("date")}>
                     {new Date(t.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                   </MobileRecordCardRow>
                 </MobileRecordCard>
@@ -308,14 +317,14 @@ export function CreditsClient({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableHead>Date & time</DataTableHead>
-              <DataTableHead>Customer</DataTableHead>
-              <DataTableHead>Reason</DataTableHead>
-              <DataTableHead align="right">Amount</DataTableHead>
+              <DataTableHead>{tCommon("dateTime")}</DataTableHead>
+              <DataTableHead>{tCommon("customer")}</DataTableHead>
+              <DataTableHead>{tCommon("reason")}</DataTableHead>
+              <DataTableHead align="right">{tCommon("amount")}</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
               {transactions.length === 0 ? (
-                <DataTableEmpty colSpan={4} message="No credit transactions." />
+                <DataTableEmpty colSpan={4} message={t("noCreditTx")} />
               ) : (
                 transactions.map((t) => (
                   <DataTableRow key={t.id}>

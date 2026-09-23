@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ export function InventoryOperationsPanel({
   variantOptions: { variant_id: string; label: string }[];
   canManage: boolean;
 }) {
+  const t = useTranslations("inventory");
   const { toast } = useToast();
   const [opsTab, setOpsTab] = useState<OpsTab>("counts");
   const [loading, setLoading] = useState(false);
@@ -63,7 +65,7 @@ export function InventoryOperationsPanel({
       p_store_id: storeId || null,
     });
     if (error) {
-      toast({ title: "Could not load counts", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.loadCountsFailed"), description: error.message, variant: "destructive" });
       return;
     }
     setSessions((data ?? []) as CycleCountSessionRow[]);
@@ -76,7 +78,7 @@ export function InventoryOperationsPanel({
       p_session_id: sessionId,
     });
     if (error) {
-      toast({ title: "Could not load count", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.loadCountFailed"), description: error.message, variant: "destructive" });
       return;
     }
     const parsed = (data ?? {}) as { lines?: CycleCountLineRow[] };
@@ -101,10 +103,13 @@ export function InventoryOperationsPanel({
     });
     setLoading(false);
     if (error) {
-      toast({ title: "Could not start count", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.startCountFailed"), description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Cycle count started", description: "Enter counted quantities below." });
+    toast({
+      title: t("operations.toast.countStarted"),
+      description: t("operations.toast.countStartedDesc"),
+    });
     setCountName("");
     setSessionsLoaded(false);
     void loadSessions();
@@ -122,7 +127,7 @@ export function InventoryOperationsPanel({
       p_counted_qty: qty,
     });
     if (error) {
-      toast({ title: "Could not save count", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.saveCountFailed"), description: error.message, variant: "destructive" });
       return;
     }
     void loadSessionDetail(activeSessionId);
@@ -137,13 +142,13 @@ export function InventoryOperationsPanel({
     });
     setLoading(false);
     if (error) {
-      toast({ title: "Finalize failed", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.finalizeFailed"), description: error.message, variant: "destructive" });
       return;
     }
     const result = (data ?? {}) as { lines_adjusted?: number };
     toast({
-      title: "Cycle count finalized",
-      description: `${result.lines_adjusted ?? 0} variance line(s) posted to the ledger.`,
+      title: t("operations.toast.countFinalized"),
+      description: t("operations.toast.countFinalizedDesc", { count: result.lines_adjusted ?? 0 }),
     });
     setActiveSessionId("");
     setCountLines([]);
@@ -159,7 +164,7 @@ export function InventoryOperationsPanel({
       p_active_only: true,
     });
     if (error) {
-      toast({ title: "Could not load holds", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.loadHoldsFailed"), description: error.message, variant: "destructive" });
       return;
     }
     setHolds((data ?? []) as QualityHoldRow[]);
@@ -179,10 +184,13 @@ export function InventoryOperationsPanel({
     });
     setLoading(false);
     if (error) {
-      toast({ title: "Could not place hold", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.placeHoldFailed"), description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Quality hold placed", description: "Outbound moves for this SKU are blocked." });
+    toast({
+      title: t("operations.toast.holdPlaced"),
+      description: t("operations.toast.holdPlacedDesc"),
+    });
     setHoldReason("");
     setHoldVariant("");
     setHoldsLoaded(false);
@@ -194,10 +202,10 @@ export function InventoryOperationsPanel({
     const supabase = createClient();
     const { error } = await supabase.rpc("release_quality_hold", { p_hold_id: holdId });
     if (error) {
-      toast({ title: "Release failed", description: error.message, variant: "destructive" });
+      toast({ title: t("operations.toast.releaseFailed"), description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Hold released" });
+    toast({ title: t("operations.toast.holdReleased") });
     void loadHolds();
   }
 
@@ -217,7 +225,7 @@ export function InventoryOperationsPanel({
           onClick={() => switchTab("counts")}
         >
           <ClipboardList className="mr-2 h-4 w-4" />
-          Cycle counts
+          {t("operations.cycleCounts")}
         </Button>
         <Button
           type="button"
@@ -226,17 +234,17 @@ export function InventoryOperationsPanel({
           onClick={() => switchTab("quality")}
         >
           <ShieldAlert className="mr-2 h-4 w-4" />
-          Quality holds
+          {t("operations.qualityHolds")}
         </Button>
       </div>
 
       {opsTab === "counts" && (
         <>
           {canManage && (
-            <FormCard title="New cycle count">
+            <FormCard title={t("operations.newCycleCount")}>
               <form onSubmit={createSession} className="flex flex-wrap items-end gap-4">
                 <div className="space-y-2 min-w-[200px]">
-                  <Label>Store</Label>
+                  <Label>{t("operations.store")}</Label>
                   <select className={SELECT_CLS} value={storeId} disabled>
                     {stores.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
@@ -244,10 +252,15 @@ export function InventoryOperationsPanel({
                   </select>
                 </div>
                 <div className="space-y-2 flex-1 min-w-[200px]">
-                  <Label>Session name</Label>
-                  <Input value={countName} onChange={(e) => setCountName(e.target.value)} placeholder="e.g. March aisle audit" required />
+                  <Label>{t("operations.sessionName")}</Label>
+                  <Input
+                    value={countName}
+                    onChange={(e) => setCountName(e.target.value)}
+                    placeholder={t("operations.sessionNamePlaceholder")}
+                    required
+                  />
                 </div>
-                <Button type="submit" disabled={loading || !storeId}>Start count</Button>
+                <Button type="submit" disabled={loading || !storeId}>{t("operations.startCount")}</Button>
               </form>
             </FormCard>
           )}
@@ -255,14 +268,14 @@ export function InventoryOperationsPanel({
           <DataTable>
             <table className="w-full">
               <DataTableHeader>
-                <DataTableHead>Name</DataTableHead>
-                <DataTableHead>Status</DataTableHead>
-                <DataTableHead align="right">Lines</DataTableHead>
-                <DataTableHead align="right">Counted</DataTableHead>
+                <DataTableHead>{t("operations.name")}</DataTableHead>
+                <DataTableHead>{t("operations.status")}</DataTableHead>
+                <DataTableHead align="right">{t("operations.lines")}</DataTableHead>
+                <DataTableHead align="right">{t("operations.counted")}</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
                 {sessions.length === 0 ? (
-                  <DataTableEmpty colSpan={4} message="No cycle count sessions yet." />
+                  <DataTableEmpty colSpan={4} message={t("operations.noSessions")} />
                 ) : (
                   sessions.map((s) => (
                     <DataTableRow key={s.id} selected={activeSessionId === s.id}>
@@ -282,14 +295,14 @@ export function InventoryOperationsPanel({
           </DataTable>
 
           {activeSessionId && countLines.length > 0 && (
-            <FormCard title="Count lines">
+            <FormCard title={t("operations.countLines")}>
               <DataTable>
                 <table className="w-full">
                   <DataTableHeader>
-                    <DataTableHead>Product</DataTableHead>
-                    <DataTableHead align="right">Expected</DataTableHead>
-                    <DataTableHead align="right">Counted</DataTableHead>
-                    <DataTableHead align="right">Variance</DataTableHead>
+                    <DataTableHead>{t("operations.product")}</DataTableHead>
+                    <DataTableHead align="right">{t("operations.expected")}</DataTableHead>
+                    <DataTableHead align="right">{t("operations.counted")}</DataTableHead>
+                    <DataTableHead align="right">{t("operations.variance")}</DataTableHead>
                   </DataTableHeader>
                   <DataTableBody>
                     {countLines.map((line) => (
@@ -317,7 +330,7 @@ export function InventoryOperationsPanel({
               </DataTable>
               {canManage && (
                 <Button className="mt-4" onClick={() => void finalizeSession()} disabled={loading}>
-                  Finalize & post variances
+                  {t("operations.finalize")}
                 </Button>
               )}
             </FormCard>
@@ -328,22 +341,22 @@ export function InventoryOperationsPanel({
       {opsTab === "quality" && (
         <>
           {canManage && (
-            <FormCard title="Place quality hold">
+            <FormCard title={t("operations.placeHoldTitle")}>
               <form onSubmit={placeHold} className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
-                  <Label>Product</Label>
+                  <Label>{t("operations.product")}</Label>
                   <select className={SELECT_CLS} value={holdVariant} onChange={(e) => setHoldVariant(e.target.value)} required>
-                    <option value="">Select…</option>
+                    <option value="">{t("operations.select")}</option>
                     {variantOptions.map((v) => (
                       <option key={v.variant_id} value={v.variant_id}>{v.label}</option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-2 sm:col-span-3">
-                  <Label>Reason</Label>
+                  <Label>{t("operations.reason")}</Label>
                   <Input value={holdReason} onChange={(e) => setHoldReason(e.target.value)} required />
                 </div>
-                <Button type="submit" disabled={loading || !storeId}>Place hold</Button>
+                <Button type="submit" disabled={loading || !storeId}>{t("operations.placeHold")}</Button>
               </form>
             </FormCard>
           )}
@@ -351,14 +364,14 @@ export function InventoryOperationsPanel({
           <DataTable>
             <table className="w-full">
               <DataTableHeader>
-                <DataTableHead>Product</DataTableHead>
-                <DataTableHead>Reason</DataTableHead>
-                <DataTableHead>Status</DataTableHead>
+                <DataTableHead>{t("operations.product")}</DataTableHead>
+                <DataTableHead>{t("operations.reason")}</DataTableHead>
+                <DataTableHead>{t("operations.status")}</DataTableHead>
                 {canManage && <DataTableHead>&nbsp;</DataTableHead>}
               </DataTableHeader>
               <DataTableBody>
                 {holds.length === 0 ? (
-                  <DataTableEmpty colSpan={canManage ? 4 : 3} message="No active quality holds." />
+                  <DataTableEmpty colSpan={canManage ? 4 : 3} message={t("operations.noHolds")} />
                 ) : (
                   holds.map((h) => (
                     <DataTableRow key={h.id}>
@@ -370,7 +383,9 @@ export function InventoryOperationsPanel({
                       <DataTableCell><StatusBadge status={h.status} /></DataTableCell>
                       {canManage && (
                         <DataTableCell align="right">
-                          <Button size="sm" variant="outline" onClick={() => void releaseHold(h.id)}>Release</Button>
+                          <Button size="sm" variant="outline" onClick={() => void releaseHold(h.id)}>
+                            {t("operations.release")}
+                          </Button>
                         </DataTableCell>
                       )}
                     </DataTableRow>

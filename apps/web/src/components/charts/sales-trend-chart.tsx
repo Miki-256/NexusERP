@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
-import { ChartCard, TrendAreaChart } from "@/components/charts/finance-charts";
+import { ChartCard, TrendAreaChart } from "@/components/charts/finance-charts-lazy";
 import { Button } from "@/components/ui/button";
 
 export function SalesTrendChart({
@@ -24,7 +24,7 @@ export function SalesTrendChart({
           <Link href="/reports">View reports</Link>
         </Button>
       </div>
-      <TrendAreaChart data={data} formatValue={(v) => formatCurrency(v, currency)} height={240} />
+      <TrendAreaChart data={data} formatValue={(v) => formatCurrency(v, currency)} height={180} />
     </ChartCard>
   );
 }

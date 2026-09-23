@@ -14,5 +14,5 @@ export default function WorkspaceBootstrapErrorFallback() {
     return () => window.clearTimeout(t);
   }, []);
 
-  return <PageLoader message="Opening your workspace…" />;
+  return <PageLoader variant="boot" message="Opening your workspace…" />;
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Search, ArrowRight, Command } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { ERP_APPS, type AppDef } from "@/lib/apps-registry";
 
@@ -17,6 +18,8 @@ export function CommandPalette({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const t = useTranslations("common");
+  const tNav = useTranslations("nav");
   const [query, setQuery] = useState("");
   const allowed = useMemo(() => new Set(accessibleAppIds), [accessibleAppIds]);
 
@@ -28,13 +31,18 @@ export function CommandPalette({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return apps.slice(0, 12);
-    return apps.filter(
-      (a) =>
+    return apps.filter((a) => {
+      const name = tNav(`apps.${a.id}.name`).toLowerCase();
+      const description = tNav(`apps.${a.id}.description`).toLowerCase();
+      return (
+        name.includes(q) ||
+        description.includes(q) ||
         a.name.toLowerCase().includes(q) ||
         a.description.toLowerCase().includes(q) ||
         a.category.includes(q)
-    );
-  }, [apps, query]);
+      );
+    });
+  }, [apps, query, tNav]);
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -56,12 +64,12 @@ export function CommandPalette({
             "focus:outline-none"
           )}
         >
-          <Dialog.Title className="sr-only">Search apps and modules</Dialog.Title>
+          <Dialog.Title className="sr-only">{t("searchAppsTitle")}</Dialog.Title>
           <div className="flex items-center gap-3 border-b px-4">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
               autoFocus
-              placeholder="Search apps, modules, pages…"
+              placeholder={t("searchApps")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -72,7 +80,7 @@ export function CommandPalette({
           </div>
           <ul className="max-h-80 overflow-y-auto p-2 scrollbar-thin">
             {filtered.length === 0 ? (
-              <li className="px-3 py-8 text-center text-sm text-muted-foreground">No results</li>
+              <li className="px-3 py-8 text-center text-sm text-muted-foreground">{t("noResults")}</li>
             ) : (
               filtered.map((app) => {
                 const Icon = app.icon;
@@ -87,8 +95,10 @@ export function CommandPalette({
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{app.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{app.description}</p>
+                        <p className="font-medium">{tNav(`apps.${app.id}.name`)}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {tNav(`apps.${app.id}.description`)}
+                        </p>
                       </div>
                       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
                     </button>
@@ -100,7 +110,7 @@ export function CommandPalette({
           <div className="flex items-center gap-2 border-t px-4 py-2.5 text-2xs text-muted-foreground">
             <Command className="h-3 w-3" />
             <span>
-              <kbd className="rounded border bg-muted px-1 py-0.5">⌘K</kbd> to open anywhere
+              <kbd className="rounded border bg-muted px-1 py-0.5">⌘K</kbd> {t("cmdKHint")}
             </span>
           </div>
         </Dialog.Content>

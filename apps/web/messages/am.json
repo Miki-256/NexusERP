@@ -152,7 +152,14 @@
     "offlineSalesSync": "ከመስመር ውጭ — ሽያጮች ሲገናኙ ይሰመራሉ",
     "syncingSales": "{count, plural, one {# ሽያጭ በመሰመር ላይ…} other {# ሽያጮች በመሰመር ላይ…}}",
     "salesWaitingSync": "{count, plural, one {# ሽያጭ ለመሰመር በመጠባበቅ} other {# ሽያጮች ለመሰመር በመጠባበቅ}}",
-    "salesFailedSync": "{count, plural, one {# ሽያጭ መሰመር አልተሳካም — እንደገና ለመሞከር ይንኩ} other {# ሽያጮች መሰመር አልተሳካም — እንደገና ለመሞከር ይንኩ}}"
+    "salesFailedSync": "{count, plural, one {# ሽያጭ መሰመር አልተሳካም — እየጸዳ ነው…} other {# ሽያጮች መሰመር አልተሳካም — እየጸዱ ነው…}}",
+    "salesFailedSyncHint": "በሌላ መሣሪያ የተጠናቀቁ ሽያጮች ከዚህ መሣሪያ ይጸዳሉ። በሽያጭ ዝርዝር ከጠፋ እንደገና ይሽጡ።",
+    "checkAlreadySynced": "ከዚህ በፊት ተሰምሯልን አረጋግጥ",
+    "showDetails": "ዝርዝር አሳይ",
+    "hideDetails": "ዝርዝር ደብቅ",
+    "removeFromThisDevice": "ከዚህ መሣሪያ አስወግድ",
+    "confirmDiscardOfflineSaleDevice": "ይህን ሽያጭ ከዚህ መሣሪያ የማሰመር ወረፋ ያስወግዱ? ሽያጩ አስቀድሞ በሽያጭ ዝርዝር ውስጥ ከታየ ብቻ (ለምሳሌ በሌላ መሣሪያ ከተሰመረ)። አዲስ ሽያጭ አይፈጥርም።",
+    "retry": "እንደገና ሞክር"
   },
   "dates": {
     "today": "ዛሬ",
@@ -998,7 +1005,7 @@
     "estimatedAbbrev": "ግምት",
     "discard": "አስወግድ",
     "retryAllFailed": "ያልተሳኩ ሁሉንም እንደገና ሞክር",
-    "confirmDiscardOfflineSale": "ይህን ከመስመር ውጭ ሽያጭ ከወረፋው ያስወግዱ? አይመሳሰልም።",
+    "confirmDiscardOfflineSale": "ይህን ከመስመር ውጭ ሽያጭ ከዚህ መሣሪያ ወረፋ ያስወግዱ? ሽያጩ አስቀድሞ በሽያጭ ዝርዝር ውስጥ ከታየ ብቻ (ለምሳሌ በሌላ መሣሪያ ከተሰመረ)። አዲስ ሽያጭ አይፈጥርም።",
     "printReceipt": "ደረሰኝ አትም",
     "escPosPrintFailed": "ESC/POS ህትመት አልተሳካም",
     "pendingSyncNote": "ማመሳሰል በመጠባበቅ ላይ — መስመር ሲገኝ ይዘምናል",

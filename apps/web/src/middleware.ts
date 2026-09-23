@@ -11,8 +11,9 @@ export const config = {
      * Skip middleware for:
      * - POS/register kiosk (no ERP session)
      * - Public API routes (health, webhooks, auth) — must not redirect to /login
+     * - PWA assets (manifest, service worker, offline shell, icons)
      * - Static assets
      */
-    "/((?!monitoring|_next/static|_next/image|favicon.ico|api/(?:dev|webhooks|health|auth|invite|v1|workspace|notifications/process)|pos(?:/|$)|register(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!monitoring|_next/static|_next/image|favicon.ico|sw\\.js|offline\\.html|pos-manifest\\.json|manifest\\.webmanifest|icons(?:/|$)|api/(?:dev|webhooks|health|auth|invite|v1|workspace|notifications/process)|pos(?:/|$)|register(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)",
   ],
 };

@@ -72,8 +72,15 @@ export function exceedsCashierDiscountLimit(
 }
 
 export type DiscountApplyRequest =
-  | { type: "line"; variantId: string; amount: number }
+  | { type: "line"; variantId: string; amount: number; uomCode?: string }
   | { type: "cart"; amount: number };
+
+function matchesLine(l: CartLine, variantId: string, uomCode?: string) {
+  return (
+    l.variantId === variantId &&
+    (l.uomCode || "ea").toLowerCase() === (uomCode || "ea").toLowerCase()
+  );
+}
 
 export function prepareDiscountApplication(
   request: DiscountApplyRequest,
@@ -86,13 +93,13 @@ export function prepareDiscountApplication(
   blocked: boolean;
 } {
   if (request.type === "line") {
-    const line = lines.find((l) => l.variantId === request.variantId);
+    const line = lines.find((l) => matchesLine(l, request.variantId, request.uomCode));
     if (!line) {
       return { lines, cartDiscount, blocked: false };
     }
     const amount = clampLineDiscount(line, request.amount);
     const nextLines = lines.map((l) =>
-      l.variantId === request.variantId ? { ...l, discountAmount: amount } : l
+      matchesLine(l, request.variantId, request.uomCode) ? { ...l, discountAmount: amount } : l
     );
     return {
       lines: nextLines,

@@ -152,7 +152,14 @@
     "offlineSalesSync": "Offline — sales will sync when connected",
     "syncingSales": "{count, plural, one {Syncing # sale…} other {Syncing # sales…}}",
     "salesWaitingSync": "{count, plural, one {# sale waiting to sync} other {# sales waiting to sync}}",
-    "salesFailedSync": "{count, plural, one {# sale failed to sync — tap to retry} other {# sales failed to sync — tap to retry}}"
+    "salesFailedSync": "{count, plural, one {# sale failed to sync — clearing…} other {# sales failed to sync — clearing…}}",
+    "salesFailedSyncHint": "Clearing sales already finished on another device. If a sale is missing under Sales, ring it up again.",
+    "checkAlreadySynced": "Check already synced",
+    "showDetails": "Show details",
+    "hideDetails": "Hide details",
+    "removeFromThisDevice": "Remove from this device",
+    "confirmDiscardOfflineSaleDevice": "Remove this sale from this device’s sync queue? Only do this if the sale already appears under Sales (for example after syncing on another device). It will not create a new sale.",
+    "retry": "Retry"
   },
   "dates": {
     "today": "Today",
@@ -999,7 +1006,7 @@
     "estimatedAbbrev": "est.",
     "discard": "Discard",
     "retryAllFailed": "Retry all failed",
-    "confirmDiscardOfflineSale": "Remove this offline sale from the queue? It will not sync.",
+    "confirmDiscardOfflineSale": "Remove this offline sale from this device’s queue? Only if it already appears under Sales (e.g. synced on another device). It will not create a new sale.",
     "printReceipt": "Print receipt",
     "escPosPrintFailed": "ESC/POS print failed",
     "pendingSyncNote": "Pending sync — will update when online",

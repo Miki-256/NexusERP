@@ -135,7 +135,7 @@ export function ReceivablesClient({
         description="Track buy-now-pay-later balances, collect payments, and manage credit limits."
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard label="Total owed" value={money(totalOwed)} icon={Clock} />
         <StatCard label="Customers with balance" value={receivables.filter((r) => Number(r.balance) > 0).length} icon={Users} />
         <StatCard label="Pay-later enabled" value={payLaterCustomers} icon={History} />

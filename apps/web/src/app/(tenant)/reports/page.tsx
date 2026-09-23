@@ -6,6 +6,7 @@ import { monthToDate } from "@/lib/finance-dates";
 import { bucketDailyTotals, groupByField } from "@/lib/finance-aggregates";
 import { relationName } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PAGE_SHELL } from "@/lib/ui-classes";
 
 async function ReportsContent({
   orgId,
@@ -36,7 +37,7 @@ async function ReportsContent({
     supabase
       .from("sales")
       .select(
-        `id, receipt_no, total, status, created_at, subtotal, tax_amount, discount_amount,
+        `id, receipt_no, total, status, created_at, subtotal, tax_amount, discount_amount, tip_amount,
          customer_name, customer_phone,
          stores(name),
          registers(name),
@@ -153,10 +154,10 @@ export default async function ReportsPage({
   return (
     <Suspense
       fallback={
-        <div className="space-y-6 p-6">
+        <div className={`${PAGE_SHELL} p-3 sm:p-4`}>
           <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-96 rounded-xl" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-48 rounded-xl" />
         </div>
       }
     >

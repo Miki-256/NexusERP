@@ -14,12 +14,27 @@ import { rateLimitDistributed } from "@/lib/rate-limit-distributed";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { resolveBootstrapDestination } from "@/lib/workspace-bootstrap";
 
+const isProdCookie =
+  process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+
 const ORG_COOKIE_OPTIONS = {
   path: "/",
   maxAge: 60 * 60 * 24 * 365,
   httpOnly: true,
+  secure: isProdCookie,
   sameSite: "lax" as const,
 };
+
+/** Stale access-block cache from a previous session must not survive a fresh login. */
+function clearAccessBlockCookie(response: NextResponse) {
+  response.cookies.set("nx_access_v1", "", {
+    path: "/",
+    maxAge: 0,
+    httpOnly: true,
+    secure: isProdCookie,
+    sameSite: "lax",
+  });
+}
 
 function requestIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -101,10 +116,20 @@ export async function POST(request: NextRequest) {
   const activeOrgId = request.cookies.get(ACTIVE_ORG_COOKIE)?.value ?? null;
   const destination = await resolveBootstrapDestination(supabase, activeOrgId);
 
+  const session = signIn.data.session;
   const response = NextResponse.json(
-    { ok: true, redirect: destination.path },
+    {
+      ok: true,
+      redirect: destination.path,
+      // Browser backup: client setSession() if Set-Cookie is dropped by the browser.
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+      expires_at: session.expires_at,
+    },
     { status: 200 }
   );
+  clearAccessBlockCookie(response);
   if (destination.orgCookie) {
     response.cookies.set(ACTIVE_ORG_COOKIE, destination.orgCookie, ORG_COOKIE_OPTIONS);
   }

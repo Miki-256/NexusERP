@@ -25,30 +25,37 @@ export type VariantOption = {
   products: { name: string } | { name: string }[] | null;
 };
 
+/** Cap BOM form variant selects — full dump caused ~15s loads on large catalogs (NX-AUDIT-008). */
+const VARIANT_SELECT_LIMIT = 200;
+
 export default async function ManufacturingPage() {
   const ctx = await requireAppAccess("manufacturing");
 
   const supabase = await createClient();
   const orgId = ctx.organization.id;
 
-  const [{ data: boms }, { data: mos }, { data: variants }, { data: stores }] = await Promise.all([
+  // Load BOM + MO + stores first; cap variants for form selects (defer full catalog).
+  const [{ data: boms }, { data: mos }, { data: stores }, { data: variants }] = await Promise.all([
     supabase
       .from("boms")
       .select("id, name, output_qty, is_active, product_variants(name, products(name))")
       .eq("organization_id", orgId)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .limit(200),
     supabase
       .from("manufacturing_orders")
       .select("id, status, quantity, scheduled_date, boms(name), stores(name)")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(100),
+    supabase.from("stores").select("id, name").eq("organization_id", orgId).order("name"),
     supabase
       .from("product_variants")
       .select("id, name, products(name)")
       .eq("organization_id", orgId)
-      .order("name"),
-    supabase.from("stores").select("id, name").eq("organization_id", orgId).order("name"),
+      .eq("is_active", true)
+      .order("name")
+      .limit(VARIANT_SELECT_LIMIT),
   ]);
 
   return (

@@ -227,7 +227,7 @@ export function FixedAssetsTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <StatCard label="Active assets" value={String(displayAssets.filter((a) => a.status === "active").length)} icon={Building} />
         <StatCard label="Total cost" value={money(totalCost)} icon={Building} />
         <StatCard label="Net book value" value={money(totalNbv)} sub={selectedBookId === "all" ? primaryBook?.name : undefined} icon={Building} />

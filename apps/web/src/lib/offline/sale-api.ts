@@ -3,6 +3,7 @@ import { enqueueSale } from "./queue";
 import { notifyOfflineChange } from "./events";
 import { isBrowserOnline, isNetworkError, withTimeout } from "./network";
 import { triggerNotificationProcess } from "@/lib/notifications/trigger-process";
+import { perfTime } from "@/lib/perf";
 import type { CompleteSalePayload } from "./types";
 
 export type CompleteSaleResult = {
@@ -107,9 +108,11 @@ export async function submitCompleteSale(
 
   const supabase = createClient();
   try {
-    const { data, error } = await withTimeout(
-      supabase.rpc("complete_sale", payloadToRpcArgs(payload)),
-      RPC_TIMEOUT_MS
+    const { data, error } = await perfTime("pos.complete_sale", () =>
+      withTimeout(
+        supabase.rpc("complete_sale", payloadToRpcArgs(payload)),
+        RPC_TIMEOUT_MS
+      )
     );
 
     if (error) {

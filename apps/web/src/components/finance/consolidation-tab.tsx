@@ -212,7 +212,7 @@ export function ConsolidationTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard label="Groups" value={String(groups.length)} icon={Layers} />
         <StatCard
           label="Consolidated revenue"
@@ -364,7 +364,7 @@ export function ConsolidationTab({
           </div>
           {icMatrix && (
             <div className="space-y-3 text-sm">
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
                 <StatCard label="IC receivable" value={money(icMatrix.total_ic_receivable)} />
                 <StatCard label="IC payable" value={money(icMatrix.total_ic_payable)} />
                 <StatCard label="Elimination" value={money(icMatrix.elimination_amount)} />

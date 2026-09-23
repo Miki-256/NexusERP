@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BarcodeScannerModal } from "@/components/pos/barcode-scanner-modal";
@@ -20,6 +21,7 @@ export function BarcodeCaptureField({
   onDuplicateFound?: (code: string) => void;
   inputId?: string;
 }) {
+  const t = useTranslations("products.barcodeCapture");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [wedgeHint, setWedgeHint] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -85,7 +87,7 @@ export function BarcodeCaptureField({
                 applyCode(value);
               }
             }}
-            placeholder="Scan or type barcode"
+            placeholder={t("placeholder")}
             className="pl-9 font-mono"
             autoComplete="off"
           />
@@ -95,14 +97,14 @@ export function BarcodeCaptureField({
           variant="outline"
           disabled={disabled}
           onClick={() => setScannerOpen(true)}
-          title="Scan with camera"
+          title={t("scanWithCamera")}
         >
           <Camera className="h-4 w-4" />
-          <span className="sr-only sm:not-sr-only sm:ml-2">Scan</span>
+          <span className="sr-only sm:not-sr-only sm:ml-2">{t("scan")}</span>
         </Button>
       </div>
       {wedgeHint && (
-        <p className="text-xs text-muted-foreground">USB scanner detected — scanning…</p>
+        <p className="text-xs text-muted-foreground">{t("usbScannerDetected")}</p>
       )}
       {scannerOpen && (
         <BarcodeScannerModal
@@ -113,7 +115,7 @@ export function BarcodeCaptureField({
               setScannerOpen(false);
               return { ok: true, label: code };
             }
-            return { ok: false, label: "Invalid barcode" };
+            return { ok: false, label: t("invalidBarcode") };
           }}
         />
       )}

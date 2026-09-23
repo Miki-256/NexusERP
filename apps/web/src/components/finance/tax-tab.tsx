@@ -362,7 +362,7 @@ export function TaxTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <StatCard label="Output tax" value={money(outputTax)} sub={`${from} → ${to}`} icon={Percent} />
         <StatCard label="Input tax" value={money(inputTax)} sub="Recoverable AP VAT" icon={Receipt} />
         <StatCard label="Net payable" value={money(netPayable)} sub="Output − input" icon={FileCheck} />

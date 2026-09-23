@@ -300,13 +300,12 @@ export function IntegrationsTab({
             description="Fallback accounts when pay components do not have component-level GL codes."
           >
             <DataTable>
+              <table className="w-full">
               <DataTableHeader>
-                <DataTableRow>
                   <DataTableHead>Mapping</DataTableHead>
                   <DataTableHead>Description</DataTableHead>
                   <DataTableHead>GL code</DataTableHead>
                   <DataTableHead className="w-24">&nbsp;</DataTableHead>
-                </DataTableRow>
               </DataTableHeader>
               <DataTableBody>
                 {glMappings.length === 0 ? (
@@ -341,6 +340,7 @@ export function IntegrationsTab({
                   ))
                 )}
               </DataTableBody>
+            </table>
             </DataTable>
           </FormCard>
 
@@ -349,14 +349,13 @@ export function IntegrationsTab({
             description="When set, posted payroll uses component-level journal lines instead of summary accounts."
           >
             <DataTable>
+              <table className="w-full">
               <DataTableHeader>
-                <DataTableRow>
                   <DataTableHead>Code</DataTableHead>
                   <DataTableHead>Name</DataTableHead>
                   <DataTableHead>Type</DataTableHead>
                   <DataTableHead>GL code</DataTableHead>
                   <DataTableHead className="w-24">&nbsp;</DataTableHead>
-                </DataTableRow>
               </DataTableHeader>
               <DataTableBody>
                 {payComponents.length === 0 ? (
@@ -393,6 +392,7 @@ export function IntegrationsTab({
                   ))
                 )}
               </DataTableBody>
+            </table>
             </DataTable>
           </FormCard>
         </div>
@@ -464,14 +464,13 @@ export function IntegrationsTab({
 
           <FormCard title="Endpoints" description={`${webhookEndpoints.length} configured`}>
             <DataTable>
+              <table className="w-full">
               <DataTableHeader>
-                <DataTableRow>
                   <DataTableHead>Name</DataTableHead>
                   <DataTableHead>URL</DataTableHead>
                   <DataTableHead>Events</DataTableHead>
                   <DataTableHead>Status</DataTableHead>
                   <DataTableHead className="w-32">&nbsp;</DataTableHead>
-                </DataTableRow>
               </DataTableHeader>
               <DataTableBody>
                 {webhookEndpoints.length === 0 ? (
@@ -517,6 +516,7 @@ export function IntegrationsTab({
                   ))
                 )}
               </DataTableBody>
+            </table>
             </DataTable>
           </FormCard>
 
@@ -525,14 +525,13 @@ export function IntegrationsTab({
             description={`${webhookDeliveryTotal} total · processed by scheduled cron`}
           >
             <DataTable>
+              <table className="w-full">
               <DataTableHeader>
-                <DataTableRow>
                   <DataTableHead>Event</DataTableHead>
                   <DataTableHead>Endpoint</DataTableHead>
                   <DataTableHead>Status</DataTableHead>
                   <DataTableHead>Attempts</DataTableHead>
                   <DataTableHead>Time</DataTableHead>
-                </DataTableRow>
               </DataTableHeader>
               <DataTableBody>
                 {webhookDeliveries.length === 0 ? (
@@ -558,6 +557,7 @@ export function IntegrationsTab({
                   ))
                 )}
               </DataTableBody>
+            </table>
             </DataTable>
           </FormCard>
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 
 type ConfirmDeleteButtonProps = {
@@ -14,13 +15,14 @@ type ConfirmDeleteButtonProps = {
 };
 
 export function ConfirmDeleteButton({
-  label = "Delete",
-  confirmLabel = "Confirm",
-  message = "This cannot be undone.",
+  label,
+  confirmLabel,
+  message,
   onConfirm,
   disabled,
   size = "sm",
 }: ConfirmDeleteButtonProps) {
+  const t = useTranslations("common");
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -37,7 +39,9 @@ export function ConfirmDeleteButton({
   if (confirming) {
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <span className="max-w-[12rem] text-right text-xs text-muted-foreground">{message}</span>
+        <span className="max-w-[12rem] text-right text-xs text-muted-foreground">
+          {message ?? t("cannotBeUndone")}
+        </span>
         <Button
           type="button"
           size={size}
@@ -46,7 +50,7 @@ export function ConfirmDeleteButton({
           className="cursor-pointer"
           onClick={handleConfirm}
         >
-          {loading ? "Deleting…" : confirmLabel}
+          {loading ? t("deleting") : (confirmLabel ?? t("confirm"))}
         </Button>
         <Button
           type="button"
@@ -56,7 +60,7 @@ export function ConfirmDeleteButton({
           className="cursor-pointer"
           onClick={() => setConfirming(false)}
         >
-          Cancel
+          {t("cancel")}
         </Button>
       </div>
     );
@@ -72,7 +76,7 @@ export function ConfirmDeleteButton({
       onClick={() => setConfirming(true)}
     >
       <Trash2 className="h-3.5 w-3.5" />
-      {label}
+      {label ?? t("delete")}
     </Button>
   );
 }

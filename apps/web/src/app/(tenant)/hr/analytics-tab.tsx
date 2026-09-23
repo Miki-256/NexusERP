@@ -106,7 +106,7 @@ export function AnalyticsTab({
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard label="Active headcount" value={s.active_headcount} sub={`${s.on_leave} on leave`} icon={Users} />
         <StatCard
           label="New hires"
@@ -130,7 +130,7 @@ export function AnalyticsTab({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard
           label="Absence rate"
           value={`${s.absence_rate_pct}%`}

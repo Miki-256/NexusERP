@@ -5,10 +5,10 @@ import { cn } from "@/lib/utils";
 import {
   AREA_TABS,
   FINANCIAL_SHELL_AREAS,
-  TAB_LABELS,
   type FinancialShellAreaId,
   type FinancialShellTab,
 } from "@/lib/finance/financial-shell-config";
+import { useTranslations } from "next-intl";
 
 export function FinancialShellNav({
   area,
@@ -23,12 +23,13 @@ export function FinancialShellNav({
   onTabChange: (tab: FinancialShellTab) => void;
   tabCounts?: Partial<Record<FinancialShellTab, number>>;
 }) {
-  const areaTabs = AREA_TABS[area].filter((t) => t !== "home");
+  const t = useTranslations("finance");
+  const areaTabs = AREA_TABS[area].filter((tKey) => tKey !== "home");
 
   return (
-    <div className="space-y-3">
+    <div className="sticky top-0 z-10 space-y-2 bg-background/95 py-1 backdrop-blur-sm">
       <div
-        className="flex gap-1 overflow-x-auto rounded-lg border bg-muted/30 p-1"
+        className="flex gap-1 overflow-x-auto rounded-md border bg-muted/30 p-0.5 scrollbar-thin"
         role="tablist"
         aria-label="Financial areas"
       >
@@ -40,14 +41,14 @@ export function FinancialShellNav({
             aria-selected={area === a.id}
             onClick={() => onAreaChange(a.id)}
             className={cn(
-              "fiori-area-pill shrink-0 cursor-pointer rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
+              "fiori-area-pill shrink-0 cursor-pointer rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors duration-150 lg:px-2.5 lg:py-1.5",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               area === a.id
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
             )}
           >
-            {a.label}
+            {t(`areas.${a.id}`)}
           </button>
         ))}
       </div>
@@ -56,7 +57,7 @@ export function FinancialShellNav({
         <TabBar
           tabs={areaTabs.map((key) => ({
             key,
-            label: TAB_LABELS[key],
+            label: t(`tabs.${key}`),
             count: tabCounts?.[key],
           }))}
           value={tab}
@@ -75,12 +76,14 @@ export function FinancialShellBreadcrumb({
   area: FinancialShellAreaId;
   tab: FinancialShellTab;
 }) {
-  const areaLabel = FINANCIAL_SHELL_AREAS.find((a) => a.id === area)?.label ?? "Financials";
-  const tabLabel = tab === "home" ? "Launchpad" : TAB_LABELS[tab];
+  const t = useTranslations("finance");
+  const tNav = useTranslations("nav");
+  const areaLabel = t(`areas.${area}`);
+  const tabLabel = tab === "home" ? t("tabs.home") : t(`tabs.${tab}`);
 
   return (
     <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-      Financials · {areaLabel} · {tabLabel}
+      {tNav("apps.accounting.name")} · {areaLabel} · {tabLabel}
     </p>
   );
 }

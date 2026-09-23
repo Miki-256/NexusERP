@@ -7,7 +7,7 @@ import {
   FinanceBarChart,
   FinanceDonutChart,
   TrendAreaChart,
-} from "@/components/charts/finance-charts";
+} from "@/components/charts/finance-charts-lazy";
 import { CommunicationsSubNav } from "../communications-sub-nav";
 import type { NotificationCenterAnalytics } from "@/lib/notifications/types";
 import { AlertTriangle, CheckCircle2, Send } from "lucide-react";
@@ -38,7 +38,7 @@ export function AnalyticsClient({ analytics }: { analytics: NotificationCenterAn
       />
       <CommunicationsSubNav active="/communications/analytics" />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard
           label="Total sent"
           value={String(analytics.summary.total_sent)}

@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { formatCurrency } from "@/lib/utils";
 import {
   ChartCard,
   FinanceBarChart,
   FinanceDonutChart,
   TrendAreaChart,
-} from "@/components/charts/finance-charts";
+} from "@/components/charts/finance-charts-lazy";
 import type { SalesAnalytics } from "@/lib/sales-register";
 
 export function SalesAnalyticsPanel({
@@ -17,6 +18,7 @@ export function SalesAnalyticsPanel({
   analytics: SalesAnalytics;
   currency: string;
 }) {
+  const t = useTranslations("sales.analyticsPanel");
   const money = (n: number) => formatCurrency(n, currency);
 
   const dailyTrend = useMemo(
@@ -50,55 +52,55 @@ export function SalesAnalyticsPanel({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Avg ticket</p>
+          <p className="text-xs font-medium text-muted-foreground">{t("avgTicket")}</p>
           <p className="mt-1 font-heading text-xl font-bold tabular-nums">{money(analytics.kpis.avg_ticket)}</p>
         </div>
         <div className="rounded-xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Discount rate</p>
+          <p className="text-xs font-medium text-muted-foreground">{t("discountRate")}</p>
           <p className="mt-1 font-heading text-xl font-bold tabular-nums">{analytics.kpis.discount_rate_pct}%</p>
         </div>
         <div className="rounded-xl border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">Void rate</p>
+          <p className="text-xs font-medium text-muted-foreground">{t("voidRate")}</p>
           <p className="mt-1 font-heading text-xl font-bold tabular-nums">{analytics.kpis.void_rate_pct}%</p>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard title="Revenue trend" subtitle="Daily completed sales">
+        <ChartCard title={t("revenueTrend")} subtitle={t("dailyCompleted")}>
           {dailyTrend.length > 0 ? (
-            <TrendAreaChart data={dailyTrend} formatValue={money} height={220} />
+            <TrendAreaChart data={dailyTrend} formatValue={money} height={180} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No data for this period.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noData")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Hour of day" subtitle="When sales happen">
+        <ChartCard title={t("hourOfDay")} subtitle={t("whenSalesHappen")}>
           {hourly.some((h) => h.value > 0) ? (
-            <FinanceBarChart data={hourly} formatValue={money} height={220} />
+            <FinanceBarChart data={hourly} formatValue={money} height={180} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No hourly data.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noHourly")}</p>
           )}
         </ChartCard>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <ChartCard title="By store" subtitle="Revenue share">
+        <ChartCard title={t("byStore")} subtitle={t("revenueShare")}>
           {analytics.by_store.length > 0 ? (
             <FinanceDonutChart data={analytics.by_store} formatValue={money} />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No store data.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noStore")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Top products" subtitle="By revenue">
+        <ChartCard title={t("topProducts")} subtitle={t("byRevenue")}>
           {topProducts.length > 0 ? (
-            <FinanceBarChart data={topProducts} formatValue={money} height={240} layout="vertical" />
+            <FinanceBarChart data={topProducts} formatValue={money} height={180} layout="vertical" />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No product data.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noProduct")}</p>
           )}
         </ChartCard>
-        <ChartCard title="Top cashiers" subtitle="By revenue">
+        <ChartCard title={t("topCashiers")} subtitle={t("byRevenue")}>
           {analytics.top_staff.length > 0 ? (
             <ul className="divide-y rounded-lg border">
               {analytics.top_staff.map((s) => (
@@ -111,7 +113,7 @@ export function SalesAnalyticsPanel({
               ))}
             </ul>
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No staff data.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("noStaff")}</p>
           )}
         </ChartCard>
       </div>

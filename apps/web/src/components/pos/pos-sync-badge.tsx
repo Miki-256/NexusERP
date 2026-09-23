@@ -1,11 +1,13 @@
 "use client";
 
 import { CloudOff, CloudUpload, Loader2, RefreshCw, WifiOff } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useOfflineOptional } from "@/components/offline/offline-provider";
 import { cn } from "@/lib/utils";
 
 /** Compact sync status for the POS header. */
 export function PosSyncBadge({ onOpenQueue }: { onOpenQueue?: () => void }) {
+  const t = useTranslations("pos");
   const offline = useOfflineOptional();
   if (!offline) return null;
 
@@ -20,10 +22,10 @@ export function PosSyncBadge({ onOpenQueue }: { onOpenQueue?: () => void }) {
         type="button"
         onClick={onOpenQueue}
         className="flex items-center gap-1.5 rounded-lg bg-amber-400/20 px-2.5 py-1 text-[11px] font-semibold text-amber-100"
-        title="Offline — sales queue locally"
+        title={t("offlineSalesQueueLocally")}
       >
         <WifiOff className="h-3.5 w-3.5" />
-        Offline
+        {t("offline")}
       </button>
     );
   }
@@ -32,7 +34,7 @@ export function PosSyncBadge({ onOpenQueue }: { onOpenQueue?: () => void }) {
     return (
       <span className="flex items-center gap-1.5 rounded-lg bg-sky-400/20 px-2.5 py-1 text-[11px] font-semibold text-sky-100">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Syncing {pendingCount}
+        {t("syncingCount", { count: pendingCount })}
       </span>
     );
   }
@@ -51,7 +53,7 @@ export function PosSyncBadge({ onOpenQueue }: { onOpenQueue?: () => void }) {
         )}
       >
         <CloudOff className="h-3.5 w-3.5" />
-        {failedCount} failed
+        {t("failedCountBadge", { count: failedCount })}
         <RefreshCw className="h-3 w-3 opacity-70" />
       </button>
     );
@@ -67,7 +69,7 @@ export function PosSyncBadge({ onOpenQueue }: { onOpenQueue?: () => void }) {
       )}
     >
       <CloudUpload className="h-3.5 w-3.5" />
-      {pendingCount} pending
+      {t("pendingCountBadge", { count: pendingCount })}
       <RefreshCw className="h-3 w-3 opacity-70" />
     </button>
   );

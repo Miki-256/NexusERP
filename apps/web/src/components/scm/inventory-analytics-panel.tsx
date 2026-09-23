@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import {
   DataTableHeader,
   DataTableRow,
 } from "@/components/layout/data-table";
-import { ChartCard, FinanceBarChart } from "@/components/charts/finance-charts";
+import { ChartCard, FinanceBarChart } from "@/components/charts/finance-charts-lazy";
 import { formatCurrency } from "@/lib/utils";
 import type {
   AbcAnalysisRow,
@@ -39,6 +40,7 @@ export function InventoryAnalyticsPanel({
   currency: string;
   canManage: boolean;
 }) {
+  const t = useTranslations("inventory");
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<ScmDashboardStats | null>(null);
@@ -62,7 +64,11 @@ export function InventoryAnalyticsPanel({
     ]);
 
     if (statsRes.error) {
-      toast({ title: "Analytics unavailable", description: statsRes.error.message, variant: "destructive" });
+      toast({
+        title: t("analytics.toast.unavailable"),
+        description: statsRes.error.message,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -89,11 +95,14 @@ export function InventoryAnalyticsPanel({
     });
     setLoading(false);
     if (error) {
-      toast({ title: "Forecast failed", description: error.message, variant: "destructive" });
+      toast({ title: t("analytics.toast.forecastFailed"), description: error.message, variant: "destructive" });
       return;
     }
     const result = (data ?? {}) as { line_count?: number };
-    toast({ title: "Forecast complete", description: `${result.line_count ?? 0} SKU(s) projected.` });
+    toast({
+      title: t("analytics.toast.forecastComplete"),
+      description: t("analytics.toast.forecastCompleteDesc", { count: result.line_count ?? 0 }),
+    });
     void loadAll();
   }
 
@@ -107,10 +116,13 @@ export function InventoryAnalyticsPanel({
     });
     setLoading(false);
     if (error) {
-      toast({ title: "Snapshot failed", description: error.message, variant: "destructive" });
+      toast({ title: t("analytics.toast.snapshotFailed"), description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Snapshot saved", description: `${data ?? 0} SKU(s) recorded.` });
+    toast({
+      title: t("analytics.toast.snapshotSaved"),
+      description: t("analytics.toast.snapshotSavedDesc", { count: (data as number | null) ?? 0 }),
+    });
   }
 
   async function addChannel(e: React.FormEvent) {
@@ -124,11 +136,11 @@ export function InventoryAnalyticsPanel({
       p_store_id: storeId || null,
     });
     if (error) {
-      toast({ title: "Could not add channel", description: error.message, variant: "destructive" });
+      toast({ title: t("analytics.toast.addChannelFailed"), description: error.message, variant: "destructive" });
       return;
     }
     setChannelName("");
-    toast({ title: "Channel added" });
+    toast({ title: t("analytics.toast.channelAdded") });
     void loadAll();
   }
 
@@ -139,13 +151,16 @@ export function InventoryAnalyticsPanel({
     const { data, error } = await supabase.rpc("sync_ecommerce_inventory", { p_channel_id: channelId });
     setLoading(false);
     if (error) {
-      toast({ title: "Sync failed", description: error.message, variant: "destructive" });
+      toast({ title: t("analytics.toast.syncFailed"), description: error.message, variant: "destructive" });
       return;
     }
     const result = (data ?? {}) as { items_synced?: number; note?: string };
     toast({
-      title: "Inventory export ready",
-      description: `${result.items_synced ?? 0} item(s). ${result.note ?? ""}`,
+      title: t("analytics.toast.exportReady"),
+      description: t("analytics.toast.exportReadyDesc", {
+        count: result.items_synced ?? 0,
+        note: result.note ?? "",
+      }),
     });
     void loadAll();
   }
@@ -153,10 +168,10 @@ export function InventoryAnalyticsPanel({
   if (!loaded) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">Load SCM analytics for the selected store.</p>
+        <p className="text-sm text-muted-foreground">{t("analytics.loadPrompt")}</p>
         <Button onClick={() => void loadAll()}>
           <BarChart3 className="mr-2 h-4 w-4" />
-          Load analytics
+          {t("analytics.loadAnalytics")}
         </Button>
       </div>
     );
@@ -172,51 +187,63 @@ export function InventoryAnalyticsPanel({
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => void loadAll()}>
           <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
+          {t("analytics.refresh")}
         </Button>
         {canManage && (
           <>
             <Button variant="outline" size="sm" onClick={() => void captureSnapshot()} disabled={loading || !storeId}>
-              Save daily snapshot
+              {t("analytics.saveSnapshot")}
             </Button>
             <Button size="sm" onClick={() => void runForecast()} disabled={loading}>
               <TrendingUp className="mr-2 h-4 w-4" />
-              Run forecast
+              {t("analytics.runForecast")}
             </Button>
           </>
         )}
       </div>
 
       {stats && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <StatCard label="SKUs on hand" value={String(stats.total_skus)} sub={`${stats.total_units} units`} />
-          <StatCard label="Inventory value" value={money(stats.total_value)} sub={`Valuation: ${money(valuationTotal)}`} />
-          <StatCard label="Low stock" value={String(stats.low_stock_count)} sub={`${stats.dead_stock_count} dead SKUs (90d)`} />
-          <StatCard label="Open fulfillments" value={String(stats.open_fulfillment_orders)} />
-          <StatCard label="Movements today" value={String(stats.movements_today)} />
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-3">
+          <StatCard
+            label={t("analytics.skusOnHand")}
+            value={String(stats.total_skus)}
+            sub={t("analytics.units", { count: stats.total_units })}
+          />
+          <StatCard
+            label={t("analytics.inventoryValue")}
+            value={money(stats.total_value)}
+            sub={t("analytics.valuation", { amount: money(valuationTotal) })}
+          />
+          <StatCard
+            label={t("analytics.lowStock")}
+            value={String(stats.low_stock_count)}
+            sub={t("analytics.deadSkus", { count: stats.dead_stock_count })}
+          />
+          <StatCard label={t("analytics.openFulfillments")} value={String(stats.open_fulfillment_orders)} />
+          <StatCard label={t("analytics.movementsToday")} value={String(stats.movements_today)} />
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard title="ABC analysis (top revenue)" subtitle="Last 90 days sales">
+        <ChartCard title={t("analytics.abcTitle")} subtitle={t("analytics.abcSubtitle")}>
           {abcChart.length > 0 ? (
             <FinanceBarChart data={abcChart} height={260} formatValue={(v) => money(v)} layout="vertical" />
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">No sales data for ABC.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("analytics.noAbcSales")}</p>
           )}
         </ChartCard>
 
-        <FormCard title="ABC classes">
+        <FormCard title={t("analytics.abcClasses")}>
           <DataTable>
             <table className="w-full">
               <DataTableHeader>
-                <DataTableHead>Product</DataTableHead>
-                <DataTableHead>Class</DataTableHead>
-                <DataTableHead align="right">Revenue</DataTableHead>
+                <DataTableHead>{t("analytics.product")}</DataTableHead>
+                <DataTableHead>{t("analytics.class")}</DataTableHead>
+                <DataTableHead align="right">{t("analytics.revenue")}</DataTableHead>
               </DataTableHeader>
               <DataTableBody>
                 {abc.length === 0 ? (
-                  <DataTableEmpty colSpan={3} message="No ABC data." />
+                  <DataTableEmpty colSpan={3} message={t("analytics.noAbcData")} />
                 ) : (
                   abc.slice(0, 15).map((row) => (
                     <DataTableRow key={row.variant_id}>
@@ -232,20 +259,20 @@ export function InventoryAnalyticsPanel({
         </FormCard>
       </div>
 
-      <FormCard title="Demand forecast (30-day projection)">
+      <FormCard title={t("analytics.forecastTitle")}>
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableHead>Product</DataTableHead>
-              <DataTableHead>Class</DataTableHead>
-              <DataTableHead align="right">On hand</DataTableHead>
-              <DataTableHead align="right">Avg/day</DataTableHead>
-              <DataTableHead align="right">Forecast</DataTableHead>
-              <DataTableHead align="right">Days supply</DataTableHead>
+              <DataTableHead>{t("analytics.product")}</DataTableHead>
+              <DataTableHead>{t("analytics.class")}</DataTableHead>
+              <DataTableHead align="right">{t("analytics.onHand")}</DataTableHead>
+              <DataTableHead align="right">{t("analytics.avgPerDay")}</DataTableHead>
+              <DataTableHead align="right">{t("analytics.forecast")}</DataTableHead>
+              <DataTableHead align="right">{t("analytics.daysSupply")}</DataTableHead>
             </DataTableHeader>
             <DataTableBody>
               {forecast.length === 0 ? (
-                <DataTableEmpty colSpan={6} message="Run forecast to see projections." />
+                <DataTableEmpty colSpan={6} message={t("analytics.noForecast")} />
               ) : (
                 forecast.slice(0, 20).map((row) => (
                   <DataTableRow key={row.id}>
@@ -264,35 +291,39 @@ export function InventoryAnalyticsPanel({
       </FormCard>
 
       {canManage && (
-        <FormCard title="E-commerce inventory sync">
-          <p className="mb-4 text-sm text-muted-foreground">
-            Connect a storefront channel and export available quantities. API integrations for Shopify/WooCommerce use the prepared payload.
-          </p>
+        <FormCard title={t("analytics.ecommerceTitle")}>
+          <p className="mb-4 text-sm text-muted-foreground">{t("analytics.ecommerceHelp")}</p>
           <form onSubmit={addChannel} className="mb-4 flex flex-wrap items-end gap-3">
             <div className="space-y-2 min-w-[200px]">
-              <Label>Channel name</Label>
-              <Input value={channelName} onChange={(e) => setChannelName(e.target.value)} placeholder="Online store" />
+              <Label>{t("analytics.channelName")}</Label>
+              <Input
+                value={channelName}
+                onChange={(e) => setChannelName(e.target.value)}
+                placeholder={t("analytics.channelPlaceholder")}
+              />
             </div>
             <Button type="submit" disabled={!channelName.trim()}>
-              Add channel
+              {t("analytics.addChannel")}
             </Button>
           </form>
           <div className="space-y-2">
             {channels.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No channels configured.</p>
+              <p className="text-sm text-muted-foreground">{t("analytics.noChannels")}</p>
             ) : (
               channels.map((ch) => (
                 <div key={ch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
                   <div>
                     <p className="font-medium">{ch.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {ch.channel_type} · {ch.mapping_count} mapping(s)
-                      {ch.last_sync_at ? ` · Last sync ${new Date(ch.last_sync_at).toLocaleString()}` : ""}
+                      {t("analytics.channelMeta", { type: ch.channel_type, count: ch.mapping_count })}
+                      {ch.last_sync_at
+                        ? ` · ${t("analytics.lastSync", { when: new Date(ch.last_sync_at).toLocaleString() })}`
+                        : ""}
                     </p>
                   </div>
                   <Button size="sm" variant="outline" disabled={loading} onClick={() => void syncChannel(ch.id)}>
                     <CloudUpload className="mr-2 h-4 w-4" />
-                    Export inventory
+                    {t("analytics.exportInventory")}
                   </Button>
                 </div>
               ))

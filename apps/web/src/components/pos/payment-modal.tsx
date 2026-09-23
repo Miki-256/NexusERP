@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { CartLine } from "@/stores/cart-store";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
@@ -43,11 +44,11 @@ import {
 import { usePosModal } from "./use-pos-modal";
 
 const PROVIDERS = [
-  { value: "telebirr", label: "Telebirr" },
-  { value: "mpesa", label: "M-Pesa" },
-  { value: "cbe_birr", label: "CBE Birr" },
-  { value: "m_pesa", label: "M-Pesa (alt)" },
-  { value: "other", label: "Other" },
+  { value: "telebirr", labelKey: "providerTelebirr" as const },
+  { value: "mpesa", labelKey: "providerMpesa" as const },
+  { value: "cbe_birr", labelKey: "providerCbeBirr" as const },
+  { value: "m_pesa", labelKey: "providerMpesaAlt" as const },
+  { value: "other", labelKey: "providerOther" as const },
 ] as const;
 
 type PaymentRow = {
@@ -62,19 +63,19 @@ type PaymentRow = {
 };
 
 const STANDARD_METHODS = [
-  { id: "cash" as const, label: "Cash", icon: Banknote, desc: "Physical currency" },
-  { id: "mobile_money" as const, label: "Mobile Money", icon: Smartphone, desc: "Telebirr, M-Pesa…" },
-  { id: "bank_transfer" as const, label: "Bank Transfer", icon: Building2, desc: "Wire / transfer" },
+  { id: "cash" as const, labelKey: "cash" as const, descKey: "cashDesc" as const, icon: Banknote },
+  { id: "mobile_money" as const, labelKey: "mobileMoney" as const, descKey: "mobileMoneyDesc" as const, icon: Smartphone },
+  { id: "bank_transfer" as const, labelKey: "bankTransfer" as const, descKey: "bankTransferDesc" as const, icon: Building2 },
 ];
 
 const CUSTOMER_METHODS = [
-  { id: "store_credit" as const, label: "Store Credit", icon: Gift, desc: "Prepaid balance" },
-  { id: "on_account" as const, label: "Pay Later", icon: Clock, desc: "Buy now, pay later" },
+  { id: "store_credit" as const, labelKey: "storeCredit" as const, descKey: "storeCreditDesc" as const, icon: Gift },
+  { id: "on_account" as const, labelKey: "payLater" as const, descKey: "payLaterDesc" as const, icon: Clock },
 ] as const;
 
 const ALT_METHODS = [
-  { id: "gift_card" as const, label: "Gift Card", icon: Ticket, desc: "Card code" },
-  { id: "loyalty" as const, label: "Loyalty", icon: Heart, desc: "Redeem points" },
+  { id: "gift_card" as const, labelKey: "giftCard" as const, descKey: "giftCardDesc" as const, icon: Ticket },
+  { id: "loyalty" as const, labelKey: "loyalty" as const, descKey: "loyaltyDesc" as const, icon: Heart },
 ] as const;
 
 type PaymentMethodId =
@@ -90,17 +91,18 @@ function methodSupportsOverpayTip(method: PaymentMethodId): boolean {
   return method === "cash" || method === "mobile_money" || method === "bank_transfer";
 }
 
-/** Cash / mobile / bank: amount received + change given → tip when tips enabled and not split. */
+/** Cash / mobile / bank: amount received + change given (tip only when tips enabled). */
 function usesReceivedChangeUi(
   method: PaymentMethodId,
-  tipsEnabled: boolean,
   paymentCount: number
 ): boolean {
-  return tipsEnabled && paymentCount === 0 && methodSupportsOverpayTip(method);
+  // Always use received + change for cash (never the legacy "Cash tendered" UI).
+  if (method === "cash") return true;
+  return paymentCount === 0 && methodSupportsOverpayTip(method);
 }
 
-function receivedLabel(method: PaymentMethodId): string {
-  return method === "cash" ? "Cash received" : "Amount received";
+function receivedLabelKey(method: PaymentMethodId): "cashReceived" | "amountReceived" {
+  return method === "cash" ? "cashReceived" : "amountReceived";
 }
 
 /** Tip from explicit presets plus any payment above the merchandise total. */
@@ -205,6 +207,8 @@ export function PaymentModal({
   posStaffId?: string;
   managerDiscountPin?: string | null;
 }) {
+  const t = useTranslations("pos");
+  const tCommon = useTranslations("common");
   const [method, setMethod] = useState<PaymentMethodId>(() => {
     const saved = getDefaultPaymentMethod(registerId);
     if (saved === "store_credit" || saved === "on_account") return "cash";
@@ -219,14 +223,17 @@ export function PaymentModal({
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showOrderSummary, setShowOrderSummary] = useState(true);
+  const [showOrderSummary, setShowOrderSummary] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   const [showSplitPay, setShowSplitPay] = useState(false);
   const [tipAmount, setTipAmount] = useState(0);
   const [customTipInput, setCustomTipInput] = useState("");
   const [activeTipPct, setActiveTipPct] = useState<number | null>(null);
   const [changeGivenInput, setChangeGivenInput] = useState("");
   const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("");
-  const [giftCardHint, setGiftCardHint] = useState<string | null>(null);
+  const [giftCardHint, setGiftCardHint] = useState<{ ok: boolean; text: string } | null>(null);
   const [arifpayEnabled, setArifpayEnabled] = useState(false);
   const [arifpayBusy, setArifpayBusy] = useState(false);
   const [arifpayHint, setArifpayHint] = useState<string | null>(null);
@@ -235,7 +242,7 @@ export function PaymentModal({
 
   const cashReceivedNum = parseFloat(cashTendered);
   const cashChangeNum = parseFloat(changeGivenInput);
-  const receivedChangeUi = usesReceivedChangeUi(method, tipsEnabled, payments.length);
+  const receivedChangeUi = usesReceivedChangeUi(method, payments.length);
   const autoTipFromReceived = useMemo(() => {
     if (
       !tipsEnabled ||
@@ -373,18 +380,18 @@ export function PaymentModal({
     setArifpayHint(null);
     setError(null);
     if (checkoutOffline) {
-      setError("Telebirr push requires an internet connection");
+      setError(t("errTelebirrNeedsInternet"));
       return;
     }
     const payAmount = receivedChangeUi
       ? displayPayTotal
       : parseFloat(amount) || remaining || payTotal;
     if (!(payAmount > 0)) {
-      setError("Enter a valid payment amount first");
+      setError(t("errEnterValidPaymentAmount"));
       return;
     }
     if (!phone.trim()) {
-      setError("Customer phone is required for Telebirr");
+      setError(t("errTelebirrPhoneRequired"));
       return;
     }
 
@@ -410,7 +417,7 @@ export function PaymentModal({
         directPayError?: string | null;
       };
       if (!res.ok) {
-        setError(data.error ?? "Could not start Telebirr payment");
+        setError(data.error ?? t("errTelebirrStartFailed"));
         return;
       }
       if (data.reference) setReference(data.reference);
@@ -418,14 +425,14 @@ export function PaymentModal({
       setArifpayHint(
         [
           data.message,
-          data.directPayError ? `Push note: ${data.directPayError}` : null,
-          data.sessionId ? `Session: ${data.sessionId}` : null,
+          data.directPayError ? t("pushNote", { note: data.directPayError }) : null,
+          data.sessionId ? t("sessionLabel", { id: data.sessionId }) : null,
         ]
           .filter(Boolean)
           .join(" ")
       );
     } catch {
-      setError("Could not reach Arifpay");
+      setError(t("errArifpayUnreachable"));
     } finally {
       setArifpayBusy(false);
     }
@@ -433,7 +440,8 @@ export function PaymentModal({
 
   function fillExactReceived() {
     if (receivedChangeUi) {
-      setCashTendered(String(total));
+      const due = payments.length === 0 ? total : remaining;
+      setCashTendered(String(due));
       setChangeGivenInput("0");
       setError(null);
       return;
@@ -446,46 +454,50 @@ export function PaymentModal({
 
   function buildCashPaymentFromInputs(): PaymentRow | null {
     const received = parseFloat(cashTendered);
-    const change = parseFloat(changeGivenInput) || 0;
     if (!Number.isFinite(received)) return null;
 
-    if (tipsEnabled && payments.length === 0) {
-      if (changeGivenInput.trim() === "" || !Number.isFinite(change)) return null;
-      if (received < change + total - 0.01) return null;
-      const tip = Math.max(0, roundMoney(received - change - total));
-      const saleTotal = total + tip;
-      return {
-        method: "cash",
-        amount: saleTotal,
-        cashTendered: received,
-        changeGiven: change,
-      };
+    const merchandiseDue = payments.length === 0 ? total : remaining;
+    let change: number;
+    if (changeGivenInput.trim() === "") {
+      // Tips orgs require an explicit change amount; otherwise default change to overpay.
+      if (tipsEnabled && payments.length === 0) return null;
+      change = Math.max(0, roundMoney(received - merchandiseDue));
+    } else {
+      change = parseFloat(changeGivenInput);
+      if (!Number.isFinite(change)) return null;
     }
-
-    const due = parseFloat(amount) || remaining || payTotal;
-    const tendered = received || due;
+    if (received < change + merchandiseDue - 0.01) return null;
+    const tip =
+      tipsEnabled && payments.length === 0
+        ? Math.max(0, roundMoney(received - change - total))
+        : 0;
     return {
       method: "cash",
-      amount: due,
-      cashTendered: tendered,
-      changeGiven: Math.max(0, tendered - due),
+      amount: merchandiseDue + tip,
+      cashTendered: received,
+      changeGiven: change,
     };
   }
 
   function buildMobilePaymentFromInputs(): PaymentRow | null {
     if (!reference.trim()) return null;
 
-    if (tipsEnabled && payments.length === 0) {
+    if (payments.length === 0) {
       const received = parseFloat(cashTendered);
-      const change = parseFloat(changeGivenInput) || 0;
       if (!Number.isFinite(received)) return null;
-      if (changeGivenInput.trim() === "" || !Number.isFinite(change)) return null;
+      let change: number;
+      if (changeGivenInput.trim() === "") {
+        if (tipsEnabled) return null;
+        change = Math.max(0, roundMoney(received - total));
+      } else {
+        change = parseFloat(changeGivenInput);
+        if (!Number.isFinite(change)) return null;
+      }
       if (received < change + total - 0.01) return null;
-      const tip = Math.max(0, roundMoney(received - change - total));
-      const saleTotal = total + tip;
+      const tip = tipsEnabled ? Math.max(0, roundMoney(received - change - total)) : 0;
       return {
         method: "mobile_money",
-        amount: saleTotal,
+        amount: total + tip,
         cashTendered: received,
         changeGiven: change,
         provider,
@@ -512,17 +524,22 @@ export function PaymentModal({
   function buildBankPaymentFromInputs(): PaymentRow | null {
     if (!reference.trim()) return null;
 
-    if (tipsEnabled && payments.length === 0) {
+    if (payments.length === 0) {
       const received = parseFloat(cashTendered);
-      const change = parseFloat(changeGivenInput) || 0;
       if (!Number.isFinite(received)) return null;
-      if (changeGivenInput.trim() === "" || !Number.isFinite(change)) return null;
+      let change: number;
+      if (changeGivenInput.trim() === "") {
+        if (tipsEnabled) return null;
+        change = Math.max(0, roundMoney(received - total));
+      } else {
+        change = parseFloat(changeGivenInput);
+        if (!Number.isFinite(change)) return null;
+      }
       if (received < change + total - 0.01) return null;
-      const tip = Math.max(0, roundMoney(received - change - total));
-      const saleTotal = total + tip;
+      const tip = tipsEnabled ? Math.max(0, roundMoney(received - change - total)) : 0;
       return {
         method: "bank_transfer",
-        amount: saleTotal,
+        amount: total + tip,
         cashTendered: received,
         changeGiven: change,
         reference: reference.trim(),
@@ -556,7 +573,7 @@ export function PaymentModal({
   const tenderCoversOrder =
     !receivedChangeUi ||
     (!Number.isFinite(cashReceivedNum) && !Number.isFinite(cashChangeNum)) ||
-    cashReceivedNum - cashChangeNum >= total - 0.01;
+    cashReceivedNum - cashChangeNum >= (payments.length === 0 ? total : remaining) - 0.01;
 
   function rememberPaymentMethod(rows: PaymentRow[]) {
     const standard = rows.find(
@@ -576,30 +593,30 @@ export function PaymentModal({
 
     if (method === "store_credit") {
       if (!customerId) {
-        setError("Select a customer before using store credit");
+        setError(t("errSelectCustomerStoreCredit"));
         return;
       }
       if (checkoutOffline) {
-        setError("Store credit requires an internet connection");
+        setError(t("errStoreCreditNeedsInternet"));
         return;
       }
       const creditAvail = customerCreditBalance - payments.filter((p) => p.method === "store_credit").reduce((s, p) => s + p.amount, 0);
       if (amt > creditAvail + 0.01) {
-        setError(`Only ${creditAvail.toFixed(2)} store credit available`);
+        setError(t("errOnlyStoreCredit", { amount: creditAvail.toFixed(2) }));
         return;
       }
       setPayments([...payments, { method: "store_credit", amount: amt }]);
     } else if (method === "on_account") {
       if (!customerId) {
-        setError("Select a customer before using pay later");
+        setError(t("errSelectCustomerPayLater"));
         return;
       }
       if (!customerOnAccountEnabled) {
-        setError("Pay later is not enabled for this customer");
+        setError(t("errPayLaterNotEnabled"));
         return;
       }
       if (checkoutOffline) {
-        setError("Pay later requires an internet connection");
+        setError(t("errPayLaterNeedsInternet"));
         return;
       }
       const onAccountUsed = payments.filter((p) => p.method === "on_account").reduce((s, p) => s + p.amount, 0);
@@ -608,23 +625,23 @@ export function PaymentModal({
           ? Math.max(0, customerCreditAvailable - onAccountUsed)
           : Infinity;
       if (customerCreditAvailable != null && amt > creditAvail + 0.01) {
-        setError(`Only ${creditAvail.toFixed(2)} credit available`);
+        setError(t("errOnlyCreditAvailable", { amount: creditAvail.toFixed(2) }));
         return;
       }
       setPayments([...payments, { method: "on_account", amount: amt }]);
     } else if (method === "gift_card") {
       if (checkoutOffline) {
-        setError("Gift cards require an internet connection");
+        setError(t("errGiftCardsNeedInternet"));
         return;
       }
       const code = reference.trim();
       if (!code) {
-        setError("Enter gift card code");
+        setError(t("errEnterGiftCardCode"));
         return;
       }
       const lookup = await lookupGiftCard(organizationId, code);
       if (!lookup.valid) {
-        setError(lookup.message ?? "Invalid gift card");
+        setError(lookup.message ?? t("errInvalidGiftCard"));
         return;
       }
       const usedGift = payments
@@ -632,7 +649,7 @@ export function PaymentModal({
         .reduce((s, p) => s + p.amount, 0);
       const avail = Math.max(0, (lookup.balance ?? 0) - usedGift);
       if (amt > avail + 0.01) {
-        setError(`Only ${avail.toFixed(2)} available on this card`);
+        setError(t("errOnlyCardBalance", { amount: avail.toFixed(2) }));
         return;
       }
       setPayments([
@@ -641,15 +658,15 @@ export function PaymentModal({
       ]);
     } else if (method === "loyalty") {
       if (!customerId) {
-        setError("Select a customer before redeeming loyalty points");
+        setError(t("errSelectCustomerLoyalty"));
         return;
       }
       if (!loyaltyEnabled) {
-        setError("Loyalty program is not enabled for this store");
+        setError(t("errLoyaltyNotEnabled"));
         return;
       }
       if (checkoutOffline) {
-        setError("Loyalty redemption requires an internet connection");
+        setError(t("errLoyaltyNeedsInternet"));
         return;
       }
       const pts =
@@ -660,11 +677,11 @@ export function PaymentModal({
         .reduce((s, p) => s + (parseInt(p.reference ?? "0", 10) || 0), 0);
       const availPts = customerLoyaltyPoints - loyaltyUsed;
       if (pts < loyaltyMinRedeemPoints) {
-        setError(`Minimum redemption is ${loyaltyMinRedeemPoints} points`);
+        setError(t("errMinRedemptionPoints", { points: loyaltyMinRedeemPoints }));
         return;
       }
       if (pts > availPts) {
-        setError(`Only ${availPts} points available`);
+        setError(t("errOnlyPointsAvailable", { points: availPts }));
         return;
       }
       const loyaltyAmt = loyaltyValueFromPoints(pts, loyaltySpendPerPoint);
@@ -673,39 +690,39 @@ export function PaymentModal({
       const row = buildCashPaymentFromInputs();
       if (!row) {
         setError(
-          tipsEnabled && payments.length === 0
-            ? "Amount received must cover the order total plus change given"
-            : "Enter a valid cash amount"
+          payments.length === 0
+            ? t("errEnterReceivedAndChange")
+            : t("errEnterValidCash")
         );
         return;
       }
       setPayments([...payments, row]);
     } else if (method === "mobile_money") {
-      if (tipsEnabled && payments.length === 0) {
+      if (payments.length === 0) {
         const row = buildMobilePaymentFromInputs();
         if (!row) {
           setError(
             !reference.trim()
-              ? "Transaction reference is required"
-              : "Amount received must cover the order total plus change given"
+              ? t("errTxnReferenceRequired")
+              : t("errReceivedMustCoverChange")
           );
           return;
         }
         setPayments([...payments, row]);
       } else {
         if (!reference.trim()) {
-          setError("Transaction reference is required");
+          setError(t("errTxnReferenceRequired"));
           return;
         }
         const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
         if (amt > remaining + 0.01) {
-          setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
+          setError(t("errMaxForLine", { amount: formatCurrency(remaining, currency) }));
           return;
         } else if (amt < minPay - 0.01) {
           setError(
             tipsEnabled && tipAmount > 0
-              ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
-              : `Minimum payment is ${formatCurrency(minPay, currency)}`
+              ? t("errAmountCoverTip", { amount: formatCurrency(minPay, currency) })
+              : t("errMinPayment", { amount: formatCurrency(minPay, currency) })
           );
           return;
         }
@@ -720,32 +737,32 @@ export function PaymentModal({
           },
         ]);
       }
-    } else {
-      if (tipsEnabled && payments.length === 0) {
+    } else if (method === "bank_transfer") {
+      if (payments.length === 0) {
         const row = buildBankPaymentFromInputs();
         if (!row) {
           setError(
             !reference.trim()
-              ? "Transfer reference is required"
-              : "Amount received must cover the order total plus change given"
+              ? t("errTransferReferenceRequired")
+              : t("errReceivedMustCoverChange")
           );
           return;
         }
         setPayments([...payments, row]);
       } else {
         if (!reference.trim()) {
-          setError("Transfer reference is required");
+          setError(t("errTransferReferenceRequired"));
           return;
         }
         const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
         if (amt > remaining + 0.01) {
-          setError(`Maximum for this line is ${formatCurrency(remaining, currency)}`);
+          setError(t("errMaxForLine", { amount: formatCurrency(remaining, currency) }));
           return;
         } else if (amt < minPay - 0.01) {
           setError(
             tipsEnabled && tipAmount > 0
-              ? `Amount must cover order plus tip (${formatCurrency(minPay, currency)})`
-              : `Minimum payment is ${formatCurrency(minPay, currency)}`
+              ? t("errAmountCoverTip", { amount: formatCurrency(minPay, currency) })
+              : t("errMinPayment", { amount: formatCurrency(minPay, currency) })
           );
           return;
         }
@@ -759,6 +776,10 @@ export function PaymentModal({
           },
         ]);
       }
+    } else {
+      // Unreachable for standard methods; kept for exhaustiveness with gift/loyalty handled above.
+      setError(t("errAddPaymentsMatchTotal"));
+      return;
     }
     setAmount("");
     setCashTendered("");
@@ -776,24 +797,17 @@ export function PaymentModal({
     if (payments.length === 0 && method === "cash") {
       const cashRow = buildCashPaymentFromInputs();
       if (!cashRow) {
-        setError(
-          tipsEnabled
-            ? "Enter amount received and change given. Received must cover order total plus change."
-            : "Enter cash tendered"
-        );
+        setError(t("errEnterReceivedAndChange"));
         return;
       }
       finalPayments = [cashRow];
     } else if (payments.length === 0 && method === "mobile_money") {
       const row = buildMobilePaymentFromInputs();
       if (!row) {
-        const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
         setError(
           !reference.trim()
-            ? "Transaction reference is required"
-            : tipsEnabled
-              ? "Enter amount received, change given, and transaction ID. Received must cover order plus change."
-              : `Enter amount received (min ${formatCurrency(minPay, currency)}) and transaction ID`
+            ? t("errTxnReferenceRequired")
+            : t("errEnterMobileReceivedChange")
         );
         return;
       }
@@ -801,19 +815,16 @@ export function PaymentModal({
     } else if (payments.length === 0 && method === "bank_transfer") {
       const row = buildBankPaymentFromInputs();
       if (!row) {
-        const minPay = minimumPaymentRequired(total, tipAmount, tipsEnabled);
         setError(
           !reference.trim()
-            ? "Transfer reference is required"
-            : tipsEnabled
-              ? "Enter amount received, change given, and reference. Received must cover order plus change."
-              : `Enter amount received (min ${formatCurrency(minPay, currency)}) and reference`
+            ? t("errTransferReferenceRequired")
+            : t("errEnterBankReceivedChange")
         );
         return;
       }
       finalPayments = [row];
     } else if (payments.length === 0) {
-      setError("Add payments that match the total");
+      setError(t("errAddPaymentsMatchTotal"));
       return;
     }
 
@@ -822,11 +833,11 @@ export function PaymentModal({
     const saleTotal = total + saleTip;
 
     if (paymentsSum < saleTotal - 0.01) {
-      setError(`Payment total ${formatCurrency(paymentsSum, currency)} is less than ${formatCurrency(saleTotal, currency)} due`);
+      setError(t("errPaymentLessThanDue", { paid: formatCurrency(paymentsSum, currency), due: formatCurrency(saleTotal, currency) }));
       return;
     }
     if (paymentsSum > saleTotal + 0.01) {
-      setError(`Payment total ${formatCurrency(paymentsSum, currency)} exceeds ${formatCurrency(saleTotal, currency)} due`);
+      setError(t("errPaymentExceedsDue", { paid: formatCurrency(paymentsSum, currency), due: formatCurrency(saleTotal, currency) }));
       return;
     }
 
@@ -951,7 +962,7 @@ export function PaymentModal({
       try {
         await finishOffline();
       } catch {
-        setError("Could not save sale. Check your connection and try again.");
+        setError(t("errCouldNotSaveSale"));
       }
     } finally {
       setLoading(false);
@@ -970,18 +981,18 @@ export function PaymentModal({
         className="pos-modal-panel flex max-h-[95vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
       >
         {/* Header */}
-        <div className="pos-header flex items-center justify-between px-6 py-5">
+        <div className="pos-header flex shrink-0 items-center justify-between px-4 py-3.5 sm:px-6 sm:py-5">
           <div>
-            <h2 id="pos-checkout-title" className="pos-heading text-xl font-bold text-white">
-              Checkout
+            <h2 id="pos-checkout-title" className="pos-heading text-lg font-bold text-white sm:text-xl">
+              {t("checkout")}
             </h2>
             {customerName && (
-              <p className="text-xs text-white/70">Customer: {customerName}</p>
+              <p className="text-xs text-white/70">{t("customerLabel", { name: customerName })}</p>
             )}
             {checkoutOffline && (
               <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-200">
                 <WifiOff className="h-3 w-3" />
-                Offline mode — sale saves locally and syncs later
+                {t("offlineModeBanner")}
               </p>
             )}
           </div>
@@ -989,7 +1000,7 @@ export function PaymentModal({
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-xl p-2.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            aria-label="Close checkout"
+            aria-label={t("closeCheckout")}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
@@ -1006,7 +1017,7 @@ export function PaymentModal({
             >
               <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                 <Receipt className="h-3.5 w-3.5" aria-hidden />
-                Order ({lines.length} item{lines.length === 1 ? "" : "s"})
+                {t("orderItems", { count: lines.length, items: lines.length === 1 ? t("itemSingular") : t("itemPlural") })}
               </span>
               {showOrderSummary ? (
                 <ChevronUp className="h-4 w-4 text-slate-400" aria-hidden />
@@ -1019,11 +1030,13 @@ export function PaymentModal({
                 <ul className="max-h-36 space-y-1.5 overflow-y-auto">
                   {lines.map((line) => (
                     <li
-                      key={line.variantId}
+                      key={`${line.variantId}::${line.uomCode ?? "ea"}`}
                       className="flex justify-between gap-2 text-xs text-slate-700"
                     >
                       <span className="min-w-0 truncate">
-                        {line.quantity}× {line.productName}
+                        {line.uomCode
+                          ? `${line.quantity} ${line.uomCode} ${line.productName}`
+                          : `${line.quantity}× ${line.productName}`}
                       </span>
                       <span className="shrink-0 tabular-nums font-medium">
                         {formatCurrency(
@@ -1036,24 +1049,24 @@ export function PaymentModal({
                 </ul>
                 <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-2 text-xs text-slate-600">
                   <div className="flex justify-between">
-                    <span>Subtotal</span>
+                    <span>{t("subtotal")}</span>
                     <span className="tabular-nums">{formatCurrency(subtotal, currency)}</span>
                   </div>
                   {tax > 0 && (
                     <div className="flex justify-between">
-                      <span>Tax</span>
+                      <span>{t("tax")}</span>
                       <span className="tabular-nums">{formatCurrency(tax, currency)}</span>
                     </div>
                   )}
                   {orderDiscountTotal > 0 && (
                     <div className="flex justify-between text-emerald-700">
-                      <span>Discount</span>
+                      <span>{t("discount")}</span>
                       <span className="tabular-nums">−{formatCurrency(orderDiscountTotal, currency)}</span>
                     </div>
                   )}
                   {promoDiscount > 0 && (
                     <div className="flex justify-between text-emerald-700">
-                      <span>Promo{promoCode ? ` (${promoCode})` : ""}</span>
+                      <span>{promoCode ? t("promoWithCode", { code: promoCode }) : t("promo")}</span>
                       <span className="tabular-nums">−{formatCurrency(promoDiscount, currency)}</span>
                     </div>
                   )}
@@ -1069,7 +1082,7 @@ export function PaymentModal({
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
                   <Heart className="h-3.5 w-3.5" aria-hidden />
-                  Add tip
+                  {t("addTip")}
                 </span>
                 {tipAmount > 0 && (
                   <button
@@ -1077,14 +1090,14 @@ export function PaymentModal({
                     onClick={clearTip}
                     className="cursor-pointer text-[11px] font-semibold text-slate-500 hover:text-slate-700"
                   >
-                    Clear
+                    {t("clear")}
                   </button>
                 )}
               </div>
               <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
                 {methodSupportsOverpayTip(method)
-                  ? "Choose a preset, enter a custom tip, or pay more than the amount due — the surplus is recorded as tip."
-                  : "Choose a preset or enter a custom tip amount."}
+                  ? t("tipHelpOverpay")
+                  : t("tipHelpSimple")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {tipPresets.map((pct) => (
@@ -1108,7 +1121,7 @@ export function PaymentModal({
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="Custom amount"
+                  placeholder={t("customAmount")}
                   value={customTipInput}
                   onChange={(e) => applyCustomTip(e.target.value)}
                   className="h-9 flex-1 text-sm"
@@ -1125,20 +1138,19 @@ export function PaymentModal({
           {/* Total */}
           <div className="mb-4 rounded-xl bg-pos-primary-soft-8 px-4 py-4 text-center ring-1 ring-pos-primary/10">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              {tipsEnabled && receivedChangeUi ? "Order total" : "Amount due"}
+              {tipsEnabled && receivedChangeUi ? t("orderTotal") : t("amountDue")}
             </p>
             <p className="pos-heading mt-1 text-3xl font-bold tabular-nums text-pos-primary">
               {formatCurrency(tipsEnabled && receivedChangeUi ? total : displayPayTotal, currency)}
             </p>
             {tipsEnabled && receivedChangeUi && autoTipFromReceived > 0 && (
               <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
-                Tip (auto): {formatCurrency(autoTipFromReceived, currency)} · Total due{" "}
-                {formatCurrency(total + autoTipFromReceived, currency)}
+                {t("tipAutoWithTotal", { tip: formatCurrency(autoTipFromReceived, currency), total: formatCurrency(total + autoTipFromReceived, currency) })}
               </p>
             )}
             {tipsEnabled && !receivedChangeUi && displayTip > 0 && (
               <p className="mt-1 text-xs text-slate-600">
-                Order {formatCurrency(total, currency)} + tip {formatCurrency(displayTip, currency)}
+                {t("orderPlusTip", { order: formatCurrency(total, currency), tip: formatCurrency(displayTip, currency) })}
               </p>
             )}
             {tipsEnabled &&
@@ -1146,29 +1158,29 @@ export function PaymentModal({
               !receivedChangeUi &&
               tipFromOverpayPreview > tipAmount && (
                 <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
-                  Tip from overpayment: {formatCurrency(tipFromOverpayPreview, currency)}
+                  {t("tipFromOverpayment", { amount: formatCurrency(tipFromOverpayPreview, currency) })}
                 </p>
               )}
             {remaining > 0.01 && payments.length > 0 && (
               <p className="mt-1 text-xs font-medium text-amber-600">
-                Remaining: {formatCurrency(remaining, currency)}
+                {t("remaining", { amount: formatCurrency(remaining, currency) })}
               </p>
             )}
             {(totalChange > 0 || previewChange > 0) && (
               <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
-                Change: {formatCurrency(totalChange || previewChange, currency)}
+                {t("change", { amount: formatCurrency(totalChange || previewChange, currency) })}
               </p>
             )}
             {tipsEnabled && receivedChangeUi && !tenderCoversOrder && (
               <p className="mt-2 text-xs font-medium text-red-600">
-                Received must cover order ({formatCurrency(total, currency)}) plus change
+                {t("receivedMustCover", { amount: formatCurrency(total, currency) })}
               </p>
             )}
           </div>
 
           {/* Payment method cards */}
           <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Payment method
+            {t("payment")}
           </p>
           <div className="mb-2 grid grid-cols-3 gap-2">
             {STANDARD_METHODS.map((m) => {
@@ -1190,14 +1202,14 @@ export function PaymentModal({
                   )}
                 >
                   <Icon className={cn("pos-payment-icon h-6 w-6 text-slate-400", method === m.id && "text-pos-primary")} />
-                  <span className="text-[11px] font-bold text-slate-800">{m.label}</span>
+                  <span className="text-[11px] font-bold text-slate-800">{t(m.labelKey)}</span>
                 </button>
               );
             })}
           </div>
 
           <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Gift card &amp; loyalty
+            {t("giftCardAndLoyalty")}
           </p>
           <div className="mb-2 grid grid-cols-2 gap-2">
             {ALT_METHODS.map((m) => {
@@ -1207,13 +1219,13 @@ export function PaymentModal({
                 m.id === "loyalty" &&
                 (!loyaltyEnabled || !customerId || customerLoyaltyPoints < loyaltyMinRedeemPoints || checkoutOffline);
               const disabled = giftDisabled || loyaltyDisabled;
-              let subtitle: string = m.desc;
+              let subtitle: string = t(m.descKey);
               if (m.id === "loyalty" && loyaltyEnabled && customerId) {
-                subtitle = `${customerLoyaltyPoints} pts`;
+                subtitle = t("loyaltyPointsShort", { count: customerLoyaltyPoints });
               } else if (m.id === "loyalty" && !loyaltyEnabled) {
-                subtitle = "Not enabled";
+                subtitle = t("notEnabled");
               } else if (m.id === "loyalty" && !customerId) {
-                subtitle = "Needs customer";
+                subtitle = t("needsCustomer");
               }
 
               return (
@@ -1232,7 +1244,7 @@ export function PaymentModal({
                   )}
                 >
                   <Icon className={cn("pos-payment-icon h-6 w-6 text-slate-400", method === m.id && "text-pos-primary")} />
-                  <span className="text-[11px] font-bold text-slate-800">{m.label}</span>
+                  <span className="text-[11px] font-bold text-slate-800">{t(m.labelKey)}</span>
                   <span className="text-[10px] text-slate-400">{subtitle}</span>
                 </button>
               );
@@ -1242,7 +1254,7 @@ export function PaymentModal({
           {customerId ? (
             <>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-                Customer account
+                {t("customer")}
               </p>
               <div className="mb-2 grid grid-cols-2 gap-2">
                 {CUSTOMER_METHODS.map((m) => {
@@ -1253,21 +1265,21 @@ export function PaymentModal({
                   const payLaterNeedsSetup = m.id === "on_account" && !customerOnAccountEnabled;
                   const disabled = storeCreditDisabled || payLaterDisabled;
 
-                  let subtitle: string = m.desc;
+                  let subtitle: string = t(m.descKey);
                   if (m.id === "store_credit") {
                     subtitle =
                       customerCreditBalance > 0
                         ? formatCurrency(customerCreditBalance, currency)
-                        : "No balance";
+                        : t("noBalance");
                   } else if (payLaterNeedsSetup) {
-                    subtitle = "Not enabled";
+                    subtitle = t("notEnabled");
                   } else if (customerOnAccountEnabled) {
                     subtitle =
                       customerCreditAvailable != null
-                        ? `${formatCurrency(customerCreditAvailable, currency)} avail`
+                        ? t("availableAmount", { amount: formatCurrency(customerCreditAvailable, currency) })
                         : customerReceivableBalance > 0
-                          ? `Owes ${formatCurrency(customerReceivableBalance, currency)}`
-                          : "Charge to account";
+                          ? t("owesAmount", { amount: formatCurrency(customerReceivableBalance, currency) })
+                          : t("chargeToAccount");
                   }
 
                   return (
@@ -1295,7 +1307,7 @@ export function PaymentModal({
                           method === m.id && "text-pos-primary"
                         )}
                       />
-                      <span className="text-[11px] font-bold text-slate-800">{m.label}</span>
+                      <span className="text-[11px] font-bold text-slate-800">{t(m.labelKey)}</span>
                       <span className={cn("text-[10px]", payLaterNeedsSetup ? "text-amber-700" : "text-slate-400")}>
                         {subtitle}
                       </span>
@@ -1305,25 +1317,25 @@ export function PaymentModal({
               </div>
               {customerId && !customerOnAccountEnabled && (
                 <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
-                  Pay later not enabled for {customerName ?? "this customer"}.
+                  {t("payLaterNotEnabledFor", { name: customerName ?? t("thisCustomer") })}
                 </p>
               )}
             </>
           ) : (
             <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600">
-              Attach a customer for store credit or pay later.
+              {t("attachCustomerHint")}
             </p>
           )}
 
           {/* Payment details — primary path */}
           <div className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-            {!receivedChangeUi && method !== "cash" && (
+            {!receivedChangeUi && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-xs">
                     {tipsEnabled && methodSupportsOverpayTip(method)
-                      ? "Amount received"
-                      : "Amount"}
+                      ? t("amountReceived")
+                      : t("amountLabel")}
                   </Label>
                   <Button
                     type="button"
@@ -1332,7 +1344,7 @@ export function PaymentModal({
                     className="h-7 text-xs font-semibold"
                     onClick={fillExactDue}
                   >
-                    Exact due
+                    {t("exactDue")}
                   </Button>
                 </div>
                 <Input
@@ -1345,40 +1357,38 @@ export function PaymentModal({
                   className="h-11"
                   aria-label={
                     tipsEnabled && methodSupportsOverpayTip(method)
-                      ? "Amount received from customer"
-                      : "Payment amount"
+                      ? t("amountReceivedFromCustomer")
+                      : t("paymentAmount")
                   }
                 />
                 {tipsEnabled && methodSupportsOverpayTip(method) && (
                   <p className="text-[11px] leading-relaxed text-slate-500">
-                    Enter what the customer paid. Any amount above the order
-                    {tipAmount > 0 ? " plus selected tip" : ""} is recorded as tip.
+                    {t("overpayTipHelp", { tipPart: tipAmount > 0 ? t("plusSelectedTip") : "" })}
                   </p>
                 )}
               </div>
             )}
             {method === "store_credit" && (
               <p className="text-xs text-slate-600">
-                Applies credit from {customerName ?? "selected customer"}. Balance:{" "}
-                {formatCurrency(customerCreditBalance, currency)}
+                {t("appliesCreditFrom", { name: customerName ?? t("selectedCustomer"), amount: formatCurrency(customerCreditBalance, currency) })}
               </p>
             )}
             {method === "on_account" && (
               <p className="text-xs text-slate-600">
-                Charges {customerName ?? "selected customer"}&apos;s account.
+                {t("chargesAccount", { name: customerName ?? t("selectedCustomer") })}
                 {customerReceivableBalance > 0 && (
-                  <> Currently owes {formatCurrency(customerReceivableBalance, currency)}.</>
+                  <>{t("currentlyOwes", { amount: formatCurrency(customerReceivableBalance, currency) })}</>
                 )}
                 {customerCreditAvailable != null && (
-                  <> Credit available: {formatCurrency(customerCreditAvailable, currency)}.</>
+                  <>{t("creditAvailable", { amount: formatCurrency(customerCreditAvailable, currency) })}</>
                 )}
               </p>
             )}
             {method === "gift_card" && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Gift card code</Label>
+                <Label className="text-xs">{t("giftCardCode")}</Label>
                 <Input
-                  placeholder="GC-XXXXXXXXXXXX"
+                  placeholder={t("giftCardCodePlaceholder")}
                   value={reference}
                   onChange={(e) => {
                     setReference(e.target.value.toUpperCase());
@@ -1388,23 +1398,23 @@ export function PaymentModal({
                     if (!reference.trim() || checkoutOffline) return;
                     const lookup = await lookupGiftCard(organizationId, reference);
                     if (lookup.valid && lookup.balance != null) {
-                      setGiftCardHint(`Balance: ${formatCurrency(lookup.balance, currency)}`);
+                      setGiftCardHint({ ok: true, text: t("giftCardBalance", { amount: formatCurrency(lookup.balance, currency) }) });
                     } else {
-                      setGiftCardHint(lookup.message ?? null);
+                      setGiftCardHint(lookup.message ? { ok: false, text: lookup.message } : null);
                     }
                   }}
                   className="h-10 font-mono uppercase"
                 />
                 {giftCardHint && (
-                  <p className={cn("text-xs", giftCardHint.startsWith("Balance") ? "text-emerald-700" : "text-red-600")}>
-                    {giftCardHint}
+                  <p className={cn("text-xs", giftCardHint.ok ? "text-emerald-700" : "text-red-600")}>
+                    {giftCardHint.text}
                   </p>
                 )}
               </div>
             )}
             {method === "loyalty" && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Points to redeem</Label>
+                <Label className="text-xs">{t("pointsToRedeem")}</Label>
                 <Input
                   type="number"
                   min={loyaltyMinRedeemPoints}
@@ -1414,8 +1424,7 @@ export function PaymentModal({
                   className="h-10"
                 />
                 <p className="text-xs text-slate-600">
-                  {customerLoyaltyPoints} points available · min {loyaltyMinRedeemPoints} ·{" "}
-                  {formatCurrency(loyaltySpendPerPoint, currency)} per point
+                  {t("loyaltyPointsHelp", { points: customerLoyaltyPoints, min: loyaltyMinRedeemPoints, perPoint: formatCurrency(loyaltySpendPerPoint, currency) })}
                   {loyaltyPointsInput && (
                     <> → {formatCurrency(loyaltyValueFromPoints(parseInt(loyaltyPointsInput, 10) || 0, loyaltySpendPerPoint), currency)}</>
                   )}
@@ -1425,12 +1434,11 @@ export function PaymentModal({
             {receivedChangeUi && (
               <div className="space-y-3 rounded-lg border border-amber-200/80 bg-amber-50/60 p-3">
                 <p className="text-xs leading-relaxed text-slate-600">
-                  Enter what the customer gave and the change returned. Any amount left over after
-                  the order total and change is recorded as tip.
+                  {tipsEnabled ? t("receivedChangeHelp") : t("receivedChangeHelpNoTip")}
                 </p>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs">{receivedLabel(method)}</Label>
+                    <Label className="text-xs">{t(receivedLabelKey(method))}</Label>
                     <Button
                       type="button"
                       variant="outline"
@@ -1438,44 +1446,44 @@ export function PaymentModal({
                       className="h-7 text-xs font-semibold"
                       onClick={fillExactReceived}
                     >
-                      Exact order
+                      {t("exactOrder")}
                     </Button>
                   </div>
                   <Input
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="e.g. 150"
+                    placeholder={t("exampleAmount", { amount: "150" })}
                     value={cashTendered}
                     onChange={(e) => setCashTendered(e.target.value)}
                     className="h-10"
-                    aria-label={receivedLabel(method)}
+                    aria-label={t(receivedLabelKey(method))}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Change given</Label>
+                  <Label className="text-xs">{t("changeGiven")}</Label>
                   <Input
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="e.g. 5"
+                    placeholder={t("exampleAmount", { amount: "5" })}
                     value={changeGivenInput}
                     onChange={(e) => setChangeGivenInput(e.target.value)}
                     className="h-10"
-                    aria-label="Change given"
+                    aria-label={t("changeGiven")}
                   />
                 </div>
                 {Number.isFinite(cashReceivedNum) && Number.isFinite(cashChangeNum) && (
                   <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-700">
                     <div className="flex justify-between">
-                      <span>Kept from customer</span>
+                      <span>{t("keptFromCustomer")}</span>
                       <span className="font-semibold tabular-nums">
                         {formatCurrency(cashReceivedNum - cashChangeNum, currency)}
                       </span>
                     </div>
                     {autoTipFromReceived > 0 && (
                       <div className="mt-1 flex justify-between font-semibold text-emerald-700">
-                        <span>Tip (auto)</span>
+                        <span>{t("tipAuto")}</span>
                         <span className="tabular-nums">{formatCurrency(autoTipFromReceived, currency)}</span>
                       </div>
                     )}
@@ -1483,57 +1491,34 @@ export function PaymentModal({
                 )}
               </div>
             )}
-            {method === "cash" && !receivedChangeUi && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="text-xs">Cash tendered</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs font-semibold"
-                    onClick={fillExactReceived}
-                  >
-                    Exact amount
-                  </Button>
-                </div>
-                <Input
-                  type="number"
-                  value={cashTendered}
-                  onChange={(e) => setCashTendered(e.target.value)}
-                  className="h-10"
-                />
-              </div>
-            )}
             {method === "mobile_money" && (
               <>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Provider</Label>
+                  <Label className="text-xs">{t("provider")}</Label>
                   <select
                     className="flex h-11 w-full rounded-lg border border-input bg-white px-3 text-sm"
                     value={provider}
                     onChange={(e) => setProvider(e.target.value)}
                   >
                     {PROVIDERS.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
+                      <option key={p.value} value={p.value}>{t(p.labelKey)}</option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Transaction ID *</Label>
+                  <Label className="text-xs">{t("transactionIdRequired")}</Label>
                   <Input value={reference} onChange={(e) => setReference(e.target.value)} className="h-11" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">
-                    Phone {arifpayEnabled && provider === "telebirr" ? "*" : "(optional)"}
+                    {arifpayEnabled && provider === "telebirr" ? t("phoneRequired") : t("phoneOptional")}
                   </Label>
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-11" />
                 </div>
                 {arifpayEnabled && provider === "telebirr" && (
                   <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
                     <p className="text-[11px] leading-relaxed text-emerald-900">
-                      Push a Telebirr approval request via Arifpay. After the customer approves, complete
-                      the sale with the filled reference (pending webhook confirms payment).
+                      {t("telebirrPushHelp")}
                     </p>
                     <Button
                       type="button"
@@ -1542,7 +1527,7 @@ export function PaymentModal({
                       disabled={arifpayBusy || loading || checkoutOffline}
                       onClick={() => void requestArifpayTelebirr()}
                     >
-                      {arifpayBusy ? "Requesting Telebirr…" : "Request Telebirr via Arifpay"}
+                      {arifpayBusy ? t("requestingTelebirr") : t("requestTelebirr")}
                     </Button>
                     {arifpayHint && (
                       <p className="text-[11px] leading-relaxed text-emerald-800">{arifpayHint}</p>
@@ -1554,11 +1539,11 @@ export function PaymentModal({
             {method === "bank_transfer" && (
               <>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Reference *</Label>
+                  <Label className="text-xs">{t("referenceRequired")}</Label>
                   <Input value={reference} onChange={(e) => setReference(e.target.value)} className="h-11" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Bank name</Label>
+                  <Label className="text-xs">{t("bankName")}</Label>
                   <Input value={bankName} onChange={(e) => setBankName(e.target.value)} className="h-11" />
                 </div>
               </>
@@ -1569,12 +1554,12 @@ export function PaymentModal({
               className="flex w-full cursor-pointer items-center justify-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
             >
               {showSplitPay ? <ChevronUp className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-              {showSplitPay ? "Hide split payment" : "Split payment"}
+              {showSplitPay ? t("hideSplitPayment") : t("splitPayment")}
             </button>
             {showSplitPay && (
               <Button variant="outline" onClick={addPayment} className="h-10 w-full gap-2">
                 <Plus className="h-4 w-4" />
-                Add payment line
+                {t("addPaymentLine")}
               </Button>
             )}
             {!showSplitPay &&
@@ -1585,7 +1570,7 @@ export function PaymentModal({
                   disabled={loading}
                   onClick={() => void completeSale()}
                 >
-                  Complete sale · {formatCurrency(displayPayTotal, currency)}
+                  {t("completeSaleWithTotal", { amount: formatCurrency(displayPayTotal, currency) })}
                 </Button>
               )}
             {!showSplitPay &&
@@ -1598,7 +1583,7 @@ export function PaymentModal({
                   disabled={loading}
                   onClick={addPayment}
                 >
-                  Add {formatCurrency(parseFloat(amount) || remaining || payTotal, currency)} payment
+                  {t("addPaymentAmount", { amount: formatCurrency(parseFloat(amount) || remaining || payTotal, currency) })}
                 </Button>
               )}
           </div>
@@ -1614,7 +1599,7 @@ export function PaymentModal({
                 </li>
               ))}
               <li className="flex justify-between border-t border-slate-100 pt-2 font-bold text-slate-900">
-                <span>Total paid</span>
+                <span>{t("totalPaid")}</span>
                 <span className="tabular-nums">{formatCurrency(paid, currency)}</span>
               </li>
             </ul>
@@ -1625,10 +1610,10 @@ export function PaymentModal({
           )}
         </div>
 
-        {/* Footer actions */}
-        <div className="flex gap-2 border-t border-slate-100 p-4">
+        {/* Footer actions — sticky Complete */}
+        <div className="sticky bottom-0 z-10 flex shrink-0 gap-2 border-t border-slate-100 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
           <Button variant="outline" className="h-12 flex-1 cursor-pointer rounded-xl" onClick={onClose}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
           <button
             type="button"
@@ -1640,11 +1625,11 @@ export function PaymentModal({
             )}
           >
             {loading ? (
-              checkoutOffline ? "Saving offline…" : "Processing…"
+              checkoutOffline ? t("savingOffline") : t("processing")
             ) : (
               <>
                 <CheckCircle2 className="h-5 w-5" />
-                {checkoutOffline ? "Complete sale (offline)" : "Complete sale"}
+                {checkoutOffline ? t("completeSaleOffline") : t("completeSale")}
               </>
             )}
           </button>

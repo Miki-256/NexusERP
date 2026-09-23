@@ -22,7 +22,7 @@ export function ReportSection({
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="enterprise-panel-body">{children}</div>
     </section>
   );
 }

@@ -263,14 +263,12 @@ export function FinancialSecurityTab({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableRow>
                 <DataTableHead>Type</DataTableHead>
                 <DataTableHead>Reference</DataTableHead>
                 <DataTableHead>Date</DataTableHead>
                 <DataTableHead className="text-right">Amount</DataTableHead>
                 <DataTableHead>Progress</DataTableHead>
                 {canManage && <DataTableHead className="text-right">Action</DataTableHead>}
-              </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {pendingItems.length === 0 ? (
@@ -309,14 +307,12 @@ export function FinancialSecurityTab({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableRow>
                 <DataTableHead>Rule</DataTableHead>
                 <DataTableHead>Create action</DataTableHead>
                 <DataTableHead>Blocked action</DataTableHead>
                 <DataTableHead>Severity</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 {canManage && <DataTableHead className="text-right">Action</DataTableHead>}
-              </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {sodRules.length === 0 ? (

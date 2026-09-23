@@ -20,7 +20,7 @@ export function SecurityDashboardClient({ data }: { data: SecurityDashboard }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4 2xl:grid-cols-7">
         <StatCard
           label="Failed logins (24h)"
           value={stats.failed_logins_24h}

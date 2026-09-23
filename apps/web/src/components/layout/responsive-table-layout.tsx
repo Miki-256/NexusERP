@@ -15,7 +15,7 @@ export function ResponsiveTableLayout({
 }) {
   return (
     <div className={cn(className)}>
-      <div className="space-y-3 lg:hidden">{mobile}</div>
+      <div className="space-y-2 lg:hidden">{mobile}</div>
       <div className="hidden lg:block">{children}</div>
     </div>
   );

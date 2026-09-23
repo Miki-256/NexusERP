@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1e3a5f" />
+    <title>Nexus POS — Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      .card {
+        width: 100%;
+        max-width: 22rem;
+        text-align: center;
+      }
+      .mark {
+        width: 3.5rem;
+        height: 3.5rem;
+        margin: 0 auto 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.75rem;
+        background: #1e3a5f;
+        font-weight: 700;
+        font-size: 1.35rem;
+        color: #fff;
+      }
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.15rem;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 1.25rem;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: #94a3b8;
+      }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 0.5rem;
+        padding: 0.7rem 1.1rem;
+        font: inherit;
+        font-weight: 600;
+        color: #fff;
+        background: #1e3a5f;
+        cursor: pointer;
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="mark" aria-hidden="true">N</div>
+      <h1>You're offline</h1>
+      <p>Nexus POS needs a network connection. Check your connection and try again.</p>
+      <button type="button" onclick="location.reload()">Retry</button>
+    </div>
+  </body>
+</html>

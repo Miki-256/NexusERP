@@ -476,6 +476,17 @@ export interface Database {
         };
         Returns: Json;
       };
+      resolve_offline_queued_sale: {
+        Args: {
+          p_organization_id: string;
+          p_idempotency_key?: string | null;
+          p_store_id?: string | null;
+          p_register_id?: string | null;
+          p_paid_total?: number | null;
+          p_queued_at?: string | null;
+        };
+        Returns: Json;
+      };
       create_pos_staff: {
         Args: {
           p_organization_id: string;

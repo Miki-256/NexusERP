@@ -108,19 +108,25 @@ export async function runProcessQueue(options?: {
   }
 
   let ledgerPosts: Record<string, unknown> | null = null;
+  let ledgerErrorMessage: string | undefined;
   const { data: ledgerData, error: ledgerError } = await admin.rpc("process_sale_ledger_post_queue", {
     p_limit: 200,
   });
-  if (!ledgerError && ledgerData && typeof ledgerData === "object") {
+  if (ledgerError) {
+    ledgerErrorMessage = ledgerError.message;
+  } else if (ledgerData && typeof ledgerData === "object") {
     ledgerPosts = ledgerData as Record<string, unknown>;
   }
 
   let refundLedgerPosts: Record<string, unknown> | null = null;
+  let refundLedgerErrorMessage: string | undefined;
   const { data: refundLedgerData, error: refundLedgerError } = await admin.rpc(
     "process_refund_ledger_post_queue",
     { p_limit: 200 }
   );
-  if (!refundLedgerError && refundLedgerData && typeof refundLedgerData === "object") {
+  if (refundLedgerError) {
+    refundLedgerErrorMessage = refundLedgerError.message;
+  } else if (refundLedgerData && typeof refundLedgerData === "object") {
     refundLedgerPosts = refundLedgerData as Record<string, unknown>;
   }
 
@@ -252,11 +258,27 @@ export async function runProcessQueue(options?: {
       notificationErr instanceof Error ? notificationErr.message : "Notification dispatch failed";
   }
 
+  const ledgerFailed =
+    typeof ledgerPosts?.failed === "number" ? (ledgerPosts.failed as number) : 0;
   const result: ProcessQueueResult = {
-    ok: !securityAlertError && !opsSloAlertError && !hrWebhookError && !notificationError,
+    ok:
+      !securityAlertError &&
+      !opsSloAlertError &&
+      !hrWebhookError &&
+      !notificationError &&
+      !ledgerErrorMessage &&
+      !refundLedgerErrorMessage,
     processed: data,
-    ledger_posts: ledgerPosts,
-    refund_ledger_posts: refundLedgerPosts,
+    ledger_posts: ledgerPosts
+      ? { ...ledgerPosts, drain_error: ledgerErrorMessage ?? null, failed_in_batch: ledgerFailed }
+      : ledgerErrorMessage
+        ? { drain_error: ledgerErrorMessage }
+        : null,
+    refund_ledger_posts: refundLedgerPosts
+      ? { ...refundLedgerPosts, drain_error: refundLedgerErrorMessage ?? null }
+      : refundLedgerErrorMessage
+        ? { drain_error: refundLedgerErrorMessage }
+        : null,
     security_alerts: securityAlerts,
     ops_slo_alerts: opsSloAlerts,
     hr_webhooks: hrWebhooks,
@@ -277,6 +299,7 @@ export async function runProcessQueue(options?: {
     ops_slo_alert_error: opsSloAlertError,
     hr_webhook_error: hrWebhookError,
     notification_error: notificationError,
+    error: ledgerErrorMessage ?? refundLedgerErrorMessage,
   };
 
   await recordHeartbeat(admin, result);

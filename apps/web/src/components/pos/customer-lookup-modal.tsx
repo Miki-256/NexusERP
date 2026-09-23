@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export function CustomerLookupModal({
   onSelect: (customer: PosCustomer) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("pos");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PosCustomer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,8 +61,8 @@ export function CustomerLookupModal({
   }, [registerId, query, sessionToken]);
 
   useEffect(() => {
-    const t = setTimeout(() => void search(), query ? 250 : 0);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => void search(), query ? 250 : 0);
+    return () => clearTimeout(timer);
   }, [query, search]);
 
   const panelRef = usePosModal(onClose);
@@ -77,27 +79,27 @@ export function CustomerLookupModal({
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div>
             <h2 id="pos-customer-lookup-title" className="pos-heading text-lg font-bold text-white">
-              Find customer
+              {t("findCustomerTitle")}
             </h2>
-            <p className="text-xs text-white/70">Search by name, phone, or email</p>
+            <p className="text-xs text-white/70">{t("searchByNamePhoneEmail")}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            aria-label="Close customer lookup"
+            aria-label={t("closeCustomerLookup")}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
         <div className="border-b border-slate-100 p-4">
           <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
-            <span className="sr-only">Search customers</span>
+            <span className="sr-only">{t("searchCustomers")}</span>
             <Search className="h-4 w-4 text-slate-400" aria-hidden />
             <Input
               autoFocus
               id="pos-customer-search"
-              placeholder="Start typing…"
+              placeholder={t("startTyping")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="border-0 bg-transparent shadow-none focus-visible:ring-0"
@@ -108,12 +110,12 @@ export function CustomerLookupModal({
         <ul className="flex-1 overflow-y-auto p-2" aria-live="polite">
           {loading && (
             <li className="p-4 text-center text-sm text-slate-500" role="status">
-              Searching…
+              {t("searching")}
             </li>
           )}
           {error && <li className="p-4 text-sm text-red-600">{error}</li>}
           {!loading && !error && results.length === 0 && (
-            <li className="p-8 text-center text-sm text-slate-500">No customers found</li>
+            <li className="p-8 text-center text-sm text-slate-500">{t("noCustomersFound")}</li>
           )}
           {results.map((c) => (
             <li key={c.id}>
@@ -139,17 +141,17 @@ export function CustomerLookupModal({
                   {c.loyaltyPoints > 0 && (
                     <span className="flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
                       <Heart className="h-3 w-3" />
-                      {c.loyaltyPoints} pts
+                      {t("loyaltyPointsShort", { count: c.loyaltyPoints })}
                     </span>
                   )}
                   {c.onAccountEnabled && (
                     <span className="flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
                       <Clock className="h-3 w-3" />
                       {c.receivableBalance > 0
-                        ? `Owes ${formatCurrency(c.receivableBalance, currency)}`
+                        ? t("owesAmount", { amount: formatCurrency(c.receivableBalance, currency) })
                         : c.creditAvailable != null
-                          ? `${formatCurrency(c.creditAvailable, currency)} left`
-                          : "Pay later OK"}
+                          ? t("creditLeft", { amount: formatCurrency(c.creditAvailable, currency) })
+                          : t("payLaterOk")}
                     </span>
                   )}
                 </div>
@@ -159,7 +161,7 @@ export function CustomerLookupModal({
         </ul>
         <div className="border-t border-slate-100 p-4">
           <Button variant="outline" className="w-full cursor-pointer" onClick={onClose}>
-            Cancel (Esc)
+            {t("cancelEsc")}
           </Button>
         </div>
       </div>

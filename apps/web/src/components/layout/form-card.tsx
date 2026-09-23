@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+/** Use for forms with submit. Prefer Panel for read-only sections / lists. */
 export function FormCard({
   title,
   description,
@@ -17,24 +18,28 @@ export function FormCard({
   footer?: React.ReactNode;
 }) {
   const body = onSubmit ? (
-    <form className="space-y-6" onSubmit={onSubmit}>
+    <form className="space-y-3 sm:space-y-4" onSubmit={onSubmit}>
       {children}
-      {footer && <div className="flex items-center gap-3 border-t border-border/60 pt-4">{footer}</div>}
+      {footer && <div className="flex items-center gap-3 border-t border-border/60 pt-3">{footer}</div>}
     </form>
   ) : (
     <>
-      <div className="space-y-6">{children}</div>
-      {footer && <div className="mt-6 flex items-center gap-3 border-t border-border/60 pt-4">{footer}</div>}
+      <div className="space-y-3 sm:space-y-4">{children}</div>
+      {footer && (
+        <div className="mt-3 flex items-center gap-3 border-t border-border/60 pt-3 sm:mt-4">
+          {footer}
+        </div>
+      )}
     </>
   );
 
   return (
     <Card className={cn("border-border", className)}>
-      <CardHeader className="border-b border-border bg-muted/40 pb-4">
+      <CardHeader className="border-b border-border bg-muted/40 pb-2.5 sm:pb-3">
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent className="pt-6">{body}</CardContent>
+      <CardContent className="pt-3 sm:pt-4">{body}</CardContent>
     </Card>
   );
 }
@@ -51,16 +56,16 @@ export function FormSection({
   columns?: 1 | 2 | 3;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {(title || description) && (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {title && <h3 className="text-sm font-semibold text-foreground">{title}</h3>}
           {description && <p className="text-xs text-muted-foreground">{description}</p>}
         </div>
       )}
       <div
         className={cn(
-          "grid gap-4",
+          "grid gap-3",
           columns === 2 && "sm:grid-cols-2",
           columns === 3 && "sm:grid-cols-2 lg:grid-cols-3"
         )}
@@ -85,7 +90,7 @@ export function FormField({
   className?: string;
 }) {
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("space-y-1.5", className)}>
       {label && (
         <label className="text-sm font-medium leading-none text-foreground">{label}</label>
       )}

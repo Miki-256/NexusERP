@@ -2,7 +2,7 @@
  * Network-first for navigations; only shells/icons are precached.
  * Do not cache authenticated RSC/API responses.
  */
-const CACHE = "nexus-pos-shell-v1";
+const CACHE = "nexus-pos-shell-v2";
 const PRECACHE = ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -55,7 +55,8 @@ self.addEventListener("fetch", (event) => {
   if (
     url.pathname === "/offline.html" ||
     url.pathname.startsWith("/icons/") ||
-    url.pathname === "/pos-manifest.json"
+    url.pathname === "/pos-manifest.json" ||
+    url.pathname === "/manifest.webmanifest"
   ) {
     event.respondWith(
       caches.match(req).then((cached) => {

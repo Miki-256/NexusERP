@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid,
@@ -57,18 +58,19 @@ export const CategoryNav = memo(function CategoryNav({
   onFavorites?: () => void;
   onRecent?: () => void;
 }) {
+  const t = useTranslations("pos");
   const activeSelector = `[data-category-id="${activeCategoryId(active, favoritesActive, recentActive)}"]`;
 
   const pillBase =
-    "pos-category-pill flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary focus-visible:ring-offset-2";
+    "pos-category-pill flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary focus-visible:ring-offset-1";
 
   return (
     <HorizontalScrollStrip
-      ariaLabel="Product categories"
+      ariaLabel={t("productCategories")}
       activeItemSelector={activeSelector}
-      className="flex gap-2 pb-1"
+      className="flex gap-1.5 pb-0.5"
     >
-      <div role="tablist" aria-label="Filter products by category" className="flex gap-2">
+      <div role="tablist" aria-label={t("filterByCategory")} className="flex gap-1.5">
         <button
           type="button"
           role="tab"
@@ -79,8 +81,8 @@ export const CategoryNav = memo(function CategoryNav({
           onClick={() => onChange("all")}
           className={cn(pillBase, active === "all" && !favoritesActive && !recentActive && "active")}
         >
-          <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
-          All products
+          <LayoutGrid className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          {t("all")}
         </button>
         {showRecent && (
           <button
@@ -93,8 +95,8 @@ export const CategoryNav = memo(function CategoryNav({
             onClick={onRecent}
             className={cn(pillBase, recentActive && "active")}
           >
-            <Clock className="h-4 w-4 shrink-0" aria-hidden />
-            Recent
+            <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {t("recent")}
           </button>
         )}
         {showFavorites && (
@@ -108,8 +110,8 @@ export const CategoryNav = memo(function CategoryNav({
             onClick={onFavorites}
             className={cn(pillBase, favoritesActive && "active")}
           >
-            <Star className="h-4 w-4 shrink-0" aria-hidden />
-            Favorites
+            <Star className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {t("favorites")}
           </button>
         )}
         {categories.map((cat) => {
@@ -125,11 +127,11 @@ export const CategoryNav = memo(function CategoryNav({
               data-category-id={id}
               aria-selected={isActive}
               aria-controls="pos-catalog-panel"
-              aria-label={`${cat} category`}
+              aria-label={t("categoryAria", { name: cat })}
               onClick={() => onChange(cat)}
               className={cn(pillBase, isActive && "active")}
             >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden />
+              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {cat}
             </button>
           );

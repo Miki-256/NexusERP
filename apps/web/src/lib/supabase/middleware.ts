@@ -4,35 +4,64 @@ import { POST_AUTH_BOOTSTRAP_PATH } from "@/lib/post-auth-path";
 import { getSupabaseKey, getSupabaseUrl } from "./env";
 import { getMaintenanceStatus, getUserAccessBlocked } from "@/lib/middleware-cache";
 
+type PendingCookie = {
+  name: string;
+  value: string;
+  options?: Record<string, unknown>;
+};
+
+function requestIsSecure(request: NextRequest) {
+  return (
+    request.nextUrl.protocol === "https:" ||
+    process.env.VERCEL === "1" ||
+    process.env.NODE_ENV === "production"
+  );
+}
+
+function applyPendingCookies(
+  response: NextResponse,
+  pending: PendingCookie[],
+  secure: boolean
+) {
+  for (const { name, value, options } of pending) {
+    const opts = { ...(options ?? {}) } as Record<string, unknown>;
+    if (opts.path == null) opts.path = "/";
+    if (opts.sameSite == null) opts.sameSite = "lax";
+    if (opts.secure == null) opts.secure = secure;
+    response.cookies.set(name, value, opts);
+  }
+  return response;
+}
+
+function redirectWithPending(
+  url: URL,
+  pending: PendingCookie[],
+  secure: boolean,
+  status = 307
+): NextResponse {
+  return applyPendingCookies(NextResponse.redirect(url, status), pending, secure);
+}
+
 export async function updateSession(request: NextRequest) {
+  const pendingCookies: PendingCookie[] = [];
+  const secure = requestIsSecure(request);
+
   let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    getSupabaseUrl(),
-    getSupabaseKey(),
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(
-          cookiesToSet: {
-            name: string;
-            value: string;
-            options?: Record<string, unknown>;
-          }[]
-        ) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
+  const supabase = createServerClient(getSupabaseUrl(), getSupabaseKey(), {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
       },
-    }
-  );
+      setAll(cookiesToSet: PendingCookie[]) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        pendingCookies.length = 0;
+        pendingCookies.push(...cookiesToSet);
+        supabaseResponse = NextResponse.next({ request });
+        applyPendingCookies(supabaseResponse, pendingCookies, secure);
+      },
+    },
+  });
 
   const pathname = request.nextUrl.pathname;
   const isApiRoute = pathname.startsWith("/api/");
@@ -103,7 +132,7 @@ export async function updateSession(request: NextRequest) {
       if (!isPlatformAdmin) {
         const url = request.nextUrl.clone();
         url.pathname = isSignupBlocked ? "/login" : "/maintenance";
-        return NextResponse.redirect(url);
+        return redirectWithPending(url, pendingCookies, secure);
       }
     }
   }
@@ -111,13 +140,13 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return redirectWithPending(url, pendingCookies, secure);
   }
 
   if (user && isAuthPage && request.method === "GET") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
-    return NextResponse.redirect(url, 303);
+    return redirectWithPending(url, pendingCookies, secure, 303);
   }
 
   if (user && isResetPassword) {
@@ -129,13 +158,18 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && !isAdmin && !isBootstrap && !isMaintenance && !isPublic) {
-    const blocked = await getUserAccessBlocked(request, supabase, supabaseResponse);
+    const blocked = await getUserAccessBlocked(
+      request,
+      supabase,
+      supabaseResponse,
+      user.id
+    );
     if (blocked) {
       await supabase.auth.signOut();
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       url.searchParams.set("disabled", "1");
-      return NextResponse.redirect(url);
+      return redirectWithPending(url, pendingCookies, secure);
     }
   }
 

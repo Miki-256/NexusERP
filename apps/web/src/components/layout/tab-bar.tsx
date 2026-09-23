@@ -12,14 +12,19 @@ export function TabBar<T extends string>({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap gap-1 border-b border-border", className)}>
+    <div
+      className={cn(
+        "flex gap-0.5 overflow-x-auto border-b border-border scrollbar-thin",
+        className
+      )}
+    >
       {tabs.map((tab) => (
         <button
           key={tab.key}
           type="button"
           onClick={() => onChange(tab.key)}
           className={cn(
-            "relative -mb-px cursor-pointer border-b-2 px-4 py-2.5 text-sm font-medium transition-colors duration-150",
+            "relative -mb-px shrink-0 cursor-pointer border-b-2 px-2 py-1.5 text-[13px] font-medium transition-colors duration-150 lg:px-2.5",
             value === tab.key
               ? "border-primary text-foreground"
               : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
@@ -27,7 +32,7 @@ export function TabBar<T extends string>({
         >
           {tab.label}
           {tab.count !== undefined && (
-            <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">({tab.count})</span>
+            <span className="ml-1 text-2xs tabular-nums text-muted-foreground">({tab.count})</span>
           )}
         </button>
       ))}

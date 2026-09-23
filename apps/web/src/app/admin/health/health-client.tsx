@@ -297,7 +297,7 @@ export function HealthClient({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard label="Estimated rows" value={data.estimated_rows ?? 0} icon={Database} />
         <StatCard label="Active orgs" value={data.orgs_by_status?.active ?? 0} icon={Building2} />
         <StatCard label="Pending orgs" value={data.orgs_by_status?.pending ?? 0} icon={Activity} />
@@ -310,7 +310,7 @@ export function HealthClient({
       </div>
 
       {ops && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
           <StatCard
             label="Ledger queue"
             value={ledgerPending}

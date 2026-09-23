@@ -194,14 +194,12 @@ export function GiftCardsPanel({
         <DataTable>
           <table className="w-full">
             <DataTableHeader>
-              <DataTableRow>
                 <DataTableHead>Code</DataTableHead>
                 <DataTableHead>Balance</DataTableHead>
                 <DataTableHead>Status</DataTableHead>
                 <DataTableHead>Customer</DataTableHead>
                 <DataTableHead>Issued</DataTableHead>
                 {canManage && <DataTableHead>Actions</DataTableHead>}
-              </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {loading ? (

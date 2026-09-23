@@ -15,7 +15,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { cn } from "@/lib/utils";
+import { ChartCard } from "./chart-card";
+
+export { ChartCard };
 
 const CHART_COLORS = [
   "hsl(222 47% 31%)",
@@ -51,33 +53,11 @@ function ChartTooltip({ active, payload, label, formatter }: TooltipProps) {
   );
 }
 
-export function ChartCard({
-  title,
-  subtitle,
-  children,
-  className,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("enterprise-panel p-5", className)}>
-      <div className="mb-4 border-b border-border pb-3">
-        <h3 className="font-heading text-sm font-semibold text-foreground">{title}</h3>
-        {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
 export function TrendAreaChart({
   data,
   dataKey = "value",
   secondaryKey,
-  height = 280,
+  height = 200,
   formatValue,
   primaryLabel = "Revenue",
   secondaryLabel = "Expenses",
@@ -152,7 +132,7 @@ export function TrendAreaChart({
 
 export function FinanceBarChart({
   data,
-  height = 260,
+  height = 180,
   formatValue,
   layout = "horizontal",
 }: {
@@ -196,7 +176,7 @@ export function FinanceBarChart({
 
 export function FinanceDonutChart({
   data,
-  height = 260,
+  height = 180,
   formatValue,
   innerRadius = 58,
 }: {
@@ -255,7 +235,7 @@ export function PnlWaterfallChart({
   opex,
   netProfit,
   formatValue,
-  height = 240,
+  height = 180,
 }: {
   revenue: number;
   cogs: number;
@@ -280,7 +260,7 @@ export function PnlWaterfallChart({
 export function DualMetricChart({
   data,
   formatValue,
-  height = 280,
+  height = 200,
 }: {
   data: { label: string; revenue: number; expenses: number }[];
   formatValue?: (v: number) => string;

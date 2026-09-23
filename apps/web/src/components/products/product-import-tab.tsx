@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,7 @@ export function ProductImportTab({
   }[];
   currency: string;
 }) {
+  const t = useTranslations("products.importTab");
   const router = useRouter();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -57,7 +59,7 @@ export function ProductImportTab({
       const text = String(reader.result ?? "");
       const rows = parseProductCsv(text);
       if (rows.length === 0) {
-        toast({ title: "No rows found", description: "Include a header row and at least one product.", variant: "destructive" });
+        toast({ title: t("noRows"), description: t("noRowsDesc"), variant: "destructive" });
         return;
       }
       setPreview(validateProductImportRows(rows));
@@ -90,7 +92,7 @@ export function ProductImportTab({
     if (!preview?.length) return;
     const validRows = preview.filter((r) => r.valid);
     if (validRows.length === 0) {
-      toast({ title: "Nothing to import", description: "Fix validation errors first.", variant: "destructive" });
+      toast({ title: t("nothingToImport"), description: t("nothingToImportDesc"), variant: "destructive" });
       return;
     }
 
@@ -106,9 +108,9 @@ export function ProductImportTab({
 
     if (error) {
       toast({
-        title: "Import failed",
+        title: t("importFailed"),
         description: error.message.includes("Could not find the function")
-          ? "Apply migration 20260618000050_product_bulk_barcode.sql in Supabase."
+          ? t("applyMigration", { file: "20260618000050_product_bulk_barcode.sql" })
           : error.message,
         variant: "destructive",
       });
@@ -124,10 +126,13 @@ export function ProductImportTab({
 
     const errCount = payload.errors?.length ?? 0;
     setResult(
-      `Imported ${payload.imported ?? 0}, updated ${payload.updated ?? 0}, skipped ${payload.skipped ?? 0}` +
-        (errCount > 0 ? `, ${errCount} row error(s).` : ".")
+      t("resultSummary", {
+        imported: payload.imported ?? 0,
+        updated: payload.updated ?? 0,
+        skipped: payload.skipped ?? 0,
+      }) + (errCount > 0 ? t("resultErrors", { count: errCount }) : ".")
     );
-    toast({ title: "Import complete", description: "Catalog updated." });
+    toast({ title: t("importComplete"), description: t("importCompleteDesc") });
     setPreview(null);
     if (fileRef.current) fileRef.current.value = "";
     router.refresh();
@@ -135,31 +140,28 @@ export function ProductImportTab({
 
   return (
     <div className="space-y-6">
-      <FormCard
-        title="Bulk import"
-        description="Upload a CSV to create many products at once. Use Export catalog to download your current list, edit in Excel, and re-import."
-      >
+      <FormCard title={t("title")} description={t("description")}>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
             <Download className="mr-2 h-4 w-4" />
-            Download template
+            {t("downloadTemplate")}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={exportCatalog} disabled={products.length === 0}>
             <Download className="mr-2 h-4 w-4" />
-            Export catalog ({products.length})
+            {t("exportCatalog", { count: products.length })}
           </Button>
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="importStore">Opening stock store</Label>
+            <Label htmlFor="importStore">{t("openingStockStore")}</Label>
             <select
               id="importStore"
               className={SELECT_CLS}
               value={storeId}
               onChange={(e) => setStoreId(e.target.value)}
             >
-              <option value="">No stock update</option>
+              <option value="">{t("noStockUpdate")}</option>
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -168,21 +170,21 @@ export function ProductImportTab({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="importMode">Duplicate handling</Label>
+            <Label htmlFor="importMode">{t("duplicateHandling")}</Label>
             <select
               id="importMode"
               className={SELECT_CLS}
               value={mode}
               onChange={(e) => setMode(e.target.value as ImportMode)}
             >
-              <option value="skip">Skip duplicates (by SKU, barcode, or name)</option>
-              <option value="update">Update duplicates (prices, category, add stock)</option>
+              <option value="skip">{t("skipDuplicates")}</option>
+              <option value="update">{t("updateDuplicates")}</option>
             </select>
           </div>
         </div>
 
         <div className="mt-4">
-          <Label htmlFor="importFile">CSV file</Label>
+          <Label htmlFor="importFile">{t("csvFile")}</Label>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <input
               ref={fileRef}
@@ -203,12 +205,10 @@ export function ProductImportTab({
               onClick={runImport}
             >
               <Upload className="mr-2 h-4 w-4" />
-              {busy ? "Importing…" : `Import ${validCount} product${validCount === 1 ? "" : "s"}`}
+              {busy ? t("importing") : t("importProducts", { count: validCount })}
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Columns: name, sku, barcode, sell_price, cost_price, category, quantity, reorder_point. Prices in {currency}.
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{t("columnsHint", { currency })}</p>
         </div>
 
         {result && <p className="mt-4 rounded-md border bg-muted/30 px-3 py-2 text-sm">{result}</p>}
@@ -216,19 +216,19 @@ export function ProductImportTab({
 
       {preview && (
         <FormCard
-          title="Preview"
-          description={`${validCount} valid · ${invalidCount} with issues · max 5,000 rows per import`}
+          title={t("previewTitle")}
+          description={t("previewDescription", { valid: validCount, invalid: invalidCount })}
         >
           <div className="max-h-96 overflow-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-muted/80 text-left text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2">#</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Barcode</th>
-                  <th className="px-3 py-2">Sell</th>
-                  <th className="px-3 py-2">Qty</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">{t("colRow")}</th>
+                  <th className="px-3 py-2">{t("colName")}</th>
+                  <th className="px-3 py-2">{t("colBarcode")}</th>
+                  <th className="px-3 py-2">{t("colSell")}</th>
+                  <th className="px-3 py-2">{t("colQty")}</th>
+                  <th className="px-3 py-2">{t("colStatus")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -241,7 +241,7 @@ export function ProductImportTab({
                     <td className="px-3 py-2">{row.quantity || "0"}</td>
                     <td className="px-3 py-2">
                       {row.valid ? (
-                        <span className="text-success">OK</span>
+                        <span className="text-success">{t("ok")}</span>
                       ) : (
                         <span className="text-destructive">{row.issues.join("; ")}</span>
                       )}
@@ -252,7 +252,7 @@ export function ProductImportTab({
             </table>
           </div>
           {preview.length > 200 && (
-            <p className="mt-2 text-xs text-muted-foreground">Showing first 200 of {preview.length} rows.</p>
+            <p className="mt-2 text-xs text-muted-foreground">{t("showingFirst", { count: preview.length })}</p>
           )}
         </FormCard>
       )}
@@ -260,7 +260,7 @@ export function ProductImportTab({
       {!preview && (
         <div className="flex items-center gap-3 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
           <FileUp className="h-8 w-8 shrink-0 opacity-40" />
-          <p>Choose a CSV file to preview before importing. Existing products can be exported, edited offline, and re-imported with update mode.</p>
+          <p>{t("emptyHint")}</p>
         </div>
       )}
     </div>

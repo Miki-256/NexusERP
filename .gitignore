@@ -19,3 +19,4 @@ supabase/.temp
 coverage/
 
 .venv-pptx/
+.env*

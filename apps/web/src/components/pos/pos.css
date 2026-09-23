@@ -154,100 +154,109 @@ body:has(.pos-route) {
 /* Search block */
 .pos-search-wrap {
   background: hsl(var(--pos-surface));
-  border: 2px solid hsl(var(--pos-border));
-  border-radius: 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  border: 1.5px solid hsl(var(--pos-border));
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .pos-search-wrap:focus-within {
   border-color: hsl(var(--pos-primary));
-  box-shadow: 0 0 0 4px hsl(var(--pos-primary) / 0.12);
+  box-shadow: 0 0 0 3px hsl(var(--pos-primary) / 0.1);
 }
 
-/* Product grid cards */
+/* Product grid cards — compact POS tiles */
 .pos-product-card {
   cursor: pointer;
+  background: hsl(var(--pos-surface));
+  border: 1px solid hsl(var(--pos-border));
+  border-radius: 8px;
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .pos-product-card:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow:
-    0 8px 24px rgb(3 105 161 / 0.14),
-    0 2px 8px rgb(15 23 42 / 0.06);
-  border-color: hsl(var(--pos-primary) / 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgb(15 23 42 / 0.08);
+  border-color: hsl(var(--pos-primary) / 0.35);
 }
 
 .pos-product-card:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
 .pos-product-card.pos-added {
-  animation: pos-pop 0.35s ease;
+  animation: pos-pop 0.25s ease;
 }
 
 .pos-product-card-compact {
-  border-radius: 12px;
-}
-
-.pos-product-card-compact .pos-product-image {
   border-radius: 8px;
+  min-height: 0;
 }
 
-.pos-product-card-mobile-compact {
-  border-radius: 12px;
+.pos-product-card-comfort {
+  border-radius: 10px;
 }
 
-.pos-product-card-mobile-compact .pos-product-image {
-  border-radius: 8px;
-}
-
-.pos-product-card-mobile {
-  border-radius: 14px;
-}
-
-.pos-product-card-mobile .pos-product-image {
-  border-radius: 12px;
-}
-
-.pos-product-image {
-  background: linear-gradient(135deg, hsl(var(--pos-bg-subtle)) 0%, hsl(var(--pos-bg)) 100%);
-  border-radius: 12px;
+.pos-product-card-compact .pos-product-image,
+.pos-product-card-comfort .pos-product-image {
+  border-radius: 6px;
+  background: hsl(210 20% 96%);
 }
 
 .pos-add-btn {
   background: hsl(var(--pos-primary));
   color: white;
-  transition: background-color 0.2s ease, transform 0.15s ease;
+  transition: background 0.12s ease, transform 0.12s ease;
 }
 
 .group:hover .pos-add-btn:not(.pos-add-btn-disabled) {
-  background: hsl(var(--pos-primary-dark));
+  background: hsl(var(--pos-primary) / 0.9);
 }
 
 .pos-add-btn:active:not(.pos-add-btn-disabled) {
-  transform: scale(0.92);
+  transform: scale(0.94);
+}
+
+.pos-category-pill {
+  min-height: 36px;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.pos-category-pill:hover:not(.active):not([aria-selected="true"]) {
+  background: hsl(210 20% 96%);
+  border-color: hsl(var(--pos-border));
+}
+
+.pos-product-card-mobile-compact {
+  border-radius: 8px;
+}
+
+.pos-product-card-mobile {
+  border-radius: 8px;
+}
+
+.pos-product-image {
+  background: hsl(210 20% 96%);
+  border-radius: 6px;
 }
 
 @keyframes pos-pop {
   0% { transform: scale(1); }
-  40% { transform: scale(1.04); }
+  40% { transform: scale(1.03); }
   100% { transform: scale(1); }
 }
 
-/* Category blocks */
+/* Category chips */
 .pos-category-pill {
   cursor: pointer;
-  min-height: 44px;
+  min-height: 36px;
   scroll-snap-align: start;
-  transition: all 0.2s ease;
 }
 
 .pos-category-pill:hover:not(.active):not([aria-selected="true"]) {
-  border-color: hsl(var(--pos-primary) / 0.35);
+  border-color: hsl(var(--pos-primary) / 0.3);
   background: hsl(var(--pos-primary) / 0.04);
   color: hsl(var(--pos-navy));
 }
@@ -259,19 +268,19 @@ body:has(.pos-route) {
 }
 
 .pos-cart-item {
-  animation: pos-slide-in 0.25s ease;
+  animation: pos-slide-in 0.2s ease;
 }
 
 @keyframes pos-slide-in {
-  from { opacity: 0; transform: translateX(12px); }
+  from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
 }
 
 .pos-checkout-btn {
   cursor: pointer;
   background: linear-gradient(180deg, hsl(var(--pos-primary)) 0%, hsl(var(--pos-primary-dark)) 100%);
-  box-shadow: 0 4px 16px hsl(var(--pos-primary) / 0.4);
-  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 10px hsl(var(--pos-primary) / 0.35);
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
 }
 
 .pos-checkout-btn:hover:not(:disabled) {

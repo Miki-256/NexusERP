@@ -341,7 +341,7 @@ export function OrgDetailClient({
                 : "never"}
             </p>
           </div>
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             <StatCard label="Ledger queue" value={health.signals.ledger_queue_pending} icon={Activity} />
             <StatCard label="Ledger failed" value={health.signals.ledger_queue_failed} icon={Activity} />
             <StatCard label="Unposted sales" value={health.signals.unposted_sales} icon={DollarSign} />
@@ -453,7 +453,7 @@ export function OrgDetailClient({
         </FormCard>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard label="Members" value={detail.members.length} icon={Users} />
         <StatCard label="Stores" value={detail.stores.length} icon={Store} />
         <StatCard label="Completed sales" value={detail.stats.sales_count} icon={Building2} />

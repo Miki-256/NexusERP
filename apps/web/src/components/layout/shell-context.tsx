@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 
 type ShellContextValue = {
   sidebarCollapsed: boolean;
@@ -12,37 +13,70 @@ type ShellContextValue = {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
+function readCollapsedPreference(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem("nexus-sidebar-collapsed") === "true";
+  } catch {
+    return false;
+  }
+}
+
 export function ShellProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("nexus-sidebar-collapsed");
-    if (stored === "true") setSidebarCollapsed(true);
+    setSidebarCollapsed(readCollapsedPreference());
+    setHydrated(true);
   }, []);
 
-  function setCollapsed(v: boolean) {
-    setSidebarCollapsed(v);
-    localStorage.setItem("nexus-sidebar-collapsed", String(v));
-  }
+  // Close mobile drawer on route change so the dimmed backdrop never traps taps
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
-  return (
-    <ShellContext.Provider
-      value={{
-        sidebarCollapsed,
-        setSidebarCollapsed: setCollapsed,
-        toggleSidebar: () => setCollapsed(!sidebarCollapsed),
-        mobileOpen,
-        setMobileOpen,
-      }}
-    >
-      {children}
-    </ShellContext.Provider>
+  const setCollapsed = useCallback((v: boolean) => {
+    setSidebarCollapsed(v);
+    try {
+      localStorage.setItem("nexus-sidebar-collapsed", String(v));
+    } catch {
+      /* ignore quota */
+    }
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setCollapsed(!sidebarCollapsed);
+  }, [setCollapsed, sidebarCollapsed]);
+
+  const value = useMemo(
+    () => ({
+      sidebarCollapsed: hydrated ? sidebarCollapsed : false,
+      setSidebarCollapsed: setCollapsed,
+      toggleSidebar,
+      mobileOpen,
+      setMobileOpen,
+    }),
+    [hydrated, sidebarCollapsed, setCollapsed, toggleSidebar, mobileOpen]
   );
+
+  return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;
 }
 
 export function useShell() {
   const ctx = useContext(ShellContext);
-  if (!ctx) throw new Error("useShell must be used within ShellProvider");
+  // Do not throw — Suspense fallbacks / partial mounts can render outside ShellProvider.
+  // Throwing here bricks the whole app with root error.tsx for cashiers.
+  if (!ctx) {
+    return {
+      sidebarCollapsed: false,
+      setSidebarCollapsed: () => {},
+      toggleSidebar: () => {},
+      mobileOpen: false,
+      setMobileOpen: () => {},
+    };
+  }
   return ctx;
 }

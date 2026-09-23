@@ -152,7 +152,7 @@ export function TreasuryTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <StatCard label="Total liquid" value={money(position?.total_liquid)} sub={`As of ${asOf}`} icon={Wallet} />
         <StatCard label="Bank accounts" value={money(position?.bank_accounts_total)} icon={Landmark} />
         <StatCard label="Cash + mobile" value={money((position?.cash_on_hand ?? 0) + (position?.mobile_money ?? 0))} icon={Wallet} />
@@ -164,7 +164,7 @@ export function TreasuryTab({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <StatCard label="Open receivables" value={money(position?.open_receivables)} />
         <StatCard label="Pending AP runs" value={money(position?.pending_ap_payment_runs)} />
         <StatCard label="Unreconciled lines" value={String(position?.unreconciled_lines ?? 0)} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { BrowserCodeReader, BrowserMultiFormatReader } from "@zxing/browser";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,10 @@ export type BarcodeScanResult = {
   label?: string;
 };
 
+export type BarcodeScanHandler = (
+  code: string
+) => BarcodeScanResult | Promise<BarcodeScanResult>;
+
 function pickDefaultDevice(devices: MediaDeviceInfo[]): string | undefined {
   if (devices.length === 0) return undefined;
   const back = devices.find(
@@ -39,11 +44,15 @@ export function BarcodeScannerModal({
   onClose,
   initialStream,
 }: {
-  onScan: (code: string) => BarcodeScanResult;
+  onScan: BarcodeScanHandler;
   onClose: () => void;
   /** Pre-acquired stream from a user tap — required for reliable mobile camera access. */
   initialStream?: MediaStream | null;
 }) {
+  const t = useTranslations("pos");
+  const tRef = useRef(t);
+  tRef.current = t;
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
@@ -65,6 +74,16 @@ export function BarcodeScannerModal({
   const [lastFeedback, setLastFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [flash, setFlash] = useState<"success" | "error" | null>(null);
 
+  const mapCameraError = useCallback((msg: string) => {
+    if (/denied|permission|notallowed/i.test(msg)) {
+      return tRef.current("cameraAccessBlocked");
+    }
+    if (/notfound|devices/i.test(msg)) {
+      return tRef.current("noCameraFound");
+    }
+    return msg;
+  }, []);
+
   const stopAll = useCallback(() => {
     if (nativeLoopRef.current != null) {
       cancelAnimationFrame(nativeLoopRef.current);
@@ -75,7 +94,7 @@ export function BarcodeScannerModal({
     readerRef.current = null;
     BrowserCodeReader.releaseAllStreams();
     if (ownsStreamRef.current) {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current?.getTracks().forEach((track) => track.stop());
     }
     streamRef.current = null;
     ownsStreamRef.current = false;
@@ -103,22 +122,28 @@ export function BarcodeScannerModal({
       if (!decision.accept) return;
 
       acceptingRef.current = true;
-
-      const result = onScanRef.current(decision.code);
       lastAcceptedRef.current = { code: decision.code, at: Date.now() };
 
-      if (result.ok) {
-        playScanSuccessSound();
-        setScanCount((n) => n + 1);
-        flashResult("success", result.label ?? decision.code);
-      } else {
-        playScanErrorSound();
-        flashResult("error", `Not found: ${decision.code}`);
-      }
-
-      setTimeout(() => {
-        acceptingRef.current = false;
-      }, 350);
+      void (async () => {
+        try {
+          const result = await onScanRef.current(decision.code);
+          if (result.ok) {
+            playScanSuccessSound();
+            setScanCount((n) => n + 1);
+            flashResult("success", result.label ?? decision.code);
+          } else {
+            playScanErrorSound();
+            flashResult("error", tRef.current("notFoundCode", { code: decision.code }));
+          }
+        } catch {
+          playScanErrorSound();
+          flashResult("error", tRef.current("notFoundCode", { code: decision.code }));
+        } finally {
+          setTimeout(() => {
+            acceptingRef.current = false;
+          }, 350);
+        }
+      })();
     },
     [flashResult]
   );
@@ -206,22 +231,16 @@ export function BarcodeScannerModal({
         void startNativeDetector(video);
       } catch (err) {
         setStatus("error");
-        const msg = err instanceof Error ? err.message : "Could not start scanner";
-        if (/denied|permission|notallowed/i.test(msg)) {
-          setError("Camera access blocked. Allow camera for this site, then try again.");
-        } else if (/notfound|devices/i.test(msg)) {
-          setError("No camera found on this device.");
-        } else {
-          setError(msg);
-        }
+        const msg = err instanceof Error ? err.message : tRef.current("couldNotStartScanner");
+        setError(mapCameraError(msg));
       }
     },
-    [processCandidate, startNativeDetector, stopAll]
+    [processCandidate, startNativeDetector, stopAll, mapCameraError]
   );
 
   const requestCameraStream = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error("Camera is not available in this browser. Use HTTPS or type the barcode.");
+      throw new Error(tRef.current("cameraNotAvailableHttps"));
     }
     return navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: "environment" } },
@@ -243,17 +262,11 @@ export function BarcodeScannerModal({
         await startWithStream(stream, available, index, true);
       } catch (err) {
         setStatus("error");
-        const msg = err instanceof Error ? err.message : "Could not open camera";
-        if (/denied|permission|notallowed/i.test(msg)) {
-          setError("Camera access blocked. Allow camera for this site, then try again.");
-        } else if (/notfound|devices/i.test(msg)) {
-          setError("No camera found on this device.");
-        } else {
-          setError(msg);
-        }
+        const msg = err instanceof Error ? err.message : tRef.current("couldNotOpenCamera");
+        setError(mapCameraError(msg));
       }
     },
-    [requestCameraStream, startWithStream]
+    [requestCameraStream, startWithStream, mapCameraError]
   );
 
   const devicesRef = useRef<MediaDeviceInfo[]>([]);
@@ -265,7 +278,7 @@ export function BarcodeScannerModal({
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
           setStatus("error");
-          setError("Camera is not available in this browser. Use HTTPS or type the barcode.");
+          setError(tRef.current("cameraNotAvailableHttps"));
           return;
         }
 
@@ -292,21 +305,15 @@ export function BarcodeScannerModal({
 
         const stream = await requestCameraStream();
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
         await startWithStream(stream, list, defaultIndex >= 0 ? defaultIndex : 0, true);
       } catch (e) {
         if (cancelled) return;
         setStatus("error");
-        const msg = e instanceof Error ? e.message : "Could not access camera";
-        if (/denied|permission|notallowed/i.test(msg)) {
-          setError("Camera access blocked. Allow camera for this site, then try again.");
-        } else if (/notfound|devices/i.test(msg)) {
-          setError("No camera found on this device.");
-        } else {
-          setError(msg);
-        }
+        const msg = e instanceof Error ? e.message : tRef.current("couldNotAccessCamera");
+        setError(mapCameraError(msg));
       }
     }
 
@@ -346,10 +353,10 @@ export function BarcodeScannerModal({
             <Camera className="h-5 w-5 text-white" aria-hidden />
             <div>
               <h2 id="pos-scanner-title" className="pos-heading text-lg font-bold text-white">
-                Scan items
+                {t("scanItems")}
               </h2>
               {scanCount > 0 && (
-                <p className="text-xs text-white/80">{scanCount} added to cart</p>
+                <p className="text-xs text-white/80">{t("addedToCartCount", { count: scanCount })}</p>
               )}
             </div>
           </div>
@@ -357,7 +364,7 @@ export function BarcodeScannerModal({
             type="button"
             onClick={handleClose}
             className="cursor-pointer rounded-lg p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            aria-label="Close barcode scanner"
+            aria-label={t("closeBarcodeScanner")}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
@@ -370,7 +377,7 @@ export function BarcodeScannerModal({
             muted
             playsInline
             autoPlay
-            aria-label="Camera preview for barcode scanning"
+            aria-label={t("cameraPreviewAria")}
           />
           {flash === "success" && (
             <div className="pointer-events-none absolute inset-0 bg-emerald-400/25 transition-opacity" />
@@ -386,14 +393,14 @@ export function BarcodeScannerModal({
               aria-busy="true"
             >
               <Loader2 className="h-10 w-10 animate-spin" aria-hidden />
-              <p className="text-sm font-medium">Starting camera…</p>
+              <p className="text-sm font-medium">{t("startingCamera")}</p>
             </div>
           )}
           {status === "scanning" && (
             <>
               <div className="pointer-events-none absolute inset-8 rounded-xl border-2 border-white/70 shadow-[0_0_0_9999px_rgb(0_0_0/0.35)]" />
               <p className="pointer-events-none absolute bottom-4 left-0 right-0 px-4 text-center text-xs font-medium text-white/90">
-                Hold steady over each barcode · beep confirms add
+                {t("holdSteadyOverBarcode")}
               </p>
             </>
           )}
@@ -426,7 +433,7 @@ export function BarcodeScannerModal({
               onClick={flipCamera}
             >
               <FlipHorizontal className="h-4 w-4" />
-              Switch camera
+              {t("switchCamera")}
             </Button>
           )}
           {error && status === "error" && (
@@ -437,18 +444,16 @@ export function BarcodeScannerModal({
                 void startCamera(deviceIndex, devices.length > 0 ? devices : devicesRef.current);
               }}
             >
-              Try again
+              {t("tryAgain")}
             </Button>
           )}
-          <p className="text-center text-xs text-slate-500">
-            Each barcode is verified twice before adding · same item has a short cooldown
-          </p>
+          <p className="text-center text-xs text-slate-500">{t("barcodeVerifyHint")}</p>
           <Button
             variant="default"
             className="pos-btn-primary w-full cursor-pointer"
             onClick={handleClose}
           >
-            Done ({scanCount} scanned)
+            {t("doneScanned", { count: scanCount })}
           </Button>
         </div>
       </div>

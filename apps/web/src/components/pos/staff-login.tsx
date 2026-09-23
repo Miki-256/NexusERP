@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { storePosSession, type PosStaffSession } from "@/lib/pos-session";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function StaffLogin({
   staff: PosStaffOption[];
   onSuccess: (session: PosStaffSession) => void;
 }) {
+  const t = useTranslations("pos");
   const [selected, setSelected] = useState<PosStaffOption | null>(null);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function StaffLogin({
 
   async function submit() {
     if (!selected || pin.length < 4) {
-      setError("Enter at least 4 digits");
+      setError(t("enterAtLeast4Digits"));
       return;
     }
     setLoading(true);
@@ -94,12 +96,10 @@ export function StaffLogin({
     return (
       <main className="pos-root pos-shell flex h-full flex-col items-center justify-center p-6">
         <div className="pos-card max-w-md p-8 text-center">
-          <h1 className="text-xl font-bold text-slate-900">No staff registered</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Ask your manager to add POS staff in Team settings.
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">{t("noStaffRegistered")}</h1>
+          <p className="mt-2 text-sm text-slate-600">{t("askManagerAddStaff")}</p>
           <Button asChild variant="outline" className="mt-6">
-            <Link href="/dashboard">Manager login</Link>
+            <Link href="/dashboard">{t("managerLogin")}</Link>
           </Button>
         </div>
       </main>
@@ -122,9 +122,9 @@ export function StaffLogin({
           </div>
         </div>
         <Button asChild variant="ghost" size="sm" className="text-white/80 hover:bg-white/10 hover:text-white">
-          <Link href="/dashboard" aria-label="Manager login">
+          <Link href="/dashboard" aria-label={t("managerLogin")}>
             <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
-            Manager
+            {t("manager")}
           </Link>
         </Button>
       </header>
@@ -134,7 +134,7 @@ export function StaffLogin({
           <div className="mb-8 text-center">
             <h1 className="pos-heading text-3xl font-bold text-slate-900">{orgName}</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">
-              {selected ? `Sign in as ${selected.display_name}` : "Select your name to continue"}
+              {selected ? t("signInAs", { name: selected.display_name }) : t("selectYourName")}
             </p>
           </div>
 
@@ -145,7 +145,7 @@ export function StaffLogin({
                   key={s.id}
                   type="button"
                   role="option"
-                  aria-label={`Sign in as ${s.display_name}, ${s.role}`}
+                  aria-label={t("signInAsRole", { name: s.display_name, role: s.role })}
                   onClick={() => {
                     setSelected(s);
                     setPin("");
@@ -172,7 +172,7 @@ export function StaffLogin({
                 }}
                 className="mb-5 cursor-pointer text-xs font-medium text-slate-500 transition-colors hover:text-slate-800"
               >
-                ← Choose another name
+                {t("chooseAnotherName")}
               </button>
 
               <div className="mb-5 flex justify-center gap-2.5">
@@ -195,12 +195,12 @@ export function StaffLogin({
                 className="mb-5 rounded-xl text-center text-2xl tracking-[0.5em] text-slate-900"
                 placeholder="••••"
                 autoFocus
-                aria-label="PIN entry"
-                toggleLabel="Show PIN"
+                aria-label={t("pinEntry")}
+                toggleLabel={t("showPin")}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
 
-              <div className="mb-5 grid grid-cols-3 gap-2" role="group" aria-label="PIN keypad">
+              <div className="mb-5 grid grid-cols-3 gap-2" role="group" aria-label={t("pinKeypad")}>
                 {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"].map((key) =>
                   key === "" ? (
                     <div key="spacer" aria-hidden />
@@ -209,7 +209,7 @@ export function StaffLogin({
                       key="del"
                       type="button"
                       onClick={backspace}
-                      aria-label="Delete last digit"
+                      aria-label={t("deleteLastDigit")}
                       className="pos-pin-key flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
                     >
                       <Delete className="h-5 w-5" aria-hidden />
@@ -219,7 +219,7 @@ export function StaffLogin({
                       key={key}
                       type="button"
                       onClick={() => appendDigit(key)}
-                      aria-label={`Digit ${key}`}
+                      aria-label={t("digitAria", { digit: key })}
                       className="pos-pin-key min-h-11 rounded-xl border border-slate-200 bg-white text-xl font-bold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pos-primary"
                     >
                       {key}
@@ -240,7 +240,7 @@ export function StaffLogin({
                 aria-busy={loading}
                 onClick={submit}
               >
-                {loading ? "Signing in…" : "Enter"}
+                {loading ? t("signingIn") : t("enter")}
               </Button>
             </div>
           )}

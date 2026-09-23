@@ -96,7 +96,7 @@ export function CrmClient({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
         <StatCard label="Open Pipeline" value={formatCurrency(pipelineValue, currency)} icon={Target} />
         <StatCard label="Won" value={formatCurrency(wonValue, currency)} icon={Trophy} highlight="positive" />
       </div>

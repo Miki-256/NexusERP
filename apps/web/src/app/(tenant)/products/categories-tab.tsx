@@ -19,6 +19,7 @@ import {
   DataTableRow,
 } from "@/components/layout/data-table";
 import { deleteBlockedMessage } from "@/lib/delete-errors";
+import { useTranslations } from "next-intl";
 import { Pencil, Plus, X } from "lucide-react";
 import type { CategoryRow } from "./page";
 
@@ -35,6 +36,8 @@ export function CategoriesTab({
   productCountByCategory: Record<string, number>;
   canManage: boolean;
 }) {
+  const t = useTranslations("products.categoriesTab");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const { toast } = useToast();
   const [formMode, setFormMode] = useState<FormMode>("closed");
@@ -71,7 +74,7 @@ export function CategoriesTab({
   async function saveCategory(e: React.FormEvent) {
     e.preventDefault();
     if (!canManage || !name.trim()) {
-      return toast({ title: "Name required", variant: "destructive" });
+      return toast({ title: t("nameRequired"), variant: "destructive" });
     }
     setBusy(true);
     const supabase = createClient();
@@ -94,9 +97,9 @@ export function CategoriesTab({
 
     setBusy(false);
     if (error) {
-      return toast({ title: "Could not save category", description: error.message, variant: "destructive" });
+      return toast({ title: t("saveFailed"), description: error.message, variant: "destructive" });
     }
-    toast({ title: formMode === "edit" ? "Category updated" : "Category added", description: name.trim() });
+    toast({ title: formMode === "edit" ? t("updated") : t("added"), description: name.trim() });
     resetForm();
     router.refresh();
   }
@@ -108,11 +111,11 @@ export function CategoriesTab({
     const { error } = await supabase.from("categories").delete().eq("id", id).eq("organization_id", organizationId);
     setBusy(false);
     if (error) {
-      return toast({ title: "Could not delete category", description: deleteBlockedMessage(error), variant: "destructive" });
+      return toast({ title: t("deleteFailed"), description: deleteBlockedMessage(error), variant: "destructive" });
     }
     toast({
-      title: "Category deleted",
-      description: `${categoryName} removed. Linked products are now uncategorized.`,
+      title: t("deleted"),
+      description: t("deletedDesc", { name: categoryName }),
     });
     if (editingId === id) resetForm();
     router.refresh();
@@ -128,12 +131,12 @@ export function CategoriesTab({
             {formOpen ? (
               <>
                 <X className="h-4 w-4" />
-                Close
+                {tCommon("close")}
               </>
             ) : (
               <>
                 <Plus className="h-4 w-4" />
-                Add category
+                {t("addCategory")}
               </>
             )}
           </Button>
@@ -141,19 +144,19 @@ export function CategoriesTab({
       )}
 
       {formOpen && canManage && (
-        <FormCard title={formMode === "edit" ? "Edit category" : "New category"}>
+        <FormCard title={formMode === "edit" ? t("editCategory") : t("newCategory")}>
           <form onSubmit={saveCategory} className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Name</Label>
+              <Label>{tCommon("name")}</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Beverages"
+                placeholder={t("namePlaceholder")}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label>Sort order</Label>
+              <Label>{t("sortOrder")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -161,14 +164,14 @@ export function CategoriesTab({
                 onChange={(e) => setSortOrder(e.target.value)}
                 placeholder="0"
               />
-              <p className="text-xs text-muted-foreground">Lower numbers appear first in lists.</p>
+              <p className="text-xs text-muted-foreground">{t("sortHint")}</p>
             </div>
             <div className="flex gap-2 sm:col-span-2">
               <Button type="submit" disabled={busy} className="cursor-pointer">
-                {busy ? "Saving…" : formMode === "edit" ? "Update" : "Save"}
+                {busy ? tCommon("saving") : formMode === "edit" ? tCommon("update") : tCommon("save")}
               </Button>
               <Button type="button" variant="outline" onClick={resetForm} className="cursor-pointer">
-                Cancel
+                {tCommon("cancel")}
               </Button>
             </div>
           </form>
@@ -178,16 +181,16 @@ export function CategoriesTab({
       <DataTable>
         <table className="w-full">
           <DataTableHeader>
-            <DataTableHead>Name</DataTableHead>
-            <DataTableHead align="right">Products</DataTableHead>
-            <DataTableHead align="right">Sort</DataTableHead>
-            {canManage && <DataTableHead align="right">Actions</DataTableHead>}
+            <DataTableHead>{tCommon("name")}</DataTableHead>
+            <DataTableHead align="right">{tCommon("products")}</DataTableHead>
+            <DataTableHead align="right">{t("sort")}</DataTableHead>
+            {canManage && <DataTableHead align="right">{tCommon("actions")}</DataTableHead>}
           </DataTableHeader>
           <DataTableBody>
             {categories.length === 0 ? (
               <DataTableEmpty
                 colSpan={canManage ? 4 : 3}
-                message="No categories yet. Add one to organize your catalog."
+                message={t("empty")}
               />
             ) : (
               categories.map((c) => (
@@ -204,13 +207,13 @@ export function CategoriesTab({
                       <div className="flex flex-wrap justify-end gap-2">
                         <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => openEdit(c)}>
                           <Pencil className="h-3.5 w-3.5" />
-                          Edit
+                          {tCommon("edit")}
                         </Button>
                         <ConfirmDeleteButton
                           message={
                             (productCountByCategory[c.id] ?? 0) > 0
-                              ? `${productCountByCategory[c.id]} product(s) will become uncategorized.`
-                              : "Delete this category permanently?"
+                              ? t("deleteWithProducts", { count: productCountByCategory[c.id] ?? 0 })
+                              : t("deleteConfirm")
                           }
                           onConfirm={() => deleteCategory(c.id, c.name)}
                         />

@@ -152,7 +152,7 @@ export function PlansClient({
         </FormCard>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         {plans.map((plan) => (
           <StatCard
             key={plan.id}

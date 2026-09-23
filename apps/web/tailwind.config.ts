@@ -66,13 +66,40 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        overlay: "var(--overlay-radius)",
       },
       fontSize: {
         "2xs": ["0.6875rem", { lineHeight: "1rem" }],
       },
+      spacing: {
+        panel: "var(--space-panel)",
+        "panel-md": "var(--space-panel-md)",
+        section: "var(--space-section)",
+        "section-md": "var(--space-section-md)",
+      },
+      height: {
+        control: "var(--control-h)",
+        "control-sm": "var(--control-h-sm)",
+        "control-lg": "var(--control-h-lg)",
+      },
+      minHeight: {
+        control: "var(--control-h)",
+        "control-sm": "var(--control-h-sm)",
+        "control-lg": "var(--control-h-lg)",
+      },
+      zIndex: {
+        header: "var(--z-header)",
+        overlay: "var(--z-overlay)",
+        toast: "var(--z-toast)",
+        popover: "var(--z-popover)",
+      },
       boxShadow: {
         elevated: "var(--shadow-md)",
         "elevated-lg": "var(--shadow-lg)",
+      },
+      transitionDuration: {
+        fast: "150ms",
+        sheet: "180ms",
       },
       keyframes: {
         "fade-in": {
@@ -83,10 +110,15 @@ const config: Config = {
           from: { opacity: "0", transform: "scale(0.96)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
+        "sheet-up": {
+          from: { opacity: "0", transform: "translateY(100%)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
-        "fade-in": "fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-        "scale-in": "scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+        "fade-in": "fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+        "scale-in": "scale-in 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
+        "sheet-up": "sheet-up 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
       },
     },
   },

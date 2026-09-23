@@ -30,9 +30,11 @@ import { useShell } from "@/components/layout/shell-context";
 import { CommandPalette, useCommandPalette } from "@/components/layout/command-palette";
 import { OrgSwitcher } from "@/components/layout/org-switcher";
 import { NotificationInbox } from "@/components/notifications/notification-inbox";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { createClient } from "@/lib/supabase/client";
 import type { WorkspaceSummary } from "@/lib/active-org";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 
 export function AppHeader({
   orgName,
@@ -55,6 +57,7 @@ export function AppHeader({
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { toggleSidebar, setMobileOpen } = useShell();
   const { open, setOpen } = useCommandPalette();
+  const t = useTranslations("common");
 
   async function signOut() {
     const supabase = createClient();
@@ -67,13 +70,13 @@ export function AppHeader({
 
   return (
     <>
-      <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-header-border bg-header px-3 sm:gap-3 sm:px-4 lg:px-6">
+      <header className="relative z-30 flex h-12 shrink-0 items-center gap-2 border-b border-header-border bg-header px-3 sm:gap-3 sm:px-4 lg:h-14 lg:px-5">
         <Button
           variant="ghost"
           size="icon"
           className="touch-target shrink-0 lg:hidden"
           onClick={() => setMobileOpen(true)}
-          aria-label="Open menu"
+          aria-label={t("openMenu")}
         >
           <Menu className="h-5 w-5" />
         </Button>
@@ -82,7 +85,7 @@ export function AppHeader({
           size="icon"
           className="hidden shrink-0 lg:inline-flex"
           onClick={toggleSidebar}
-          aria-label="Toggle sidebar"
+          aria-label={t("toggleSidebar")}
         >
           <Menu className="h-5 w-5" />
         </Button>
@@ -90,7 +93,7 @@ export function AppHeader({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Search"
+          aria-label={t("search")}
           className={cn(
             "flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-input bg-muted/30 text-muted-foreground sm:hidden",
             "min-w-9 transition-colors duration-150 hover:bg-muted/50 hover:text-foreground"
@@ -107,7 +110,7 @@ export function AppHeader({
           )}
         >
           <Search className="h-4 w-4 shrink-0" />
-          <span className="truncate">Search…</span>
+          <span className="truncate">{t("searchEllipsis")}</span>
           <kbd className="ml-auto hidden rounded border bg-background px-1.5 py-0.5 text-2xs font-medium md:inline">
             ⌘K
           </kbd>
@@ -123,29 +126,29 @@ export function AppHeader({
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1.5" aria-label="Quick actions">
+              <Button variant="ghost" size="sm" className="gap-1.5" aria-label={t("quickActions")}>
                 <Plus className="h-4 w-4" />
-                <span className="hidden md:inline">Quick actions</span>
+                <span className="hidden md:inline">{t("quickActions")}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Create</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("create")}</DropdownMenuLabel>
               <DropdownMenuItem asChild>
                 <Link href="/pos">
                   <ShoppingCart className="h-4 w-4" />
-                  New sale (POS)
+                  {t("newSalePos")}
                 </Link>
               </DropdownMenuItem>
               {canManageTeam && (
                 <>
                   <DropdownMenuItem asChild>
-                    <Link href="/invoicing">New invoice</Link>
+                    <Link href="/invoicing">{t("newInvoice")}</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/expenses">Record expense</Link>
+                    <Link href="/expenses">{t("recordExpense")}</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/purchasing">Purchase order</Link>
+                    <Link href="/purchasing">{t("purchaseOrder")}</Link>
                   </DropdownMenuItem>
                 </>
               )}
@@ -153,28 +156,29 @@ export function AppHeader({
           </DropdownMenu>
 
           <NotificationInbox organizationId={activeOrganizationId} />
+          <LanguageSwitcher organizationId={activeOrganizationId} compact />
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Theme">
+              <Button variant="ghost" size="icon" aria-label={t("theme")}>
                 {resolvedTheme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("appearance")}</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => setTheme("light")}>
                 <Sun className="h-4 w-4" />
-                Light
+                {t("light")}
                 {theme === "light" && <Check className="ml-auto h-4 w-4" />}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("dark")}>
                 <Moon className="h-4 w-4" />
-                Dark
+                {t("dark")}
                 {theme === "dark" && <Check className="ml-auto h-4 w-4" />}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("system")}>
                 <Monitor className="h-4 w-4" />
-                System
+                {t("system")}
                 {theme === "system" && <Check className="ml-auto h-4 w-4" />}
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -204,21 +208,21 @@ export function AppHeader({
               <DropdownMenuItem asChild>
                 <Link href="/settings">
                   <User className="h-4 w-4" />
-                  Profile & settings
+                  {t("profileSettings")}
                 </Link>
               </DropdownMenuItem>
               {canManageTeam && (
                 <DropdownMenuItem asChild>
                   <Link href="/team">
                     <Settings className="h-4 w-4" />
-                    Team management
+                    {t("teamManagement")}
                   </Link>
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive">
                 <LogOut className="h-4 w-4" />
-                Sign out
+                {t("signOut")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

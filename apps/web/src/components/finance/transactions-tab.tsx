@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { SELECT_CLS } from "@/lib/ui-classes";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { localeToBcp47, type AppLocale } from "@/i18n/config";
 
 export type SaleLineRow = {
   id: string;
@@ -32,6 +34,14 @@ export type SaleLineRow = {
   discount_amount: number;
   line_total: number;
 };
+
+function lineExTax(line: SaleLineRow): number {
+  const tax = Number(line.tax_amount ?? 0);
+  if (tax > 0) return Math.round((Number(line.line_total) - tax) * 100) / 100;
+  return Math.round(
+    (Number(line.unit_price) * Number(line.quantity) - Number(line.discount_amount ?? 0)) * 100
+  ) / 100;
+}
 
 export type PaymentRow = {
   id: string;
@@ -55,6 +65,7 @@ export type TransactionRow = {
   subtotal: number;
   tax_amount: number;
   discount_amount: number;
+  tip_amount?: number;
   customer_name: string | null;
   customer_phone: string | null;
   stores: { name: string } | { name: string }[] | null;
@@ -96,28 +107,31 @@ export function TransactionsTab({
   const [page, setPage] = useState(1);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const t = useTranslations("finance");
+  const tCommon = useTranslations("common");
+  const locale = useLocale() as AppLocale;
 
   const filtersActive = status !== "all";
 
-  const money = (n: number) => formatCurrency(n, currency);
+  const money = (n: number) => formatCurrency(n, currency, localeToBcp47(locale));
   const period = formatPeriod(from, to);
 
   const filtered = useMemo(() => {
-    return transactions.filter((t) => {
-      if (status !== "all" && t.status !== status) return false;
+    return transactions.filter((txn) => {
+      if (status !== "all" && txn.status !== status) return false;
       if (!search.trim()) return true;
       const q = search.toLowerCase();
-      const store = relationName(t.stores).toLowerCase();
-      const register = relationName(t.registers).toLowerCase();
-      const customer = (t.customer_name ?? "").toLowerCase();
-      const phone = (t.customer_phone ?? "").toLowerCase();
-      const productHit = t.sale_lines.some(
+      const store = relationName(txn.stores).toLowerCase();
+      const register = relationName(txn.registers).toLowerCase();
+      const customer = (txn.customer_name ?? "").toLowerCase();
+      const phone = (txn.customer_phone ?? "").toLowerCase();
+      const productHit = txn.sale_lines.some(
         (l) =>
           l.product_name.toLowerCase().includes(q) ||
           (l.variant_name ?? "").toLowerCase().includes(q)
       );
       return (
-        (t.receipt_no ?? "").toLowerCase().includes(q) ||
+        (txn.receipt_no ?? "").toLowerCase().includes(q) ||
         store.includes(q) ||
         register.includes(q) ||
         customer.includes(q) ||
@@ -139,28 +153,29 @@ export function TransactionsTab({
 
   const lineExportRows = useMemo(
     () =>
-      filtered.flatMap((t) =>
-        (t.sale_lines.length ? t.sale_lines : [null]).map((line) => ({
-          receipt_no: t.receipt_no,
-          date: new Date(t.created_at).toLocaleString(),
-          store: relationName(t.stores) || "",
-          register: relationName(t.registers) || "",
-          cashier: staffName(t),
-          customer: t.customer_name || "",
-          customer_phone: t.customer_phone || "",
-          status: t.status,
+      filtered.flatMap((txn) =>
+        (txn.sale_lines.length ? txn.sale_lines : [null]).map((line) => ({
+          receipt_no: txn.receipt_no,
+          date: new Date(txn.created_at).toLocaleString(),
+          store: relationName(txn.stores) || "",
+          register: relationName(txn.registers) || "",
+          cashier: staffName(txn),
+          customer: txn.customer_name || "",
+          customer_phone: txn.customer_phone || "",
+          status: txn.status,
           product: line?.product_name ?? "",
           variant: line?.variant_name ?? "",
           quantity: line?.quantity ?? "",
           unit_price: line?.unit_price ?? "",
           line_discount: line?.discount_amount ?? "",
           line_tax: line?.tax_amount ?? "",
-          line_total: line?.line_total ?? "",
-          sale_subtotal: t.subtotal,
-          sale_tax: t.tax_amount,
-          sale_discount: t.discount_amount,
-          sale_total: t.total,
-          payments: t.payments.map((p) => `${p.method}:${p.amount}`).join("; "),
+          line_total: line ? lineExTax(line) : "",
+          sale_subtotal: txn.subtotal,
+          sale_tax: txn.tax_amount,
+          sale_discount: txn.discount_amount,
+          sale_tip: txn.tip_amount ?? 0,
+          sale_total: txn.total,
+          payments: txn.payments.map((p) => `${p.method}:${p.amount}`).join("; "),
         }))
       ),
     [filtered]
@@ -177,10 +192,11 @@ export function TransactionsTab({
 
   return (
     <ReportSection
-      title="Transaction detail"
-      subtitle={`${filtered.length} sales · line items & payments · ${period}`}
+      title={t("transactionDetail")}
+      subtitle={t("transactionDetailSubtitle", { count: filtered.length, period })}
       actions={
         <ExportCsvButton
+          label={tCommon("exportCsv")}
           filename={`transactions-detail-${from}-${to}`}
           rows={lineExportRows}
           columns={[
@@ -202,6 +218,7 @@ export function TransactionsTab({
             { key: "sale_subtotal", label: "Sale Subtotal" },
             { key: "sale_tax", label: "Sale Tax" },
             { key: "sale_discount", label: "Sale Discount" },
+            { key: "sale_tip", label: "Sale Tip" },
             { key: "sale_total", label: "Sale Total" },
             { key: "payments", label: "Payments" },
           ]}
@@ -215,14 +232,14 @@ export function TransactionsTab({
             setSearch(v);
             setPage(1);
           }}
-          placeholder="Search receipt, product, customer, store…"
+          placeholder={t("searchTxnPlaceholder")}
           filterOpen={filtersOpen}
           onFilterOpenChange={setFiltersOpen}
           filterActive={filtersActive}
           filterContent={
             <>
               <div className="space-y-2">
-                <Label htmlFor="txn-status-filter">Status</Label>
+                <Label htmlFor="txn-status-filter">{tCommon("status")}</Label>
                 <select
                   id="txn-status-filter"
                   className={cn(SELECT_CLS, "h-9 min-w-[160px]")}
@@ -232,10 +249,10 @@ export function TransactionsTab({
                     setPage(1);
                   }}
                 >
-                  <option value="all">All statuses</option>
-                  <option value="completed">Completed</option>
-                  <option value="voided">Voided</option>
-                  <option value="returned">Returned</option>
+                  <option value="all">{tCommon("allStatuses")}</option>
+                  <option value="completed">{tCommon("statusCompleted")}</option>
+                  <option value="voided">{tCommon("statusVoided")}</option>
+                  <option value="returned">{tCommon("statusReturned")}</option>
                 </select>
               </div>
               {filtersActive && (
@@ -249,7 +266,7 @@ export function TransactionsTab({
                     setPage(1);
                   }}
                 >
-                  Clear filters
+                  {tCommon("clearFilters")}
                 </Button>
               )}
             </>
@@ -260,16 +277,16 @@ export function TransactionsTab({
       <div className="space-y-2">
         {paged.length === 0 ? (
           <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-            No transactions match your filters.
+            {t("noTxnMatch")}
           </div>
         ) : (
-          paged.map((t) => {
-            const isOpen = expanded.has(t.id);
+          paged.map((txn) => {
+            const isOpen = expanded.has(txn.id);
             return (
-              <div key={t.id} className="overflow-hidden rounded-lg border border-border bg-card">
+              <div key={txn.id} className="overflow-hidden rounded-lg border border-border bg-card">
                 <button
                   type="button"
-                  onClick={() => toggleExpand(t.id)}
+                  onClick={() => toggleExpand(txn.id)}
                   className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
                 >
                   <span className="text-muted-foreground">
@@ -277,34 +294,40 @@ export function TransactionsTab({
                   </span>
                   <div className="grid min-w-0 flex-1 gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
                     <div>
-                      <p className="text-xs text-muted-foreground">Receipt</p>
-                      <p className="font-medium">{t.receipt_no}</p>
+                      <p className="text-xs text-muted-foreground">{tCommon("receipt")}</p>
+                      <p className="font-medium">{txn.receipt_no}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Date</p>
-                      <p className="text-sm">{new Date(t.created_at).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{tCommon("date")}</p>
+                      <p className="text-sm">{new Date(txn.created_at).toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Store / Register</p>
+                      <p className="text-xs text-muted-foreground">{t("storeRegister")}</p>
                       <p className="truncate text-sm">
-                        {relationName(t.stores) || "—"}
-                        {relationName(t.registers) ? ` · ${relationName(t.registers)}` : ""}
+                        {relationName(txn.stores) || "—"}
+                        {relationName(txn.registers) ? ` · ${relationName(txn.registers)}` : ""}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Cashier</p>
-                      <p className="text-sm">{staffName(t)}</p>
+                      <p className="text-xs text-muted-foreground">{tCommon("cashier")}</p>
+                      <p className="text-sm">{staffName(txn)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Customer</p>
-                      <p className="truncate text-sm">{t.customer_name || "Walk-in"}</p>
+                      <p className="text-xs text-muted-foreground">{tCommon("customer")}</p>
+                      <p className="truncate text-sm">{txn.customer_name || tCommon("walkIn")}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Total</p>
-                      <p className="font-mono font-semibold">{money(Number(t.total))}</p>
+                      <p className="text-xs text-muted-foreground">{tCommon("tip")}</p>
+                      <p className="font-mono text-sm">
+                        {Number(txn.tip_amount) > 0 ? money(Number(txn.tip_amount)) : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{tCommon("total")}</p>
+                      <p className="font-mono font-semibold">{money(Number(txn.total))}</p>
                     </div>
                   </div>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={txn.status} />
                 </button>
 
                 {isOpen && (
@@ -312,30 +335,36 @@ export function TransactionsTab({
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap gap-4 text-sm">
                         <span>
-                          <span className="text-muted-foreground">Subtotal: </span>
-                          <span className="font-mono">{money(Number(t.subtotal))}</span>
+                          <span className="text-muted-foreground">{tCommon("subtotal")}: </span>
+                          <span className="font-mono">{money(Number(txn.subtotal))}</span>
                         </span>
                         <span>
-                          <span className="text-muted-foreground">Tax: </span>
-                          <span className="font-mono">{money(Number(t.tax_amount))}</span>
+                          <span className="text-muted-foreground">{tCommon("tax")}: </span>
+                          <span className="font-mono">{money(Number(txn.tax_amount))}</span>
                         </span>
-                        {Number(t.discount_amount) > 0 && (
+                        {Number(txn.discount_amount) > 0 && (
                           <span>
-                            <span className="text-muted-foreground">Discount: </span>
-                            <span className="font-mono">({money(Number(t.discount_amount))})</span>
+                            <span className="text-muted-foreground">{tCommon("discount")}: </span>
+                            <span className="font-mono">({money(Number(txn.discount_amount))})</span>
                           </span>
                         )}
-                        {t.customer_phone && (
+                        {Number(txn.tip_amount) > 0 && (
                           <span>
-                            <span className="text-muted-foreground">Phone: </span>
-                            {t.customer_phone}
+                            <span className="text-muted-foreground">{tCommon("tip")}: </span>
+                            <span className="font-mono">{money(Number(txn.tip_amount))}</span>
+                          </span>
+                        )}
+                        {txn.customer_phone && (
+                          <span>
+                            <span className="text-muted-foreground">{tCommon("phone")}: </span>
+                            {txn.customer_phone}
                           </span>
                         )}
                       </div>
                       <Button variant="outline" size="sm" asChild>
-                        <Link href={`/sales/${t.id}`}>
+                        <Link href={`/sales/${txn.id}`}>
                           <ExternalLink className="h-3.5 w-3.5" />
-                          Full sale
+                          {t("txnFlow.fullSale")}
                         </Link>
                       </Button>
                     </div>
@@ -343,22 +372,22 @@ export function TransactionsTab({
                     <div className="grid gap-4 lg:grid-cols-2">
                       <div>
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Products ({t.sale_lines.length})
+                          {tCommon("products")} ({txn.sale_lines.length})
                         </p>
                         <DataTable>
                           <table className="w-full text-sm">
                             <DataTableHeader>
-                              <DataTableHead>Product</DataTableHead>
-                              <DataTableHead align="right">Qty</DataTableHead>
-                              <DataTableHead align="right">Unit</DataTableHead>
-                              <DataTableHead align="right">Disc.</DataTableHead>
-                              <DataTableHead align="right">Total</DataTableHead>
+                              <DataTableHead>{tCommon("product")}</DataTableHead>
+                              <DataTableHead align="right">{tCommon("qty")}</DataTableHead>
+                              <DataTableHead align="right">{tCommon("unit")}</DataTableHead>
+                              <DataTableHead align="right">{tCommon("discountShort")}</DataTableHead>
+                              <DataTableHead align="right">{tCommon("total")}</DataTableHead>
                             </DataTableHeader>
                             <DataTableBody>
-                              {t.sale_lines.length === 0 ? (
-                                <DataTableEmpty colSpan={5} message="No line items." />
+                              {txn.sale_lines.length === 0 ? (
+                                <DataTableEmpty colSpan={5} message={t("noLineItems")} />
                               ) : (
-                                t.sale_lines.map((line) => (
+                                txn.sale_lines.map((line) => (
                                   <DataTableRow key={line.id}>
                                     <DataTableCell>
                                       <p className="font-medium">{line.product_name}</p>
@@ -378,7 +407,7 @@ export function TransactionsTab({
                                         : "—"}
                                     </DataTableCell>
                                     <DataTableCell align="right" className="font-mono font-medium">
-                                      {money(Number(line.line_total))}
+                                      {money(lineExTax(line))}
                                     </DataTableCell>
                                   </DataTableRow>
                                 ))
@@ -390,28 +419,30 @@ export function TransactionsTab({
 
                       <div>
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Payments ({t.payments.length})
+                          {tCommon("payments")} ({txn.payments.length})
                         </p>
                         <DataTable>
                           <table className="w-full text-sm">
                             <DataTableHeader>
-                              <DataTableHead>Method</DataTableHead>
-                              <DataTableHead>Reference</DataTableHead>
-                              <DataTableHead align="right">Amount</DataTableHead>
+                              <DataTableHead>{tCommon("method")}</DataTableHead>
+                              <DataTableHead>{tCommon("reference")}</DataTableHead>
+                              <DataTableHead align="right">{tCommon("amount")}</DataTableHead>
                             </DataTableHeader>
                             <DataTableBody>
-                              {t.payments.length === 0 ? (
-                                <DataTableEmpty colSpan={3} message="No payment records." />
+                              {txn.payments.length === 0 ? (
+                                <DataTableEmpty colSpan={3} message={t("noPaymentRecords")} />
                               ) : (
-                                t.payments.map((p) => (
+                                txn.payments.map((p) => (
                                   <DataTableRow key={p.id}>
                                     <DataTableCell>
                                       <p className="capitalize">{paymentLabel(p)}</p>
                                       {p.method === "cash" && p.cash_tendered != null && (
                                         <p className="text-xs text-muted-foreground">
-                                          Tendered {money(Number(p.cash_tendered))}
+                                          {t("tendered", { amount: money(Number(p.cash_tendered)) })}
                                           {p.change_given != null && Number(p.change_given) > 0
-                                            ? ` · Change ${money(Number(p.change_given))}`
+                                            ? ` · ${t("changeGiven", {
+                                                amount: money(Number(p.change_given)),
+                                              })}`
                                             : ""}
                                         </p>
                                       )}
