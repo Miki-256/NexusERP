@@ -56,10 +56,5 @@ export const ShortcutsHelpModal = dynamic(
   { ssr: false, loading: ModalFallback }
 );
 
-export const PosToolsMenu = dynamic(
-  () => import("./pos-tools-menu").then((m) => m.PosToolsMenu),
-  { ssr: false }
-);
-
 export type { BarcodeScanResult, BarcodeScanHandler } from "./barcode-scanner-modal";
 export type { PosCustomer } from "./customer-lookup-modal";

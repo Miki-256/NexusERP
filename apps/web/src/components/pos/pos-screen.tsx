@@ -27,6 +27,7 @@ import { CartPanel } from "./cart-panel";
 import { ShiftStatsBar } from "./shift-stats-bar";
 import { PosSyncBadge } from "./pos-sync-badge";
 import { PosRegisterSwitcher } from "./pos-register-switcher";
+import { PosToolsMenu } from "./pos-tools-menu";
 import {
   PaymentModal,
   BarcodeScannerModal,
@@ -37,7 +38,6 @@ import {
   HeldCartPickerModal,
   PosOfflineQueueModal,
   ShortcutsHelpModal,
-  PosToolsMenu,
   type BarcodeScanResult,
   type PosCustomer,
 } from "./pos-lazy-modals";
@@ -48,8 +48,12 @@ import {
   resolveCatalogDensity,
   setCatalogDensity,
   getPosAutoReturn,
+  getPosCheckoutMode,
+  setPosCheckoutMode,
   type PosCatalogDensity,
+  type PosCheckoutMode,
 } from "@/lib/pos/pos-preferences";
+import { completeExactCashSale } from "@/lib/pos/fast-checkout";
 import {
   exceedsCashierDiscountLimit,
   discountPctOfSubtotal,
@@ -239,6 +243,14 @@ export function PosScreen({
   }
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [checkoutMode, setCheckoutMode] = useState<PosCheckoutMode>(() =>
+    getPosCheckoutMode(registerId)
+  );
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  useEffect(() => {
+    setCheckoutMode(getPosCheckoutMode(registerId));
+  }, [registerId]);
   const [lastSale, setLastSale] = useState<{
     saleId?: string;
     pollPaymentStatus?: boolean;
@@ -839,23 +851,19 @@ export function PosScreen({
       setTimeout(() => setStockToast(null), 3500);
       return;
     }
+    stopScannerStream();
+    // Best-effort warm start (helps iOS). Always open the modal so front/rear
+    // switching and retry UI remain available when pre-acquire fails.
     try {
-      stopScannerStream();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
       scannerStreamRef.current = stream;
-      setShowScanner(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : t("couldNotOpenCamera");
-      setStockToast(
-        /denied|notallowed|permission/i.test(msg)
-          ? t("allowCameraAccess")
-          : msg
-      );
-      setTimeout(() => setStockToast(null), 4500);
+    } catch {
+      scannerStreamRef.current = null;
     }
+    setShowScanner(true);
   }, [stopScannerStream]);
 
   const closeCameraScanner = useCallback(() => {
@@ -944,14 +952,7 @@ export function PosScreen({
         setShowRefund(true);
       } else if (e.key === "F8" && lines.length > 0) {
         e.preventDefault();
-        if (hasInvalidDiscounts) {
-          showDiscountToast(t("fixDiscountsBeforeCheckout"));
-        } else if (needsManagerForDiscount) {
-          setPendingCheckout(true);
-          setShowManagerPin(true);
-        } else {
-          setShowPayment(true);
-        }
+        beginCheckout();
       } else if (e.key === "F9") {
         e.preventDefault();
         void openCameraScanner();
@@ -1229,6 +1230,66 @@ export function PosScreen({
     void refreshStock(soldVariantIds);
   }
 
+  function openFullPayment() {
+    setShowMobileCart(false);
+    setShowPayment(true);
+  }
+
+  async function runFastCashCheckout() {
+    if (checkoutBusy || lines.length === 0 || !session) return;
+    setCheckoutBusy(true);
+    setShowMobileCart(false);
+    setShowPayment(false);
+    try {
+      const outcome = await completeExactCashSale({
+        organizationId,
+        storeId,
+        registerId,
+        sessionId: session.id,
+        lines,
+        cartDiscount,
+        promoCode,
+        customerName: customerName || null,
+        customerPhone: customerPhone || null,
+        customerId,
+        total,
+        posStaffId: posStaffSession?.staffId,
+        posSessionToken: posStaffSession?.token,
+        managerDiscountPin,
+      });
+      if (!outcome.ok) {
+        setStockToast(outcome.message || t("errCouldNotSaveSale"));
+        setTimeout(() => setStockToast(null), 4500);
+        return;
+      }
+      await onCheckoutComplete(outcome.data);
+    } catch {
+      setStockToast(t("errCouldNotSaveSale"));
+      setTimeout(() => setStockToast(null), 4500);
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
+
+  function beginCheckout(opts?: { forceFull?: boolean; managerApproved?: boolean }) {
+    if (hasInvalidDiscounts) {
+      showDiscountToast(t("fixDiscountsBeforeCheckout"));
+      return;
+    }
+    if (needsManagerForDiscount && !opts?.managerApproved) {
+      setPendingCheckout(true);
+      setShowManagerPin(true);
+      return;
+    }
+    const mode = getPosCheckoutMode(registerId);
+    setCheckoutMode(mode);
+    if (opts?.forceFull || mode !== "fastest" || !(total > 0)) {
+      openFullPayment();
+      return;
+    }
+    void runFastCashCheckout();
+  }
+
   async function handleShiftClosed() {
     setShowCloseShift(false);
     setSession(null);
@@ -1340,6 +1401,40 @@ export function PosScreen({
           >
             <Wrench className="h-4 w-4" aria-hidden />
           </Button>
+          <div
+            className="hidden items-center rounded-lg border border-white/20 bg-white/10 p-0.5 sm:flex"
+            role="group"
+            aria-label={t("checkoutFlow")}
+          >
+            <button
+              type="button"
+              className={cn(
+                "h-8 cursor-pointer rounded-md px-2.5 text-xs font-bold",
+                checkoutMode === "default" ? "bg-white text-pos-navy" : "text-white/80 hover:text-white"
+              )}
+              aria-pressed={checkoutMode === "default"}
+              onClick={() => {
+                setCheckoutMode("default");
+                setPosCheckoutMode(registerId, "default");
+              }}
+            >
+              {t("checkoutFlowDefault")}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "h-8 cursor-pointer rounded-md px-2.5 text-xs font-bold",
+                checkoutMode === "fastest" ? "bg-white text-pos-navy" : "text-white/80 hover:text-white"
+              )}
+              aria-pressed={checkoutMode === "fastest"}
+              onClick={() => {
+                setCheckoutMode("fastest");
+                setPosCheckoutMode(registerId, "fastest");
+              }}
+            >
+              {t("checkoutFlowFastest")}
+            </button>
+          </div>
           {/* Secondary shift actions live in Tools on narrow viewports */}
           <div className="hidden items-center gap-2 sm:flex">
             <Button
@@ -1632,19 +1727,10 @@ export function PosScreen({
           onCartDiscount={(amount) => applyDiscountWithPolicy({ type: "cart", amount })}
           onHold={hold}
           onRecallHeld={handleRecallHeld}
-          onCheckout={() => {
-            if (hasInvalidDiscounts) {
-              showDiscountToast(t("fixDiscountsBeforeCheckout"));
-              return;
-            }
-            if (needsManagerForDiscount) {
-              setPendingCheckout(true);
-              setShowManagerPin(true);
-              return;
-            }
-            setShowMobileCart(false);
-            setShowPayment(true);
-          }}
+          onCheckout={() => beginCheckout()}
+          onFullCheckout={() => beginCheckout({ forceFull: true })}
+          checkoutMode={checkoutMode}
+          checkoutBusy={checkoutBusy}
           onCloseMobile={() => setShowMobileCart(false)}
           orderNumber={orderSeq}
         />
@@ -1753,7 +1839,11 @@ export function PosScreen({
             setShowTools(false);
             setShowOfflineQueue(true);
           }}
-          onClose={() => setShowTools(false)}
+          onCheckoutModeChange={setCheckoutMode}
+          onClose={() => {
+            setCheckoutMode(getPosCheckoutMode(registerId));
+            setShowTools(false);
+          }}
         />
       )}
 
@@ -1818,13 +1908,8 @@ export function PosScreen({
               }
             }
             if (pendingCheckout) {
-              if (hasInvalidDiscounts) {
-                showDiscountToast(t("fixDiscountsBeforeCheckout"));
-                setPendingCheckout(false);
-                return;
-              }
               setPendingCheckout(false);
-              setShowPayment(true);
+              beginCheckout({ managerApproved: true });
             }
           }}
           onClose={() => {

@@ -160,6 +160,9 @@ export function CartPanel({
   onHold,
   onRecallHeld,
   onCheckout,
+  onFullCheckout,
+  checkoutMode = "default",
+  checkoutBusy = false,
   orderNumber,
   onCloseMobile,
   className,
@@ -201,6 +204,10 @@ export function CartPanel({
   onHold: () => void;
   onRecallHeld: () => void;
   onCheckout: () => void;
+  /** Opens the full payment modal even when checkout mode is fastest. */
+  onFullCheckout?: () => void;
+  checkoutMode?: "default" | "fastest";
+  checkoutBusy?: boolean;
   orderNumber: string;
   onCloseMobile?: () => void;
   className?: string;
@@ -752,15 +759,30 @@ export function CartPanel({
 
         <button
           type="button"
-          disabled={lines.length === 0}
+          disabled={lines.length === 0 || checkoutBusy}
           onClick={onCheckout}
+          aria-busy={checkoutBusy}
           className={cn(
             "pos-checkout-btn touch-target flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-xl text-base font-bold text-white",
             "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           )}
         >
-          {t("checkout")} · {formatCurrency(total, currency)}
+          {checkoutBusy
+            ? t("completingSale")
+            : checkoutMode === "fastest"
+              ? `${t("quickCash")} · ${formatCurrency(total, currency)}`
+              : `${t("checkout")} · ${formatCurrency(total, currency)}`}
         </button>
+        {checkoutMode === "fastest" && onFullCheckout && lines.length > 0 && (
+          <button
+            type="button"
+            disabled={checkoutBusy}
+            onClick={onFullCheckout}
+            className="w-full cursor-pointer py-1.5 text-center text-xs font-semibold text-slate-600 underline-offset-2 hover:text-pos-primary hover:underline disabled:opacity-50"
+          >
+            {t("otherPaymentOptions")}
+          </button>
+        )}
       </div>
     </aside>
   );

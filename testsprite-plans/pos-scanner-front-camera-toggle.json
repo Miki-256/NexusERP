@@ -1,0 +1,25 @@
+{
+  "projectId": "63433b2a-2867-4a63-bc63-0604aebe2ef9",
+  "type": "frontend",
+  "name": "POS barcode scanner shows front/rear camera switch",
+  "description": "Open the POS camera barcode scanner and verify the front/rear camera toggle control is always available (not gated on enumerating multiple devices).",
+  "priority": "p1",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Go directly to /pos/ccef8d1c-72c2-44e8-b61c-6a016656cfd3 (sign in with the configured manager account if redirected to login)"
+    },
+    {
+      "type": "action",
+      "description": "If a staff PIN screen appears, select staff Sara and enter PIN 1234; open shift if needed so the POS selling screen is ready"
+    },
+    {
+      "type": "action",
+      "description": "Click the Camera control on the POS toolbar to open the barcode/QR scanner modal"
+    },
+    {
+      "type": "assertion",
+      "description": "The scanner dialog is open AND a camera switch control is visible labeled Use front camera OR Use rear camera (or Amharic የፊት ካሜራ / የኋላ ካሜራ). Pass if the switch label is shown even when the camera preview is blocked by the browser."
+    }
+  ]
+}

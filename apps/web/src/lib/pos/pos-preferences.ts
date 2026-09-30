@@ -3,8 +3,12 @@ const DEFAULT_PAYMENT_KEY = (registerId: string) => `pos-default-payment-${regis
 const CATALOG_DENSITY_KEY = (registerId: string) => `pos-catalog-density-${registerId}`;
 const AUTO_PRINT_KEY = (registerId: string) => `pos-auto-print-${registerId}`;
 const AUTO_RETURN_KEY = (registerId: string) => `pos-auto-return-${registerId}`;
+const CHECKOUT_MODE_KEY = (registerId: string) => `pos-checkout-mode-${registerId}`;
 
 export type PosCatalogDensity = "comfortable" | "compact";
+
+/** default = full payment modal; fastest = one-tap exact cash complete */
+export type PosCheckoutMode = "default" | "fastest";
 
 export const RECENT_VARIANT_LIMIT = 24;
 
@@ -118,4 +122,17 @@ export function getPosAutoReturn(registerId: string): boolean {
 
 export function setPosAutoReturn(registerId: string, enabled: boolean) {
   localStorage.setItem(AUTO_RETURN_KEY(registerId), enabled ? "1" : "0");
+}
+
+export function getPosCheckoutMode(registerId: string): PosCheckoutMode {
+  try {
+    const raw = localStorage.getItem(CHECKOUT_MODE_KEY(registerId));
+    return raw === "fastest" ? "fastest" : "default";
+  } catch {
+    return "default";
+  }
+}
+
+export function setPosCheckoutMode(registerId: string, mode: PosCheckoutMode) {
+  localStorage.setItem(CHECKOUT_MODE_KEY(registerId), mode);
 }

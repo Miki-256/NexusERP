@@ -29,14 +29,11 @@ export type BarcodeScanHandler = (
   code: string
 ) => BarcodeScanResult | Promise<BarcodeScanResult>;
 
-function pickDefaultDevice(devices: MediaDeviceInfo[]): string | undefined {
-  if (devices.length === 0) return undefined;
-  const back = devices.find(
-    (d) =>
-      /back|rear|environment/i.test(d.label) ||
-      d.label.toLowerCase().includes("camera 0")
-  );
-  return back?.deviceId ?? devices[devices.length - 1]?.deviceId ?? devices[0]?.deviceId;
+type FacingMode = "environment" | "user";
+
+function facingFromTrack(stream: MediaStream | null | undefined): FacingMode {
+  const facing = stream?.getVideoTracks()[0]?.getSettings()?.facingMode;
+  return facing === "user" ? "user" : "environment";
 }
 
 export function BarcodeScannerModal({
@@ -59,17 +56,18 @@ export function BarcodeScannerModal({
   const nativeLoopRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ownsStreamRef = useRef(false);
+  const facingModeRef = useRef<FacingMode>("environment");
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
 
   const confirmStateRef = useRef<ScanConfirmState>({ code: "", count: 0, firstSeen: 0 });
   const lastAcceptedRef = useRef<{ code: string; at: number } | null>(null);
   const acceptingRef = useRef(false);
+  const flippingRef = useRef(false);
 
   const [status, setStatus] = useState<"starting" | "scanning" | "error">("starting");
   const [error, setError] = useState<string | null>(null);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceIndex, setDeviceIndex] = useState(0);
+  const [facingMode, setFacingMode] = useState<FacingMode>("environment");
   const [scanCount, setScanCount] = useState(0);
   const [lastFeedback, setLastFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [flash, setFlash] = useState<"success" | "error" | null>(null);
@@ -84,7 +82,7 @@ export function BarcodeScannerModal({
     return msg;
   }, []);
 
-  const stopAll = useCallback(() => {
+  const stopDecoderOnly = useCallback(() => {
     if (nativeLoopRef.current != null) {
       cancelAnimationFrame(nativeLoopRef.current);
       nativeLoopRef.current = null;
@@ -92,6 +90,10 @@ export function BarcodeScannerModal({
     controlsRef.current?.stop();
     controlsRef.current = null;
     readerRef.current = null;
+  }, []);
+
+  const stopAll = useCallback(() => {
+    stopDecoderOnly();
     BrowserCodeReader.releaseAllStreams();
     if (ownsStreamRef.current) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -100,7 +102,7 @@ export function BarcodeScannerModal({
     ownsStreamRef.current = false;
     const v = videoRef.current;
     if (v) v.srcObject = null;
-  }, []);
+  }, [stopDecoderOnly]);
 
   const flashResult = useCallback((kind: "success" | "error", text: string) => {
     setFlash(kind);
@@ -154,7 +156,15 @@ export function BarcodeScannerModal({
 
       try {
         const detector = new window.BarcodeDetector({
-          formats: ["ean_13", "ean_8", "code_128", "code_39", "upc_a", "upc_e"],
+          formats: [
+            "qr_code",
+            "ean_13",
+            "ean_8",
+            "code_128",
+            "code_39",
+            "upc_a",
+            "upc_e",
+          ],
         });
 
         const tick = async () => {
@@ -180,13 +190,13 @@ export function BarcodeScannerModal({
   );
 
   const startWithStream = useCallback(
-    async (
-      stream: MediaStream,
-      available: MediaDeviceInfo[],
-      index: number,
-      owned: boolean
-    ) => {
-      stopAll();
+    async (stream: MediaStream, owned: boolean) => {
+      stopDecoderOnly();
+      // Stop prior tracks when swapping cameras so the OS can open the other lens.
+      if (streamRef.current && streamRef.current !== stream) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
       confirmStateRef.current = { code: "", count: 0, firstSeen: 0 };
       lastAcceptedRef.current = null;
       acceptingRef.current = false;
@@ -194,7 +204,18 @@ export function BarcodeScannerModal({
       setError(null);
 
       const video = videoRef.current;
-      if (!video) return;
+      if (!video) {
+        setStatus("error");
+        setError(tRef.current("couldNotStartScanner"));
+        if (owned) {
+          stream.getTracks().forEach((track) => track.stop());
+        }
+        return;
+      }
+
+      const facing = facingFromTrack(stream);
+      facingModeRef.current = facing;
+      setFacingMode(facing);
 
       streamRef.current = stream;
       ownsStreamRef.current = owned;
@@ -209,22 +230,12 @@ export function BarcodeScannerModal({
       const reader = new BrowserMultiFormatReader();
       readerRef.current = reader;
 
-      const deviceId =
-        available[index]?.deviceId ??
-        stream.getVideoTracks()[0]?.getSettings()?.deviceId;
-
       try {
-        const controls = deviceId
-          ? await reader.decodeFromVideoDevice(deviceId, video, (result) => {
-              if (result) processCandidate(result.getText());
-            })
-          : await reader.decodeFromConstraints(
-              { video: { facingMode: { ideal: "environment" } }, audio: false },
-              video,
-              (result) => {
-                if (result) processCandidate(result.getText());
-              }
-            );
+        // Use the stream we already opened — do not re-open via deviceId
+        // (that often forces the rear camera and breaks front/rear switching).
+        const controls = await reader.decodeFromStream(stream, video, (result) => {
+          if (result) processCandidate(result.getText());
+        });
 
         controlsRef.current = controls;
         setStatus("scanning");
@@ -235,31 +246,40 @@ export function BarcodeScannerModal({
         setError(mapCameraError(msg));
       }
     },
-    [processCandidate, startNativeDetector, stopAll, mapCameraError]
+    [processCandidate, startNativeDetector, stopDecoderOnly, mapCameraError]
   );
 
-  const requestCameraStream = useCallback(async () => {
+  const requestCameraStream = useCallback(async (facing: FacingMode) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error(tRef.current("cameraNotAvailableHttps"));
     }
-    return navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false,
-    });
+
+    const attempts: MediaTrackConstraints[] = [
+      { facingMode: { exact: facing } },
+      { facingMode: { ideal: facing } },
+      { facingMode: facing },
+    ];
+
+    let lastError: unknown;
+    for (const video of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video, audio: false });
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(tRef.current("couldNotOpenCamera"));
   }, []);
 
   const startCamera = useCallback(
-    async (index: number, available: MediaDeviceInfo[]) => {
+    async (facing: FacingMode) => {
       try {
-        const deviceId = available[index]?.deviceId;
-        const stream = await (deviceId
-          ? navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: deviceId } },
-              audio: false,
-            })
-          : requestCameraStream());
-        ownsStreamRef.current = true;
-        await startWithStream(stream, available, index, true);
+        setStatus("starting");
+        setError(null);
+        const stream = await requestCameraStream(facing);
+        await startWithStream(stream, true);
       } catch (err) {
         setStatus("error");
         const msg = err instanceof Error ? err.message : tRef.current("couldNotOpenCamera");
@@ -268,8 +288,6 @@ export function BarcodeScannerModal({
     },
     [requestCameraStream, startWithStream, mapCameraError]
   );
-
-  const devicesRef = useRef<MediaDeviceInfo[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -282,33 +300,18 @@ export function BarcodeScannerModal({
           return;
         }
 
-        const list = await BrowserMultiFormatReader.listVideoInputDevices().catch(() => []);
-        if (cancelled) return;
-
-        devicesRef.current = list;
-        setDevices(list);
-        const defaultIndex = Math.max(
-          0,
-          list.findIndex((d) => d.deviceId === pickDefaultDevice(list))
-        );
-        setDeviceIndex(defaultIndex);
-
         if (initialStream) {
-          await startWithStream(
-            initialStream,
-            list,
-            defaultIndex >= 0 ? defaultIndex : 0,
-            false
-          );
+          if (cancelled) return;
+          await startWithStream(initialStream, false);
           return;
         }
 
-        const stream = await requestCameraStream();
+        const stream = await requestCameraStream("environment");
         if (cancelled) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
-        await startWithStream(stream, list, defaultIndex >= 0 ? defaultIndex : 0, true);
+        await startWithStream(stream, true);
       } catch (e) {
         if (cancelled) return;
         setStatus("error");
@@ -325,11 +328,15 @@ export function BarcodeScannerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialStream]);
 
-  function flipCamera() {
-    if (devices.length < 2) return;
-    const next = (deviceIndex + 1) % devices.length;
-    setDeviceIndex(next);
-    void startCamera(next, devices);
+  async function flipCamera() {
+    if (flippingRef.current || status === "starting") return;
+    flippingRef.current = true;
+    const next: FacingMode = facingModeRef.current === "environment" ? "user" : "environment";
+    try {
+      await startCamera(next);
+    } finally {
+      flippingRef.current = false;
+    }
   }
 
   function handleClose() {
@@ -338,6 +345,8 @@ export function BarcodeScannerModal({
   }
 
   const panelRef = usePosModal(handleClose);
+  const switchLabel =
+    facingMode === "environment" ? t("useFrontCamera") : t("useRearCamera");
 
   return (
     <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="presentation">
@@ -373,7 +382,7 @@ export function BarcodeScannerModal({
         <div className="relative aspect-[4/3] bg-black">
           <video
             ref={videoRef}
-            className="h-full w-full object-cover"
+            className={`h-full w-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""}`}
             muted
             playsInline
             autoPlay
@@ -426,14 +435,15 @@ export function BarcodeScannerModal({
               <span className="truncate">{lastFeedback.text}</span>
             </div>
           )}
-          {devices.length > 1 && status === "scanning" && (
+          {(status === "scanning" || status === "error") && (
             <Button
               variant="outline"
               className="w-full cursor-pointer gap-2"
-              onClick={flipCamera}
+              onClick={() => void flipCamera()}
+              disabled={status === "starting"}
             >
               <FlipHorizontal className="h-4 w-4" />
-              {t("switchCamera")}
+              {switchLabel}
             </Button>
           )}
           {error && status === "error" && (
@@ -441,7 +451,7 @@ export function BarcodeScannerModal({
               variant="default"
               className="w-full cursor-pointer"
               onClick={() => {
-                void startCamera(deviceIndex, devices.length > 0 ? devices : devicesRef.current);
+                void startCamera(facingModeRef.current);
               }}
             >
               {t("tryAgain")}

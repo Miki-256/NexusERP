@@ -16,8 +16,11 @@ import { downloadShiftCsv } from "@/lib/pos/shift-export";
 import {
   getPosAutoPrint,
   getPosAutoReturn,
+  getPosCheckoutMode,
   setPosAutoPrint,
   setPosAutoReturn,
+  setPosCheckoutMode,
+  type PosCheckoutMode,
 } from "@/lib/pos/pos-preferences";
 import { useOfflineOptional } from "@/components/offline/offline-provider";
 import {
@@ -47,6 +50,7 @@ export function PosToolsMenu({
   onOpenShortcuts,
   onOpenOfflineQueue,
   onClose,
+  onCheckoutModeChange,
 }: {
   registerId: string;
   registerName: string;
@@ -59,6 +63,7 @@ export function PosToolsMenu({
   onOpenShortcuts: () => void;
   onOpenOfflineQueue: () => void;
   onClose: () => void;
+  onCheckoutModeChange?: (mode: PosCheckoutMode) => void;
 }) {
   const t = useTranslations("pos");
   const tCommon = useTranslations("common");
@@ -68,6 +73,9 @@ export function PosToolsMenu({
   const [escposOn, setEscposOn] = useState(isEscPosEnabled());
   const [autoPrint, setAutoPrint] = useState(() => getPosAutoPrint(registerId));
   const [autoReturn, setAutoReturn] = useState(() => getPosAutoReturn(registerId));
+  const [checkoutMode, setCheckoutMode] = useState<PosCheckoutMode>(() =>
+    getPosCheckoutMode(registerId)
+  );
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const panelRef = usePosModal(onClose, mounted);
@@ -137,6 +145,50 @@ export function PosToolsMenu({
 
           <div className="px-4 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-5">
             <div className="mb-4 rounded-xl border-2 border-sky-200 bg-sky-50 p-3">
+              <p className="mb-2.5 text-xs font-bold uppercase tracking-wide text-sky-800">
+                {t("checkoutFlow")}
+              </p>
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  data-testid="pos-checkout-mode-default"
+                  className={`h-12 cursor-pointer rounded-lg border-2 text-sm font-bold ${
+                    checkoutMode === "default"
+                      ? "border-sky-600 bg-white text-sky-900 shadow-sm"
+                      : "border-sky-200 bg-white/70 text-sky-800 hover:bg-white"
+                  }`}
+                  aria-pressed={checkoutMode === "default"}
+                  onClick={() => {
+                    setCheckoutMode("default");
+                    setPosCheckoutMode(registerId, "default");
+                    onCheckoutModeChange?.("default");
+                  }}
+                >
+                  {t("checkoutFlowDefault")}
+                </button>
+                <button
+                  type="button"
+                  data-testid="pos-checkout-mode-fastest"
+                  className={`h-12 cursor-pointer rounded-lg border-2 text-sm font-bold ${
+                    checkoutMode === "fastest"
+                      ? "border-sky-600 bg-white text-sky-900 shadow-sm"
+                      : "border-sky-200 bg-white/70 text-sky-800 hover:bg-white"
+                  }`}
+                  aria-pressed={checkoutMode === "fastest"}
+                  onClick={() => {
+                    setCheckoutMode("fastest");
+                    setPosCheckoutMode(registerId, "fastest");
+                    onCheckoutModeChange?.("fastest");
+                  }}
+                >
+                  {t("checkoutFlowFastest")}
+                </button>
+              </div>
+              <p className="mb-3 text-xs leading-relaxed text-sky-900">
+                {checkoutMode === "fastest"
+                  ? t("checkoutFlowFastestHint")
+                  : t("checkoutFlowDefaultHint")}
+              </p>
               <p className="mb-2.5 text-xs font-bold uppercase tracking-wide text-sky-800">
                 {t("shiftActions")}
               </p>

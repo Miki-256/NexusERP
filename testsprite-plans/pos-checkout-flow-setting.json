@@ -1,0 +1,21 @@
+{
+  "projectId": "63433b2a-2867-4a63-bc63-0604aebe2ef9",
+  "type": "frontend",
+  "name": "POS Tools exposes Default vs Fastest checkout flow",
+  "description": "Open POS tools and verify the Sell flow setting offers Default and Fastest options under Checkout.",
+  "priority": "p1",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Go to /pos/ccef8d1c-72c2-44e8-b61c-6a016656cfd3 (sign in with configured manager account if needed; staff Sara PIN 1234 / open shift if prompted)"
+    },
+    {
+      "type": "action",
+      "description": "Open POS Tools (wrench / tools control in the POS header)"
+    },
+    {
+      "type": "assertion",
+      "description": "Under Checkout / Sell flow, both Default and Fastest radio options are visible (or Amharic ነባሪ / በጣም ፈጣን). Pass if either language is shown."
+    }
+  ]
+}
