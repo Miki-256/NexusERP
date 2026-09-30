@@ -28,9 +28,9 @@ import { ShiftStatsBar } from "./shift-stats-bar";
 import { PosSyncBadge } from "./pos-sync-badge";
 import { PosRegisterSwitcher } from "./pos-register-switcher";
 import { PosToolsMenu } from "./pos-tools-menu";
+import { BarcodeScannerModal, type BarcodeScanResult } from "./barcode-scanner-modal";
 import {
   PaymentModal,
-  BarcodeScannerModal,
   RefundModal,
   CloseShiftModal,
   CustomerLookupModal,
@@ -38,7 +38,6 @@ import {
   HeldCartPickerModal,
   PosOfflineQueueModal,
   ShortcutsHelpModal,
-  type BarcodeScanResult,
   type PosCustomer,
 } from "./pos-lazy-modals";
 import {
@@ -845,26 +844,17 @@ export function PosScreen({
     scannerStreamRef.current = null;
   }, []);
 
-  const openCameraScanner = useCallback(async () => {
+  const openCameraScanner = useCallback(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setStockToast(t("cameraNotAvailable"));
       setTimeout(() => setStockToast(null), 3500);
       return;
     }
     stopScannerStream();
-    // Best-effort warm start (helps iOS). Always open the modal so front/rear
-    // switching and retry UI remain available when pre-acquire fails.
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-      scannerStreamRef.current = stream;
-    } catch {
-      scannerStreamRef.current = null;
-    }
+    // Open immediately so mobile fastest checkout stays on one screen even if
+    // getUserMedia is slow or blocked. The modal acquires the camera itself.
     setShowScanner(true);
-  }, [stopScannerStream]);
+  }, [stopScannerStream, t]);
 
   const closeCameraScanner = useCallback(() => {
     setShowScanner(false);
@@ -1262,6 +1252,7 @@ export function PosScreen({
         setTimeout(() => setStockToast(null), 4500);
         return;
       }
+      closeCameraScanner();
       await onCheckoutComplete(outcome.data);
     } catch {
       setStockToast(t("errCouldNotSaveSale"));
@@ -1277,6 +1268,7 @@ export function PosScreen({
       return;
     }
     if (needsManagerForDiscount && !opts?.managerApproved) {
+      closeCameraScanner();
       setPendingCheckout(true);
       setShowManagerPin(true);
       return;
@@ -1284,6 +1276,7 @@ export function PosScreen({
     const mode = getPosCheckoutMode(registerId);
     setCheckoutMode(mode);
     if (opts?.forceFull || mode !== "fastest" || !(total > 0)) {
+      closeCameraScanner();
       openFullPayment();
       return;
     }
@@ -1880,6 +1873,12 @@ export function PosScreen({
           initialStream={scannerStreamRef.current}
           onScan={handleBarcodeScan}
           onClose={closeCameraScanner}
+          checkoutMode={checkoutMode}
+          cartCount={lines.length}
+          cartTotal={total}
+          currency={currency}
+          checkoutBusy={checkoutBusy}
+          onFastCheckout={() => beginCheckout()}
         />
       )}
 

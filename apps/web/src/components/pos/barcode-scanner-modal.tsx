@@ -10,6 +10,8 @@ import {
 } from "@/lib/pos/barcode-scan";
 import { playScanErrorSound, playScanSuccessSound } from "@/lib/pos/scan-sounds";
 import { Camera, CheckCircle2, FlipHorizontal, Loader2, X } from "lucide-react";
+import { formatCurrency, cn } from "@/lib/utils";
+import type { PosCheckoutMode } from "@/lib/pos/pos-preferences";
 import { usePosModal } from "./use-pos-modal";
 
 declare global {
@@ -40,11 +42,23 @@ export function BarcodeScannerModal({
   onScan,
   onClose,
   initialStream,
+  checkoutMode = "default",
+  cartCount = 0,
+  cartTotal = 0,
+  currency = "ETB",
+  checkoutBusy = false,
+  onFastCheckout,
 }: {
   onScan: BarcodeScanHandler;
   onClose: () => void;
   /** Pre-acquired stream from a user tap — required for reliable mobile camera access. */
   initialStream?: MediaStream | null;
+  checkoutMode?: PosCheckoutMode;
+  cartCount?: number;
+  cartTotal?: number;
+  currency?: string;
+  checkoutBusy?: boolean;
+  onFastCheckout?: () => void | Promise<void>;
 }) {
   const t = useTranslations("pos");
   const tRef = useRef(t);
@@ -110,9 +124,12 @@ export function BarcodeScannerModal({
     setTimeout(() => setFlash(null), 450);
   }, []);
 
+  const checkoutBusyRef = useRef(checkoutBusy);
+  checkoutBusyRef.current = checkoutBusy;
+
   const processCandidate = useCallback(
     (raw: string) => {
-      if (acceptingRef.current) return;
+      if (acceptingRef.current || checkoutBusyRef.current) return;
 
       const decision = shouldAcceptScan(
         raw,
@@ -340,13 +357,16 @@ export function BarcodeScannerModal({
   }
 
   function handleClose() {
+    if (checkoutBusy) return;
     stopAll();
     onClose();
   }
 
-  const panelRef = usePosModal(handleClose);
+  const panelRef = usePosModal(handleClose, !checkoutBusy);
   const switchLabel =
     facingMode === "environment" ? t("useFrontCamera") : t("useRearCamera");
+  const fastestCheckout = checkoutMode === "fastest" && !!onFastCheckout;
+  const canFastPay = fastestCheckout && cartCount > 0 && cartTotal > 0 && !checkoutBusy;
 
   return (
     <div className="pos-modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="presentation">
@@ -355,7 +375,7 @@ export function BarcodeScannerModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="pos-scanner-title"
-        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-2xl"
       >
         <div className="pos-header flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-2">
@@ -379,7 +399,7 @@ export function BarcodeScannerModal({
           </button>
         </div>
 
-        <div className="relative aspect-[4/3] bg-black">
+        <div className="relative h-[min(42dvh,16rem)] shrink-0 bg-black sm:h-auto sm:aspect-[4/3]">
           <video
             ref={videoRef}
             className={`h-full w-full object-cover ${facingMode === "user" ? "-scale-x-100" : ""}`}
@@ -420,7 +440,7 @@ export function BarcodeScannerModal({
           )}
         </div>
 
-        <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-2.5 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {lastFeedback && status === "scanning" && (
             <div
               role="status"
@@ -435,12 +455,22 @@ export function BarcodeScannerModal({
               <span className="truncate">{lastFeedback.text}</span>
             </div>
           )}
+          {fastestCheckout && (
+            <div className="flex items-baseline justify-between rounded-xl bg-pos-primary-soft-8 px-3 py-2">
+              <span className="text-xs font-semibold text-slate-600">
+                {t("scannerCartSummary", { count: cartCount })}
+              </span>
+              <span className="pos-heading text-lg font-bold tabular-nums text-pos-primary">
+                {formatCurrency(cartTotal, currency)}
+              </span>
+            </div>
+          )}
           {(status === "scanning" || status === "error") && (
             <Button
               variant="outline"
               className="w-full cursor-pointer gap-2"
               onClick={() => void flipCamera()}
-              disabled={status === "starting"}
+              disabled={status === "starting" || checkoutBusy}
             >
               <FlipHorizontal className="h-4 w-4" />
               {switchLabel}
@@ -457,13 +487,36 @@ export function BarcodeScannerModal({
               {t("tryAgain")}
             </Button>
           )}
-          <p className="text-center text-xs text-slate-500">{t("barcodeVerifyHint")}</p>
+          <p className="text-center text-xs text-slate-500">
+            {fastestCheckout ? t("scannerFastestHint") : t("barcodeVerifyHint")}
+          </p>
+          {fastestCheckout && (
+            <button
+              type="button"
+              data-testid="pos-scanner-quick-cash"
+              disabled={!canFastPay}
+              onClick={() => void onFastCheckout()}
+              aria-busy={checkoutBusy}
+              className={cn(
+                "pos-checkout-btn touch-target flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-xl text-base font-bold text-white",
+                "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+              )}
+            >
+              {checkoutBusy
+                ? t("completingSale")
+                : `${t("quickCash")} · ${formatCurrency(cartTotal, currency)}`}
+            </button>
+          )}
           <Button
-            variant="default"
-            className="pos-btn-primary w-full cursor-pointer"
+            variant={fastestCheckout ? "outline" : "default"}
+            className={cn(
+              "w-full cursor-pointer",
+              !fastestCheckout && "pos-btn-primary"
+            )}
             onClick={handleClose}
+            disabled={checkoutBusy}
           >
-            {t("doneScanned", { count: scanCount })}
+            {fastestCheckout ? t("closeScannerKeepCart") : t("doneScanned", { count: scanCount })}
           </Button>
         </div>
       </div>

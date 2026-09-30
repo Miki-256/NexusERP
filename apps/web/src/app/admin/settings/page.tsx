@@ -37,9 +37,10 @@ const DEFAULT_OPS_SLO: OpsSloSettings = {
 export default async function AdminSettingsPage() {
   const ctx = await getPlatformAdminContext();
   const supabase = await createClient();
-  const [{ data }, { data: opsSloRaw }] = await Promise.all([
+  const [{ data }, { data: opsSloRaw }, userResult] = await Promise.all([
     supabase.rpc("admin_get_platform_settings"),
     supabase.rpc("admin_get_ops_slo_settings"),
+    supabase.auth.getUser(),
   ]);
   const raw = (data ?? {}) as Partial<PlatformSettings>;
   const opsRaw = (opsSloRaw ?? {}) as Partial<OpsSloSettings>;
@@ -71,6 +72,7 @@ export default async function AdminSettingsPage() {
         opsSlo={opsSlo}
         canWrite={!!ctx?.canWrite}
         canManageMaintenance={!!ctx?.canManageAdmins}
+        userEmail={userResult.data.user?.email}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { FormCard } from "@/components/layout/form-card";
+import { ChangePasswordCard } from "@/components/account/change-password-card";
 import type { DualControlSettings, OpsSloSettings, PlatformSettings } from "@/lib/admin-types";
 
 const DEFAULT_DUAL: DualControlSettings = {
@@ -22,11 +23,13 @@ export function SettingsClient({
   opsSlo: initialOpsSlo,
   canWrite,
   canManageMaintenance,
+  userEmail,
 }: {
   settings: PlatformSettings;
   opsSlo: OpsSloSettings;
   canWrite: boolean;
   canManageMaintenance: boolean;
+  userEmail?: string | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -87,6 +90,7 @@ export function SettingsClient({
 
   return (
     <div className="space-y-6">
+      <ChangePasswordCard email={userEmail} idPrefix="admin-account" />
       <FormCard
         title="Broadcast banner"
         description="Shows a message bar at the top of the ERP for all logged-in users."

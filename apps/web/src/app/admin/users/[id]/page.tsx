@@ -16,11 +16,16 @@ export default async function AdminUserProfilePage({
 
   if (error || !data) notFound();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <UserProfileClient
       profile={data as UserProfile}
       canManageSecurity={!!ctx?.canManageAdmins}
       canWrite={!!ctx?.canWrite}
+      isSelf={user?.id === id}
     />
   );
 }

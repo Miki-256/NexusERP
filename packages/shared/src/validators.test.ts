@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activateUnconfirmedSchema,
   cartLineSchema,
+  changePasswordSchema,
   inviteSignupSchema,
   loginSchema,
   logFailedLoginSchema,
@@ -71,6 +72,32 @@ describe("mobileMoneyWebhookSchema", () => {
 
     const bad = mobileMoneyWebhookSchema.safeParse({ reference: "TXN-123" });
     expect(bad.success).toBe(false);
+  });
+});
+
+describe("changePasswordSchema", () => {
+  it("accepts a longer new password", () => {
+    const result = changePasswordSchema.safeParse({
+      currentPassword: "old-secret",
+      newPassword: "new-secret1",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a short new password", () => {
+    const result = changePasswordSchema.safeParse({
+      currentPassword: "old-secret",
+      newPassword: "short",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects reusing the current password", () => {
+    const result = changePasswordSchema.safeParse({
+      currentPassword: "same-pass1",
+      newPassword: "same-pass1",
+    });
+    expect(result.success).toBe(false);
   });
 });
 

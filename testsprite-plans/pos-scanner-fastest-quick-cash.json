@@ -1,0 +1,25 @@
+{
+  "projectId": "63433b2a-2867-4a63-bc63-0604aebe2ef9",
+  "type": "frontend",
+  "name": "Fastest checkout Quick cash is on the camera scanner screen",
+  "description": "With POS sell flow set to Fastest, open the camera scanner and confirm Quick cash is on the same scanner dialog as the camera (no need to close the scanner or open the cart/payment screen). Pass even if the camera preview is blocked.",
+  "priority": "p1",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Go to /pos/ccef8d1c-72c2-44e8-b61c-6a016656cfd3 (sign in with configured manager if needed; staff Sara PIN 1234 / open shift if prompted)"
+    },
+    {
+      "type": "action",
+      "description": "Set sell flow to Fastest (header Default/Fastest toggle, or POS Tools → Sell flow → Fastest / በጣም ፈጣን)"
+    },
+    {
+      "type": "action",
+      "description": "Open the Camera barcode scanner from the search toolbar"
+    },
+    {
+      "type": "assertion",
+      "description": "The Scan items dialog is still open and shows a Quick cash control (or Amharic ፈጣን ጥሬ ገንዘብ) on that same scanner screen, together with the camera area. Do not require a successful camera stream or completing a real sale."
+    }
+  ]
+}

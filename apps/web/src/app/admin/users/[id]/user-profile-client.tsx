@@ -22,15 +22,18 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
 import { AccessDebugger } from "@/app/admin/security/access-debugger";
+import { ChangePasswordCard } from "@/components/account/change-password-card";
 
 export function UserProfileClient({
   profile,
   canManageSecurity,
   canWrite,
+  isSelf,
 }: {
   profile: UserProfile;
   canManageSecurity: boolean;
   canWrite: boolean;
+  isSelf: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -144,6 +147,8 @@ export function UserProfileClient({
         )}
       </div>
 
+      {isSelf && <ChangePasswordCard email={user.email} idPrefix="admin-profile" />}
+
       {canWrite && user.email && (
         <FormCard
           title="Login lockout"
@@ -204,7 +209,7 @@ export function UserProfileClient({
         </FormCard>
       )}
 
-      {canManageSecurity && (
+      {canManageSecurity && !isSelf && (
         <FormCard
           title="Reset password"
           description="For users who forgot their password. Sets a new password and signs them out everywhere."

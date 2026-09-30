@@ -15,6 +15,7 @@ import { PAGE_SHELL } from "@/lib/ui-classes";
 import { CreditCard } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { applyLocaleCookie } from "@/components/i18n/language-switcher";
+import { ChangePasswordCard } from "@/components/account/change-password-card";
 import { isAppLocale, type AppLocale } from "@/i18n/config";
 import { SELECT_CLS } from "@/lib/ui-classes";
 import { cn } from "@/lib/utils";
@@ -46,10 +47,12 @@ export function SettingsClient({
   organization,
   canManage,
   isOwner,
+  userEmail,
 }: {
   organization: Org;
   canManage: boolean;
   isOwner: boolean;
+  userEmail?: string | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -186,12 +189,19 @@ export function SettingsClient({
   }
 
   if (!canManage) {
-    return <p className="text-muted-foreground">{t("noPermission")}</p>;
+    return (
+      <div className={PAGE_SHELL}>
+        <PageHeader title={t("title")} description={t("accountHelp")} />
+        <ChangePasswordCard email={userEmail} />
+        <p className="text-sm text-muted-foreground">{t("noPermission")}</p>
+      </div>
+    );
   }
 
   return (
     <div className={PAGE_SHELL}>
       <PageHeader title={t("title")} description={t("languageHelp")} />
+      <ChangePasswordCard email={userEmail} />
 
       <Panel title={t("subscription")}>
         <p className="mb-3 text-sm text-muted-foreground">

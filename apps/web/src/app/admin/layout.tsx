@@ -30,15 +30,24 @@ export default async function AdminLayout({
             </div>
             <div>
               <span className="font-semibold">Platform Admin</span>
-              <p className="text-xs text-muted-foreground">{user.email}</p>
+              <p className="text-xs text-muted-foreground">
+                <Link href={`/admin/users/${user.id}`} className="hover:text-foreground hover:underline">
+                  {user.email}
+                </Link>
+              </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard">
-              <ArrowLeft className="h-4 w-4" />
-              Back to app
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/admin/users/${user.id}`}>Your profile</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard">
+                <ArrowLeft className="h-4 w-4" />
+                Back to app
+              </Link>
+            </Button>
+          </div>
         </div>
         <AdminMobileNav role={ctx.role} />
       </header>

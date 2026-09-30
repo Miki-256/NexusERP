@@ -1,4 +1,5 @@
-import { requireAppAccess } from "@/lib/require-app-access";
+import { redirect } from "next/navigation";
+import { getMemberPermissions } from "@/lib/org-context";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsClient } from "./settings-client";
 
@@ -20,7 +21,8 @@ function parseTipPresets(raw: unknown): number[] {
 }
 
 export default async function SettingsPage() {
-  const ctx = await requireAppAccess("settings");
+  const ctx = await getMemberPermissions();
+  if (!ctx) redirect("/onboarding");
   const supabase = await createClient();
   const { data: org } = await supabase
     .from("organizations")
@@ -62,6 +64,7 @@ export default async function SettingsPage() {
       organization={organization}
       canManage={ctx.canManageApp("settings")}
       isOwner={ctx.member.role === "owner"}
+      userEmail={ctx.user.email}
     />
   );
 }
