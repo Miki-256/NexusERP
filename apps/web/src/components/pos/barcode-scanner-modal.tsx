@@ -470,7 +470,7 @@ export function BarcodeScannerModal({
               variant="outline"
               className="w-full cursor-pointer gap-2"
               onClick={() => void flipCamera()}
-              disabled={status === "starting" || checkoutBusy}
+              disabled={checkoutBusy}
             >
               <FlipHorizontal className="h-4 w-4" />
               {switchLabel}

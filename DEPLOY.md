@@ -25,6 +25,22 @@ VERCEL_TOKEN=your_token npm run deploy:live
 
 Do not commit `VERCEL_TOKEN` to git.
 
+### CLI dies with `Error: fetch failed`?
+
+Vercel CLI 61 on Node 24 often aborts **after** the deployment is already created
+(you will see `Inspect` + `Production` URLs). Prefer `npm run deploy:live` — it
+forces IPv4 DNS, polls the remote build with `vercel inspect --wait`, and aliases
+`nexus-erp-preprod.vercel.app` when Ready.
+
+If you used `pnpm dlx vercel --prod` / `vercel --prod` and it aborted, recover with:
+
+```bash
+npx vercel inspect <deployment-id-or-url> --wait
+npx vercel alias set <deployment-host> nexus-erp-preprod.vercel.app
+# or simply:
+npm run deploy:live
+```
+
 **Live pre-prod:** https://nexus-erp-preprod.vercel.app
 
 ### “Ready” but not live on the main URL?
