@@ -7,7 +7,7 @@
  * This script:
  *  1. Forces IPv4-first DNS (avoids many AbortError/fetch failed flakes)
  *  2. Captures the deployment URL even when the CLI exits non-zero
- *  3. Polls `vercel inspect --wait` until Ready / Error
+ *  3. Polls `vercel inspect` until Ready / Error (CLI --wait caps at ~3m)
  *  4. Aliases nexus-erp-preprod.vercel.app to the Ready deployment
  */
 import { spawn, spawnSync } from "node:child_process";
@@ -15,7 +15,8 @@ import { spawn, spawnSync } from "node:child_process";
 const token = process.env.VERCEL_TOKEN?.trim();
 const PRODUCTION_HOST = process.env.VERCEL_PRODUCTION_HOST ?? "nexus-erp-preprod.vercel.app";
 const MAX_DEPLOY_ATTEMPTS = Number(process.env.VERCEL_DEPLOY_ATTEMPTS ?? 3);
-const INSPECT_WAIT_MS = Number(process.env.VERCEL_INSPECT_WAIT_MS ?? 15 * 60 * 1000);
+const POLL_MS = Number(process.env.VERCEL_POLL_MS ?? 20_000);
+const POLL_MAX_MS = Number(process.env.VERCEL_POLL_MAX_MS ?? 20 * 60 * 1000);
 
 const npxEnv = {
   ...process.env,
@@ -40,28 +41,32 @@ function runSync(args, opts = {}) {
   });
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function extractDeploymentUrl(text) {
   const patterns = [
     /Production\s+(https:\/\/[^\s]+\.vercel\.app)/i,
-    /Inspect\s+https:\/\/vercel\.com\/[^\s]+\/([A-Za-z0-9]+)/i,
-    /"url"\s*:\s*"(https:\/\/[^"]+\.vercel\.app)"/,
     /(https:\/\/nexus-erp-preprod-[a-z0-9-]+\.vercel\.app)/i,
+    /"url"\s*:\s*"(https:\/\/[^"]+\.vercel\.app)"/,
     /Fetched deployment "(nexus-erp-preprod-[a-z0-9-]+\.vercel\.app)"/i,
+    /Inspect\s+https:\/\/vercel\.com\/[^\s/]+\/[^\s/]+\/([A-Za-z0-9]+)/i,
   ];
   for (const re of patterns) {
     const m = text.match(re);
     if (!m) continue;
     if (m[1]?.startsWith("https://")) return m[1];
     if (m[1]?.includes(".vercel.app")) return `https://${m[1]}`;
-    // Inspect path id → use as deployment id for inspect
     if (m[0].includes("Inspect") && m[1]) return m[1];
-    if (m[1]) return m[1];
   }
   return "";
 }
 
 function isTransientCliFailure(log) {
-  return /fetch failed|AbortError|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR/i.test(log);
+  return /fetch failed|AbortError|ECONNRESET|ETIMEDOUT|socket hang up|UND_ERR|deploy_failed/i.test(
+    log
+  );
 }
 
 function aliasProduction(urlOrHost) {
@@ -77,38 +82,58 @@ function aliasProduction(urlOrHost) {
   return result.status === 0;
 }
 
-function inspectDeployment(target) {
-  console.log(`\nPolling deployment status for ${target} (up to ${Math.round(INSPECT_WAIT_MS / 60000)}m)…`);
-  const result = runSync(vercelArgs(["inspect", target, "--wait"]), {
+function inspectOnce(target) {
+  const result = runSync(vercelArgs(["inspect", target]), {
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: INSPECT_WAIT_MS,
+    timeout: 120_000,
   });
   const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  process.stdout.write(out);
-  const statusMatch = out.match(/status\s+[●○]\s+(\w+)/i) || out.match(/status\s+(\w+)/i);
+  const statusMatch = out.match(/status\s+[●○]\s+(\w+)/i);
   const status = (statusMatch?.[1] ?? "").toLowerCase();
   const urlMatch =
     out.match(/url\s+(https:\/\/[^\s]+\.vercel\.app)/i) ||
     out.match(/Fetched deployment "(nexus-erp-preprod-[^"]+\.vercel\.app)"/i);
   let url = urlMatch?.[1] ?? "";
   if (url && !url.startsWith("https://")) url = `https://${url}`;
+  return { status, url, output: out, exitCode: result.status };
+}
 
-  return {
-    ok: status === "ready" || /●\s*Ready|status\s+Ready/i.test(out),
-    error: status === "error" || /●\s*Error|status\s+Error/i.test(out),
-    status: status || "unknown",
-    url,
-    exitCode: result.status,
-    output: out,
-  };
+async function waitForDeployment(target) {
+  console.log(
+    `\nPolling ${target} every ${Math.round(POLL_MS / 1000)}s (max ${Math.round(POLL_MAX_MS / 60000)}m)…`
+  );
+  const started = Date.now();
+  let lastStatus = "";
+
+  while (Date.now() - started < POLL_MAX_MS) {
+    const snap = inspectOnce(target);
+    if (snap.status && snap.status !== lastStatus) {
+      console.log(`  status: ${snap.status}${snap.url ? ` (${snap.url})` : ""}`);
+      lastStatus = snap.status;
+    } else if (!snap.status) {
+      console.log("  status: (unknown / inspect flaked — retrying)");
+    }
+
+    if (snap.status === "ready") {
+      return { ok: true, error: false, status: "ready", url: snap.url };
+    }
+    if (snap.status === "error" || snap.status === "canceled" || snap.status === "cancelled") {
+      // Print last inspect block for debugging
+      process.stdout.write(snap.output);
+      return { ok: false, error: true, status: snap.status, url: snap.url };
+    }
+
+    await sleep(POLL_MS);
+  }
+
+  console.error("Timed out waiting for deployment to leave Building.");
+  return { ok: false, error: false, status: lastStatus || "timeout", url: "" };
 }
 
 function deployOnce(attempt) {
   return new Promise((resolve) => {
     console.log(`\n── Deploy attempt ${attempt}/${MAX_DEPLOY_ATTEMPTS} ──`);
-    const args = vercelArgs(["deploy", "--prod", "--yes"]);
-    // npx --yes vercel@latest …
-    const child = spawn("npx", args, {
+    const child = spawn("npx", vercelArgs(["deploy", "--prod", "--yes"]), {
       stdio: ["inherit", "pipe", "pipe"],
       shell: process.platform === "win32",
       env: npxEnv,
@@ -127,16 +152,20 @@ function deployOnce(attempt) {
 
     child.stdout.on("data", (c) => onData(c, process.stdout));
     child.stderr.on("data", (c) => onData(c, process.stderr));
-
-    child.on("error", (err) => {
-      resolve({ code: 1, log: String(err), deploymentRef });
-    });
-
+    child.on("error", (err) => resolve({ code: 1, log: String(err), deploymentRef }));
     child.on("close", (code) => {
       if (!deploymentRef) deploymentRef = extractDeploymentUrl(fullLog);
       resolve({ code: code ?? 1, log: fullLog, deploymentRef });
     });
   });
+}
+
+async function finishReady(url) {
+  if (url) aliasProduction(url);
+  console.log("\n✓ Deployment is live.");
+  if (url) console.log(`  ${url}`);
+  console.log(`  https://${PRODUCTION_HOST}`);
+  process.exit(0);
 }
 
 async function main() {
@@ -148,65 +177,52 @@ async function main() {
     lastLog = log;
     if (deploymentRef) lastRef = deploymentRef;
 
+    const target = deploymentRef || lastRef;
+
     if (code === 0) {
-      // CLI finished cleanly — still confirm Ready + alias
-      const target = deploymentRef || lastRef;
       if (target) {
-        const inspected = inspectDeployment(target);
-        if (inspected.ok) {
-          const url = inspected.url || (target.startsWith("http") ? target : "");
-          if (url) aliasProduction(url);
-          console.log("\n✓ Deployment is live.");
-          if (url) console.log(`  ${url}`);
-          console.log(`  https://${PRODUCTION_HOST}`);
-          process.exit(0);
+        const waited = await waitForDeployment(target);
+        if (waited.ok) {
+          await finishReady(waited.url || (target.startsWith("http") ? target : ""));
         }
-        if (inspected.error) {
-          console.error("\n✗ Remote build failed (status Error).");
-          console.error(`  Inspect: https://vercel.com/${PRODUCTION_HOST.includes("preprod") ? "…" : ""}`);
+        if (waited.error) {
+          console.error("\n✗ Remote build failed.");
           process.exit(1);
         }
       }
       console.log("\n✓ Deployment command finished.");
-      if (deploymentRef) console.log(`  ${deploymentRef}`);
+      if (target) console.log(`  ${target}`);
       console.log(`  https://${PRODUCTION_HOST}`);
       process.exit(0);
     }
 
-    // CLI failed — if we already have a deployment id/url, poll it instead of re-uploading.
-    if (deploymentRef && isTransientCliFailure(log)) {
+    if (target && isTransientCliFailure(log)) {
       console.warn(
         "\n⚠ Vercel CLI dropped the connection after creating the deployment (known Node 24 / CLI flake)."
       );
       console.warn("  Recovering by polling the remote build…");
-      const inspected = inspectDeployment(deploymentRef);
-      if (inspected.ok) {
-        const url = inspected.url || (deploymentRef.startsWith("http") ? deploymentRef : "");
-        if (url) aliasProduction(url);
-        console.log("\n✓ Deployment is live (recovered after CLI fetch failed).");
-        if (url) console.log(`  ${url}`);
-        console.log(`  https://${PRODUCTION_HOST}`);
-        process.exit(0);
+      const waited = await waitForDeployment(target);
+      if (waited.ok) {
+        await finishReady(waited.url || (target.startsWith("http") ? target : ""));
       }
-      if (inspected.error) {
+      if (waited.error) {
         console.error("\n✗ Remote build failed after CLI disconnect.");
         process.exit(1);
       }
       console.error("\n✗ Could not confirm Ready status after CLI disconnect.");
-      console.error(`  Check: npx vercel inspect ${deploymentRef}`);
+      console.error(`  Check: npx vercel inspect ${target}`);
       process.exit(1);
     }
 
-    if (!isTransientCliFailure(log)) {
-      break;
-    }
+    if (!isTransientCliFailure(log)) break;
     console.warn(`Transient deploy failure on attempt ${attempt}; retrying…`);
   }
 
   if (!token) {
-    const authLikely = /not authenticated|login required|No existing credentials|Unauthorized|invalid token|Not authorized/i.test(
-      lastLog
-    );
+    const authLikely =
+      /not authenticated|login required|No existing credentials|Unauthorized|invalid token|Not authorized/i.test(
+        lastLog
+      );
     if (authLikely) {
       console.error("");
       console.error("Vercel auth required. Run one of:");
@@ -218,7 +234,7 @@ async function main() {
 
   if (lastRef) {
     console.error(`\nLast known deployment: ${lastRef}`);
-    console.error(`  npx vercel inspect ${lastRef} --wait`);
+    console.error(`  npx vercel inspect ${lastRef}`);
   }
   console.error("\n✗ Deployment failed.");
   console.error(`  https://${PRODUCTION_HOST}`);
